@@ -1,0 +1,29 @@
+{
+  "city": "Philadelphia",
+  "date": "Sunday, July 19",
+  "time": "04:48:45",
+  "temp_c": 33.0,
+  "condition": "Smoke",
+  "humidity": 64,
+  "feels_like": 45.0,
+  "forecast": [
+    {
+      "date": "2026-07-18",
+      "max": "31",
+      "min": "21",
+      "desc": "Moderate rain at times"
+    },
+    {
+      "date": "2026-07-19",
+      "max": "29",
+      "min": "21",
+      "desc": "Sunny"
+    },
+    {
+      "date": "2026-07-20",
+      "max": "30",
+      "min": "18",
+      "desc": "Sunny"
+    }
+  ]
+}

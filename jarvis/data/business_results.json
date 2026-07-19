@@ -1,0 +1,73 @@
+{
+  "ts": "2026-07-19T07:57:00",
+  "query": "coffee",
+  "place": "Philadelphia",
+  "results": [
+    {
+      "name": "Starbucks",
+      "category": "cafe",
+      "address": "3401, Walnut Street, Philadelphia, PA",
+      "phone": "+1-215-387-1914",
+      "website": "https://www.starbucks.com/store-locator/store/14716/walnut-34th-3401-walnut-st-philadelphia-pa-191046228-us",
+      "lat": 39.9530145,
+      "lon": -75.1922885,
+      "osm_id": 274217596,
+      "hours": "Mo-Fr 05:30-20:00; Sa,Su 06:00-20:00"
+    },
+    {
+      "name": "Chapter House Cafe",
+      "category": "cafe",
+      "address": "",
+      "phone": "+1-215-238-2626",
+      "website": "https://chapterhousecafe.wordpress.com/",
+      "lat": 39.9419244,
+      "lon": -75.1573574,
+      "osm_id": 333786095,
+      "hours": "Mo-Su 07:00-20:00"
+    },
+    {
+      "name": "Kaffa Crossing",
+      "category": "cafe",
+      "address": "4423, Chestnut Street, Philadelphia, PA",
+      "phone": "",
+      "website": "",
+      "lat": 39.9567501,
+      "lon": -75.2104541,
+      "osm_id": 343223621,
+      "hours": ""
+    },
+    {
+      "name": "Ants Pants Cafe",
+      "category": "cafe",
+      "address": "2212, South Street, Philadelphia, PA",
+      "phone": "+1-215-875-8002",
+      "website": "https://www.antspantscafe.com/",
+      "lat": 39.945254,
+      "lon": -75.179073,
+      "osm_id": 649984275,
+      "hours": "Mo-Fr 08:30-15:00; Sa-Su 08:00-15:00"
+    },
+    {
+      "name": "Saxbys",
+      "category": "cafe",
+      "address": "4000, Locust Street, Philadelphia, PA",
+      "phone": "+1-215-222-8400",
+      "website": "https://www.saxbyscoffee.com",
+      "lat": 39.952879,
+      "lon": -75.203052,
+      "osm_id": 655417201,
+      "hours": "Mo-Th 07:00-19:00; Fr 07:00-18:00; Sa,Su 08:00-18:00"
+    },
+    {
+      "name": "Almaz Cafe",
+      "category": "cafe",
+      "address": "140, South 20th Street, Philadelphia, PA",
+      "phone": "+1 215-557-0108",
+      "website": "https://almazcafes.com",
+      "lat": 39.950684,
+      "lon": -75.173896,
+      "osm_id": 1033918289,
+      "hours": "Mo-Tu,Su off; We-Sa 11:00-21:00"
+    }
+  ]
+}

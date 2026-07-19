@@ -1,0 +1,154 @@
+{
+  "sites": [
+    {
+      "slug": "arc-reactor-roasters",
+      "brand": "Arc Reactor Roasters",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\arc-reactor-roasters\\index.html",
+      "ts": "2026-07-19T05:14:01"
+    },
+    {
+      "slug": "new-venture",
+      "brand": "New Venture",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\new-venture\\index.html",
+      "ts": "2026-07-19T05:38:19"
+    },
+    {
+      "slug": "pulse-clinic",
+      "brand": "Pulse Clinic",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\pulse-clinic\\index.html",
+      "ts": "2026-07-19T05:42:23"
+    },
+    {
+      "slug": "midnight-philadelphia",
+      "brand": "Midnight Philadelphia",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\midnight-philadelphia\\index.html",
+      "ts": "2026-07-19T05:42:26"
+    },
+    {
+      "slug": "atlas-philadelphia",
+      "brand": "Atlas Philadelphia",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\atlas-philadelphia\\index.html",
+      "ts": "2026-07-19T05:42:29"
+    },
+    {
+      "slug": "harbor-hearth-bakery",
+      "brand": "Harbor & Hearth Bakery",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\harbor-hearth-bakery\\index.html",
+      "ts": "2026-07-19T05:42:32"
+    },
+    {
+      "slug": "keystone-philadelphia",
+      "brand": "Keystone Philadelphia",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\keystone-philadelphia\\index.html",
+      "ts": "2026-07-19T05:45:06"
+    },
+    {
+      "slug": "midnight-philadelphia-054625",
+      "brand": "Midnight Philadelphia",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\midnight-philadelphia-054625\\index.html",
+      "ts": "2026-07-19T05:46:25"
+    },
+    {
+      "slug": "arc-philadelphia",
+      "brand": "Arc Philadelphia",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\arc-philadelphia\\index.html",
+      "ts": "2026-07-19T06:20:23"
+    },
+    {
+      "slug": "arc-reactor-roasters-062835",
+      "brand": "Arc Reactor Roasters",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\arc-reactor-roasters-062835\\index.html",
+      "ts": "2026-07-19T06:28:35"
+    },
+    {
+      "slug": "nova-philadelphia-works-2607-0719-063500-15",
+      "brand": "Nova Philadelphia Works 2607",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\nova-philadelphia-works-2607-0719-063500-15\\index.html",
+      "ts": "2026-07-19T06:35:00"
+    },
+    {
+      "slug": "northline-legal-0719-063503-48",
+      "brand": "Northline Legal",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\northline-legal-0719-063503-48\\index.html",
+      "ts": "2026-07-19T06:35:03"
+    },
+    {
+      "slug": "riverbend-philadelphia-lab-2607-0719-063506-69",
+      "brand": "Riverbend Philadelphia Lab 2607",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\riverbend-philadelphia-lab-2607-0719-063506-69\\index.html",
+      "ts": "2026-07-19T06:35:06"
+    },
+    {
+      "slug": "parcel-philadelphia-collective-0719-063509-73",
+      "brand": "Parcel Philadelphia Collective",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\parcel-philadelphia-collective-0719-063509-73\\index.html",
+      "ts": "2026-07-19T06:35:09"
+    },
+    {
+      "slug": "summit-philadelphia-atelier-0719-063701-43",
+      "brand": "Summit Philadelphia Atelier",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\summit-philadelphia-atelier-0719-063701-43\\index.html",
+      "ts": "2026-07-19T06:37:01"
+    },
+    {
+      "slug": "riverbend-philadelphia-desk-2607-0719-063905-62",
+      "brand": "Riverbend Philadelphia Desk 2607",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\riverbend-philadelphia-desk-2607-0719-063905-62\\index.html",
+      "ts": "2026-07-19T06:39:06"
+    },
+    {
+      "slug": "midnight-philadelphia-desk-0719-064019-63",
+      "brand": "Midnight Philadelphia Desk",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\midnight-philadelphia-desk-0719-064019-63\\index.html",
+      "ts": "2026-07-19T06:40:20"
+    },
+    {
+      "slug": "lumen-philadelphia-lab-0719-064451-51",
+      "brand": "Lumen Philadelphia Lab",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\lumen-philadelphia-lab-0719-064451-51\\index.html",
+      "ts": "2026-07-19T06:44:53"
+    },
+    {
+      "slug": "ironleaf-philadelphia-atelier-2607-0719-064706-90",
+      "brand": "Ironleaf Philadelphia Atelier 2607",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\ironleaf-philadelphia-atelier-2607-0719-064706-90\\index.html",
+      "ts": "2026-07-19T06:47:07"
+    },
+    {
+      "slug": "beacon-philadelphia-co-0719-065507-30",
+      "brand": "Beacon Philadelphia Co.",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\beacon-philadelphia-co-0719-065507-30\\index.html",
+      "ts": "2026-07-19T06:55:09"
+    },
+    {
+      "slug": "ironleaf-landscaping-2607-0719-070112-49",
+      "brand": "Ironleaf Landscaping 2607",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\ironleaf-landscaping-2607-0719-070112-49\\index.html",
+      "ts": "2026-07-19T07:01:13"
+    },
+    {
+      "slug": "ironleaf-landscaping-0719-070134-16",
+      "brand": "Ironleaf Landscaping",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\ironleaf-landscaping-0719-070134-16\\index.html",
+      "ts": "2026-07-19T07:01:35"
+    },
+    {
+      "slug": "forge-philadelphia-works-2607-0719-072545-10",
+      "brand": "Forge Philadelphia Works 2607",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\forge-philadelphia-works-2607-0719-072545-10\\index.html",
+      "ts": "2026-07-19T07:25:46"
+    },
+    {
+      "slug": "quiet-philadelphia-lab-0719-082026-69",
+      "brand": "Quiet Philadelphia Lab",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\quiet-philadelphia-lab-0719-082026-69\\index.html",
+      "ts": "2026-07-19T08:20:27"
+    },
+    {
+      "slug": "keystone-philadelphia-atelier-2607-0719-093346-15",
+      "brand": "Keystone Philadelphia Atelier 2607",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\sites\\keystone-philadelphia-atelier-2607-0719-093346-15\\index.html",
+      "ts": "2026-07-19T09:33:48"
+    }
+  ]
+}

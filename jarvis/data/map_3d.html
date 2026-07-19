@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Jarvis · 3D Map</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet"/>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  html, body, #map { margin:0; height:100%; width:100%; background:#02050a; }
+  .hud {
+    position:absolute; z-index:5; left:16px; top:14px;
+    pointer-events:none; font-family: Bahnschrift, Segoe UI, sans-serif;
+  }
+  .hud h1 {
+    margin:0; color:#00e8ff; letter-spacing:6px; font-size:14px; font-weight:800;
+    text-shadow: 0 0 18px rgba(0,232,255,.45);
+  }
+  .hud p { margin:6px 0 0; color:#8aa4b8; font-size:12px; letter-spacing:1px; }
+  #scan {
+    position:absolute; z-index:6; left:50%; top:18%; transform:translateX(-50%);
+    font-family: Bahnschrift, Segoe UI, sans-serif; letter-spacing:4px;
+    color:#00e8ff; font-size:13px; text-shadow:0 0 20px rgba(0,232,255,.5);
+    opacity:0; transition:opacity .4s ease; pointer-events:none;
+  }
+  #scan.on { opacity:1; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity:.55; } 50% { opacity:1; } }
+  .maplibregl-ctrl-attrib { font-size:10px; }
+  .maplibregl-popup-content {
+    background:#041018; color:#eaf6ff; border:1px solid rgba(0,232,255,.4);
+    border-radius:0; font-family: Bahnschrift, Segoe UI, sans-serif; max-width:220px;
+  }
+  .maplibregl-popup-tip { border-top-color:#041018 !important; }
+  .pin {
+    width:26px; height:26px; border-radius:50%;
+    background:rgba(0,232,255,.15); border:2px solid #00e8ff;
+    box-shadow:0 0 14px rgba(0,232,255,.7); color:#eaf6ff;
+    font:700 11px Bahnschrift,sans-serif; display:grid; place-items:center;
+    cursor:pointer;
+  }
+  .pin.hot { background:#00e8ff; color:#041018; transform:scale(1.15); }
+</style>
+</head>
+<body>
+<div class="hud">
+  <h1>TACTICAL MAP · 3D</h1>
+  <p id="place">Philadelphia</p>
+</div>
+<div id="scan" class=""></div>
+<div id="map"></div>
+<script>
+const center = [-75.1635262, 39.9527237];
+const markers = [];
+const placeName = "Philadelphia";
+const animateIntro = true;
+const startScanning = false;
+let markerObjs = [];
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://tiles.openfreemap.org/styles/dark',
+  center: center,
+  zoom: animateIntro ? 3.2 : 14.3,
+  pitch: animateIntro ? 0 : 62,
+  bearing: animateIntro ? 0 : -18,
+  antialias: true,
+  attributionControl: true
+});
+map.addControl(new maplibregl.NavigationControl({visualizePitch:true}), 'top-right');
+
+function setScan(on, text) {
+  const el = document.getElementById('scan');
+  if (!el) return;
+  el.textContent = text || 'SCANNING SECTOR…';
+  el.classList.toggle('on', !!on);
+}
+
+function clearMarkers() {
+  markerObjs.forEach(m => m.remove());
+  markerObjs = [];
+}
+
+function addMarkers(list) {
+  clearMarkers();
+  (list || []).forEach((m, i) => {
+    if (m.lon == null || m.lat == null) return;
+    const el = document.createElement('div');
+    el.className = 'pin';
+    el.textContent = String(m.index || (i + 1));
+    el.title = m.name || ('Option ' + (i + 1));
+    el.onclick = () => {
+      document.querySelectorAll('.pin').forEach(p => p.classList.remove('hot'));
+      el.classList.add('hot');
+      map.flyTo({
+        center: [m.lon, m.lat],
+        zoom: 15.2,
+        pitch: 62,
+        bearing: map.getBearing(),
+        essential: true,
+        duration: 1400
+      });
+    };
+    const mk = new maplibregl.Marker({element: el})
+      .setLngLat([m.lon, m.lat])
+      .setPopup(new maplibregl.Popup({offset: 16}).setHTML(
+        '<strong>' + (m.index || (i+1)) + '. ' + (m.name || ('Point ' + (i+1))) + '</strong><br/>' +
+        '<span style="color:#8aa4b8">' + (m.address || m.category || '') + '</span>'
+      ))
+      .addTo(map);
+    markerObjs.push(mk);
+  });
+}
+
+map.on('load', () => {
+  try {
+    map.setFog({
+      color: 'rgb(2,8,16)',
+      'high-color': 'rgb(0,40,60)',
+      'horizon-blend': 0.08,
+      'space-color': 'rgb(1,4,10)',
+      'star-intensity': 0.15
+    });
+  } catch (e) {}
+
+  const layers = map.getStyle().layers || [];
+  const labelLayerId = layers.find(l => l.type === 'symbol' && l.layout && l.layout['text-field']);
+  if (!map.getLayer('jarvis-3d-buildings')) {
+    try {
+      map.addLayer({
+        id: 'jarvis-3d-buildings',
+        source: 'openmaptiles',
+        'source-layer': 'building',
+        type: 'fill-extrusion',
+        minzoom: 13,
+        paint: {
+          'fill-extrusion-color': '#0a3040',
+          'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 12],
+          'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
+          'fill-extrusion-opacity': 0.82
+        }
+      }, labelLayerId && labelLayerId.id);
+    } catch (e) {}
+  }
+
+  if (animateIntro) {
+    setScan(true, startScanning ? 'SCANNING SECTOR…' : 'ACQUIRING TARGET…');
+    map.flyTo({
+      center: center,
+      zoom: 14.3,
+      pitch: 62,
+      bearing: -18,
+      essential: true,
+      duration: 2800
+    });
+    map.once('moveend', () => {
+      addMarkers(markers);
+      if (!startScanning) setScan(false);
+      // Slow cinematic orbit after settle
+      let bearing = map.getBearing();
+      function orbit() {
+        bearing = (bearing + 0.035) % 360;
+        map.setBearing(bearing);
+        requestAnimationFrame(orbit);
+      }
+      requestAnimationFrame(orbit);
+    });
+  } else {
+    addMarkers(markers);
+    let bearing = map.getBearing();
+    function orbit() {
+      bearing = (bearing + 0.035) % 360;
+      map.setBearing(bearing);
+      requestAnimationFrame(orbit);
+    }
+    requestAnimationFrame(orbit);
+  }
+});
+
+window.jarvisFlyTo = function(lon, lat, place, zoom) {
+  document.getElementById('place').textContent = place || 'Target';
+  map.flyTo({
+    center: [lon, lat],
+    zoom: zoom || 14.5,
+    pitch: 62,
+    bearing: -12,
+    essential: true,
+    duration: 2200
+  });
+};
+
+window.jarvisSetMarkers = function(list, scanning) {
+  addMarkers(list || []);
+  setScan(!!scanning, scanning ? 'SCANNING SECTOR…' : '');
+  if ((list || []).length) {
+    const bounds = new maplibregl.LngLatBounds();
+    list.forEach(m => {
+      if (m.lon != null && m.lat != null) bounds.extend([m.lon, m.lat]);
+    });
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, { padding: 80, pitch: 62, duration: 1600, maxZoom: 15 });
+    }
+  }
+};
+
+window.jarvisFocusIndex = function(idx) {
+  const m = (markers || []).find(x => (x.index || 0) === idx) ||
+            (markerObjs[idx - 1] && null);
+  const list = window._jarvisMarks || markers;
+  const hit = (list || []).find(x => Number(x.index) === Number(idx));
+  if (!hit || hit.lon == null) return;
+  document.querySelectorAll('.pin').forEach((p, i) => {
+    p.classList.toggle('hot', String(p.textContent) === String(idx));
+  });
+  map.flyTo({
+    center: [hit.lon, hit.lat],
+    zoom: 15.4,
+    pitch: 62,
+    essential: true,
+    duration: 1200
+  });
+};
+
+window._jarvisMarks = markers;
+</script>
+</body>
+</html>

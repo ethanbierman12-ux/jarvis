@@ -1,0 +1,16 @@
+{
+  "events": [
+    {
+      "date": "2026-07-19",
+      "time": "09:00",
+      "title": "Morning focus block",
+      "type": "task"
+    },
+    {
+      "date": "2026-07-19",
+      "time": "14:00",
+      "title": "Check email and messages",
+      "type": "email"
+    }
+  ]
+}

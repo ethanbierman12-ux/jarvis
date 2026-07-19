@@ -1,0 +1,32 @@
+{
+  "name": "JARVIS",
+  "haltKeywords": ["exit", "standby", "abort", "stop agents", "cancel agents"],
+  "maxOrchestrationSteps": 8,
+  "spokes": {
+    "sarah": {
+      "id": "sarah",
+      "name": "Sarah",
+      "role": "customer_support",
+      "channel": "support"
+    },
+    "tom": {
+      "id": "tom",
+      "name": "Tom",
+      "role": "developer",
+      "channel": "engineering"
+    },
+    "admin": {
+      "id": "admin",
+      "name": "Admin",
+      "role": "operations",
+      "channel": "ops"
+    }
+  },
+  "memory": {
+    "vaultPath": "data/memory",
+    "maxEphemeralTurns": 40
+  },
+  "voice": {
+    "persona": "British butler, precise, faintly sarcastic, loyal"
+  }
+}

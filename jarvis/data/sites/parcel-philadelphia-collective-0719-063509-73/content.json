@@ -1,0 +1,16 @@
+{
+  "brand": "Parcel Philadelphia Collective",
+  "tagline": "Shipping \u00b7 Philadelphia",
+  "hero": "Quiet confidence. Clear craft. Parcel Philadelphia Collective.",
+  "about": "Parcel Philadelphia Collective started as a response to bland shipping. In Philadelphia, we built something sharper \u2014 human, fast, and exact.",
+  "services": [
+    "Signature shipping experiences",
+    "Clear pricing and fast replies",
+    "Local Philadelphia service with follow-through"
+  ],
+  "cta": "Get a quote",
+  "accent": "#00e8ff",
+  "secondary": "#100808",
+  "footer": "\u00a9 2026 Parcel Philadelphia Collective. Designed and built by Jarvis.",
+  "theme": "ice_signal"
+}

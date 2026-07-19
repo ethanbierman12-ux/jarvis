@@ -1,0 +1,661 @@
+"""Full-screen camera theater — live feed, news video corner, draggable Jarvis dock."""
+
+from __future__ import annotations
+
+import threading
+from typing import Optional
+
+import numpy as np
+from PyQt6.QtCore import Qt, QTimer, QPoint, pyqtSignal, QUrl
+from PyQt6.QtGui import QImage, QPixmap, QMouseEvent
+from PyQt6.QtWidgets import (
+    QFrame,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QWidget,
+    QSizePolicy,
+)
+
+from jarvis.core.gestures import HandGestureTracker, GestureState, draw_gestures
+from jarvis.ui.widgets.camera import (
+    CameraOpener,
+    list_dshow_devices,
+    list_physical_targets,
+    _is_junk_name,
+)
+
+
+ABC_LIVE_EMBED = (
+    "https://www.youtube.com/embed/live_stream?channel=UCBi2mrWuNuyYy4gbM6fU18Q"
+    "&autoplay=1&mute=1&controls=1&rel=0"
+)
+ABC_LIVE_PAGE = "https://abcnews.go.com/Live"
+
+
+class _DragPanel(QFrame):
+    """Glass floating panel that can be mouse-dragged."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("GlassPanel")
+        self._drag_origin: QPoint | None = None
+        self._drag_start: QPoint | None = None
+
+    def mousePressEvent(self, e: QMouseEvent) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._drag_origin = e.globalPosition().toPoint()
+            self._drag_start = self.pos()
+            self.raise_()
+        super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e: QMouseEvent) -> None:
+        if self._drag_origin is not None and self._drag_start is not None:
+            delta = e.globalPosition().toPoint() - self._drag_origin
+            np_ = self._drag_start + delta
+            parent = self.parentWidget()
+            if parent is not None:
+                x = max(0, min(parent.width() - self.width(), np_.x()))
+                y = max(0, min(parent.height() - self.height(), np_.y()))
+                self.move(x, y)
+            else:
+                self.move(np_)
+        super().mouseMoveEvent(e)
+
+    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
+        self._drag_origin = None
+        self._drag_start = None
+        super().mouseReleaseEvent(e)
+
+
+class NewsVideoCorner(_DragPanel):
+    """Top-left ABC News live video interface."""
+
+    closed = pyqtSignal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setFixedSize(420, 280)
+        self.setStyleSheet(
+            "QFrame#GlassPanel { background: rgba(2,10,18,230);"
+            " border: 1px solid rgba(0,232,255,150); }"
+        )
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(8, 6, 8, 8)
+        lay.setSpacing(4)
+        head = QHBoxLayout()
+        title = QLabel("ABC NEWS · LIVE")
+        title.setObjectName("SectionTitle")
+        tip = QLabel("drag to move")
+        tip.setObjectName("Dim")
+        tip.setStyleSheet("font-size:9px;")
+        close = QPushButton("✕")
+        close.setObjectName("GhostBtn")
+        close.setFixedSize(28, 24)
+        close.clicked.connect(self._close)
+        head.addWidget(title)
+        head.addStretch(1)
+        head.addWidget(tip)
+        head.addWidget(close)
+        lay.addLayout(head)
+
+        self._host = QWidget()
+        self._host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._host_lay = QVBoxLayout(self._host)
+        self._host_lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self._host, 1)
+        self._fallback = QLabel("Loading ABC News Live…")
+        self._fallback.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._fallback.setStyleSheet("color:#8aa4b8; background:#02080e;")
+        self._host_lay.addWidget(self._fallback)
+        self._web = None
+        try:
+            from PyQt6.QtWebEngineWidgets import QWebEngineView
+            from PyQt6.QtWebEngineCore import QWebEngineSettings
+
+            self._web = QWebEngineView(self._host)
+            settings = self._web.settings()
+            settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+            settings.setAttribute(
+                QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, False
+            )
+            self._host_lay.addWidget(self._web, 1)
+            self._fallback.hide()
+        except Exception as e:
+            self._fallback.setText(f"WebEngine needed for live news.\n{e}")
+
+    def start_live(self) -> None:
+        self.show()
+        self.raise_()
+        html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<style>html,body{{margin:0;background:#02080e;height:100%;overflow:hidden}}
+iframe{{border:0;width:100%;height:100%}}</style></head>
+<body><iframe src="{ABC_LIVE_EMBED}" allow="autoplay; encrypted-media; picture-in-picture"
+allowfullscreen></iframe></body></html>"""
+        if self._web is not None:
+            self._web.setHtml(html, QUrl("https://www.youtube.com/"))
+        else:
+            try:
+                from jarvis.core.displays import displays
+
+                displays.open_url_on(ABC_LIVE_PAGE, "secondary")
+            except Exception:
+                pass
+
+    def _close(self) -> None:
+        self.hide()
+        self.closed.emit()
+
+
+class JarvisDock(_DragPanel):
+    """Bottom-right Jarvis control chip — draggable."""
+
+    close_camera = pyqtSignal()
+    toggle_news = pyqtSignal()
+    scan = pyqtSignal()
+    unlock_gestures = pyqtSignal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setFixedSize(300, 178)
+        self.setStyleSheet(
+            "QFrame#GlassPanel { background: rgba(2,12,20,235);"
+            " border: 1px solid rgba(0,232,255,160);"
+            " border-left: 3px solid #00e8ff; }"
+        )
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(6)
+        brand = QLabel("J.A.R.V.I.S")
+        brand.setStyleSheet(
+            "color:#00e8ff; font-size:16px; font-weight:800; letter-spacing:4px;"
+        )
+        self.status = QLabel("CAMERA THEATER · LIVE")
+        self.status.setObjectName("Dim")
+        self.status.setWordWrap(True)
+        self.gesture = QLabel("Gesture: ready")
+        self.gesture.setStyleSheet("color:#8aa4b8; font-size:11px;")
+        tip = QLabel("Pinch = drag · Fist = lock")
+        tip.setStyleSheet("color:#5a7388; font-size:9px; letter-spacing:1px;")
+        lay.addWidget(brand)
+        lay.addWidget(self.status)
+        lay.addWidget(self.gesture)
+        lay.addWidget(tip)
+        row = QHBoxLayout()
+        for label, slot in (
+            ("NEWS", self.toggle_news.emit),
+            ("UNLOCK", self.unlock_gestures.emit),
+            ("SCAN", self.scan.emit),
+            ("CLOSE", self.close_camera.emit),
+        ):
+            b = QPushButton(label)
+            b.setObjectName("GhostBtn")
+            b.setMinimumHeight(28)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.clicked.connect(slot)
+            row.addWidget(b)
+        lay.addLayout(row)
+
+    def set_status(self, text: str) -> None:
+        self.status.setText(text)
+
+    def set_gesture(self, text: str) -> None:
+        self.gesture.setText(text)
+
+
+class CameraTheater(QFrame):
+    """
+    Full-screen camera mode:
+      - live feed fills the window
+      - ABC News Live video · top-left (draggable)
+      - Jarvis dock · bottom-right (draggable)
+      - clean gesture cursor
+    """
+
+    closed = pyqtSignal()
+    scan_clicked = pyqtSignal(bool)
+    gesture = pyqtSignal(object)
+    gesture_drag = pyqtSignal(float, float)
+    gesture_swipe = pyqtSignal(str)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("CameraTheater")
+        self.setStyleSheet("QFrame#CameraTheater { background:#000; border:none; }")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+        self.view = QLabel(self)
+        self.view.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.view.setStyleSheet("background:#000; color:#4a6070;")
+        self.view.lower()
+
+        self.news = NewsVideoCorner(self)
+        self.news.hide()
+        self.dock = JarvisDock(self)
+        self.dock.close_camera.connect(lambda: self.hide_feed(emit=True))
+        self.dock.toggle_news.connect(self._toggle_news_corner)
+        self.dock.scan.connect(lambda: self.scan_clicked.emit(True))
+        self.dock.unlock_gestures.connect(self._unlock_gestures)
+
+        self._cap = None
+        self._index = -1
+        self._backend = ""
+        self._label = ""
+        self._frame = None
+        self._lock = threading.Lock()
+        self._prefer = "EMEET"
+        self._preferred_index = 0
+        self._device_names: list[str] = []
+        self._mirror = True
+        self._fail_streak = 0
+        self._gestures_on = True
+        self._gesture_locked = False  # fist locks drag until open hand / UNLOCK
+        self._fist_streak = 0
+        self._open_streak = 0
+        self._tracker: HandGestureTracker | None = None
+        self._last_gesture = GestureState()
+        self._gesture_skip = 0
+        self._smooth_cursor = (0.85, 0.82)
+        self._probe = None
+        self._night_vision = False
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._paint_frame)
+        self.hide()
+
+        # Compatibility aliases used by main_window
+        self.result = self.dock.status
+
+    def set_night_vision(self, on: bool) -> None:
+        self._night_vision = bool(on)
+        if self._night_vision and self.isVisible():
+            self.dock.set_status("NIGHT VISION · ONLINE")
+        elif self.isVisible() and self._label:
+            self.dock.set_status(f"LIVE · {self._label} · fist locks panels")
+
+    def stop(self) -> None:
+        self.hide_feed(emit=True)
+
+    def set_gestures_enabled(self, on: bool) -> None:
+        self._gestures_on = on
+        if on and self._tracker is None:
+            self._tracker = HandGestureTracker()
+
+    def open_feed(self, preferred_index: int = 0, prefer: str = "EMEET") -> None:
+        self._prefer = prefer
+        self._preferred_index = preferred_index if preferred_index >= 0 else 0
+        self._device_names = list_dshow_devices()
+        self._gesture_locked = False
+        self._fist_streak = 0
+        self._open_streak = 0
+        self.view.setText("Opening full-screen camera…")
+        self.dock.set_status("Opening camera theater…")
+        self.dock.set_gesture("Gesture: ready · fist locks")
+        self._enter_fullscreen()
+        if self._gestures_on and self._tracker is None:
+            self._tracker = HandGestureTracker()
+        # News loads after camera is live (WebEngine was slowing open)
+        self.news.hide()
+        self._place_corners()
+        QTimer.singleShot(50, self._open_best)
+
+    def _unlock_gestures(self) -> None:
+        self._gesture_locked = False
+        self._fist_streak = 0
+        self._open_streak = 0
+        self.dock.set_gesture("Gesture: unlocked")
+
+    def _show_news_top_left(self) -> None:
+        """Pin ABC News Live interface to top-left of the camera theater."""
+        self.news.move(18, 18)
+        self.news.start_live()
+        self.news.raise_()
+        self.dock.raise_()
+
+    def hide_feed(self, emit: bool = True) -> None:
+        self._timer.stop()
+        if self._cap is not None:
+            try:
+                self._cap.release()
+            except Exception:
+                pass
+            self._cap = None
+        self.news.hide()
+        self.hide()
+        if emit:
+            self.closed.emit()
+
+    def show_result(self, text: str) -> None:
+        self.dock.set_status(text[:180])
+
+    def current_frame(self) -> Optional[np.ndarray]:
+        with self._lock:
+            return None if self._frame is None else self._frame.copy()
+
+    def grab_best_frame(self, reads: int = 8) -> Optional[np.ndarray]:
+        if self._cap is None:
+            return self.current_frame()
+        best = None
+        best_score = -1.0
+        for _ in range(max(3, reads)):
+            ok, frame = self._cap.read()
+            if not ok or frame is None:
+                continue
+            mean = float(np.mean(frame))
+            std = float(np.std(frame))
+            if mean < 8 or std < 4:
+                continue
+            score = std + 0.01 * mean
+            if score > best_score:
+                best_score = score
+                best = frame.copy()
+        if best is not None:
+            with self._lock:
+                self._frame = best
+            return best
+        return self.current_frame()
+
+    def resizeEvent(self, e) -> None:
+        super().resizeEvent(e)
+        self.view.setGeometry(self.rect())
+        if self.isVisible():
+            self._place_corners(keep_positions=True)
+
+    def _enter_fullscreen(self) -> None:
+        parent = self.parentWidget()
+        if parent is not None:
+            self.setGeometry(parent.rect())
+        self.show()
+        self.raise_()
+        self.dock.show()
+        self.dock.raise_()
+        self.news.raise_()
+
+    def _place_corners(self, keep_positions: bool = False) -> None:
+        w, h = self.width(), self.height()
+        if not keep_positions or not self.news.isVisible():
+            self.news.move(18, 18)
+        else:
+            self.news.move(
+                max(0, min(w - self.news.width(), self.news.x())),
+                max(0, min(h - self.news.height(), self.news.y())),
+            )
+        if not keep_positions:
+            self.dock.move(
+                max(12, w - self.dock.width() - 20),
+                max(12, h - self.dock.height() - 20),
+            )
+        else:
+            self.dock.move(
+                max(0, min(w - self.dock.width(), self.dock.x())),
+                max(0, min(h - self.dock.height(), self.dock.y())),
+            )
+
+    def _toggle_news_corner(self) -> None:
+        if self.news.isVisible():
+            self.news.hide()
+        else:
+            self._show_news_top_left()
+
+    def _get_probe(self) -> CameraOpener:
+        if self._probe is None:
+            self._probe = CameraOpener()
+        return self._probe
+
+    def _try_sources(self, sources: list) -> list[tuple[float, object, int, str, str]]:
+        """Try camera sources by index only (DSHOW-by-name is unsupported here)."""
+        import cv2
+
+        from jarvis.core.camera_io import open_by_index, silence_opencv_logs
+
+        probe = self._get_probe()
+        found: list[tuple[float, object, int, str, str]] = []
+        seen: set[int] = set()
+        with silence_opencv_logs():
+            for source in sources:
+                # Skip string device names — OpenCV DSHOW cannot open by name
+                if isinstance(source, str):
+                    continue
+                idx = int(source)
+                if idx in seen or idx < 0:
+                    continue
+                seen.add(idx)
+                # Prefer shared opener (DSHOW → MSMF)
+                got = open_by_index(idx, reads=4)
+                if not got:
+                    continue
+                cap, backend = got
+                # Score via probe helper
+                frames = []
+                for _ in range(3):
+                    ok, fr = cap.read()
+                    if ok and fr is not None:
+                        frames.append(fr)
+                if len(frames) < 1:
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+                    continue
+                motion = 0.0
+                if len(frames) >= 2:
+                    motion = float(np.mean(cv2.absdiff(frames[0], frames[-1])))
+                score = probe._frame_score(frames[-1], motion=motion)
+                if score < 5 or probe._is_obs_placeholder(frames[-1]):
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+                    if probe._is_obs_placeholder(frames[-1]):
+                        print(f"[theater] skip OBS placeholder at index {idx}")
+                    continue
+                if idx == self._preferred_index:
+                    score += 25
+                label = f"index {idx}"
+                found.append((score, cap, idx, backend, label))
+                if score >= 30 and idx == self._preferred_index:
+                    break
+        return found
+
+    def _open_best(self) -> None:
+        self._timer.stop()
+        if self._cap is not None:
+            try:
+                self._cap.release()
+            except Exception:
+                pass
+            self._cap = None
+        try:
+            import cv2  # noqa: F401
+        except Exception as e:
+            self.view.setText(f"OpenCV missing: {e}")
+            return
+
+        # Index-only scan — preferred first, then 0..3
+        sources: list = []
+        if self._preferred_index >= 0:
+            sources.append(self._preferred_index)
+        for i in range(4):
+            if i not in sources:
+                sources.append(i)
+
+        candidates = self._try_sources(sources)
+        if not candidates:
+            self.view.setText(
+                "No real camera.\nClose OBS Virtual Camera, then retry."
+            )
+            self.dock.set_status("Camera failed — close OBS Virtual Camera")
+            return
+
+        candidates.sort(key=lambda c: c[0], reverse=True)
+        best = candidates[0]
+        for c in candidates[1:]:
+            try:
+                c[1].release()
+            except Exception:
+                pass
+        score, cap, idx, backend, label = best
+        self._cap = cap
+        self._index = idx if isinstance(idx, int) else self._preferred_index
+        self._backend = backend
+        self._label = label
+        self._fail_streak = 0
+        self.dock.set_status(f"LIVE · {label} · {backend} · fist locks panels")
+        self.view.setText("")
+        self._timer.start(50)
+        self._place_corners()
+        self.dock.raise_()
+        QTimer.singleShot(80, self._show_news_top_left)
+        print(f"[theater] chose idx={self._index} via {backend} score={score:.1f}")
+
+    def _paint_frame(self) -> None:
+        if self._cap is None:
+            return
+        ok, frame = self._cap.read()
+        if not ok or frame is None:
+            self._fail_streak += 1
+            if self._fail_streak >= 25:
+                self.view.setText("Camera stalled")
+            return
+        self._fail_streak = 0
+        with self._lock:
+            self._frame = frame
+
+        try:
+            import cv2
+            from jarvis.ui.widgets.night_vision import apply_night_vision
+
+            # Night vision (green phosphor) or light boost in dark rooms
+            mean = float(np.mean(frame[::8, ::8]))  # subsample mean
+            if self._night_vision:
+                draw = apply_night_vision(frame)
+                cv2.putText(
+                    draw,
+                    "NIGHT VISION",
+                    (18, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.85,
+                    (60, 255, 120),
+                    2,
+                    cv2.LINE_AA,
+                )
+            elif mean < 28:
+                draw = cv2.convertScaleAbs(frame, alpha=1.28, beta=16)
+            else:
+                draw = frame
+
+            if self._mirror:
+                draw = cv2.flip(draw, 1)
+
+            if self._gestures_on and self._tracker is not None:
+                # When locked, check rarely (just for open-hand unlock)
+                period = 5 if self._gesture_locked else 4
+                self._gesture_skip = (self._gesture_skip + 1) % period
+                if self._gesture_skip == 0:
+                    state = self._tracker.process(
+                        frame, mirrored=True, max_width=320
+                    )
+                    self._last_gesture = state
+                    self._update_gesture_lock(state)
+                    if not self._gesture_locked and state.active:
+                        sx, sy = self._smooth_cursor
+                        cx, cy = state.cursor
+                        self._smooth_cursor = (
+                            sx * 0.6 + cx * 0.4,
+                            sy * 0.6 + cy * 0.4,
+                        )
+                        if state.pinch:
+                            self.gesture_drag.emit(*self._smooth_cursor)
+                            self._apply_gesture_drag(*self._smooth_cursor)
+                        if state.swipe:
+                            self.gesture_swipe.emit(state.swipe)
+                            self._apply_swipe(state.swipe)
+                    self._refresh_gesture_label(state)
+
+                if not self._gesture_locked and self._last_gesture.active:
+                    draw = draw_gestures(draw, self._last_gesture, clean=True)
+
+            # Downscale to window size before Qt convert (big lag win)
+            tw = max(1, self.width())
+            th = max(1, self.height())
+            h, w = draw.shape[:2]
+            scale = max(tw / w, th / h)
+            nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
+            if nw != w or nh != h:
+                draw = cv2.resize(draw, (nw, nh), interpolation=cv2.INTER_LINEAR)
+            x0 = max(0, (nw - tw) // 2)
+            y0 = max(0, (nh - th) // 2)
+            draw = draw[y0 : y0 + th, x0 : x0 + tw]
+            if draw.shape[0] != th or draw.shape[1] != tw:
+                draw = cv2.resize(draw, (tw, th), interpolation=cv2.INTER_LINEAR)
+
+            rgb = cv2.cvtColor(draw, cv2.COLOR_BGR2RGB)
+            hh, ww, ch = rgb.shape
+            img = QImage(rgb.data, ww, hh, ch * ww, QImage.Format.Format_RGB888).copy()
+            self.view.setPixmap(QPixmap.fromImage(img))
+            self.view.setGeometry(self.rect())
+            self.view.lower()
+            if self.news.isVisible():
+                self.news.raise_()
+            self.dock.raise_()
+        except Exception as e:
+            self.view.setText(str(e))
+
+    def _update_gesture_lock(self, state: GestureState) -> None:
+        if not state.active:
+            self._fist_streak = 0
+            self._open_streak = 0
+            return
+        if state.label == "fist":
+            self._fist_streak += 1
+            self._open_streak = 0
+            if self._fist_streak >= 2:
+                self._gesture_locked = True
+        elif state.label == "open" and self._gesture_locked:
+            self._open_streak += 1
+            self._fist_streak = 0
+            if self._open_streak >= 3:
+                self._gesture_locked = False
+                self._open_streak = 0
+        else:
+            self._fist_streak = 0
+            if state.label != "open":
+                self._open_streak = 0
+
+    def _refresh_gesture_label(self, state: GestureState) -> None:
+        if self._gesture_locked:
+            self.dock.set_gesture("LOCKED · open hand or UNLOCK")
+            return
+        if not state.active:
+            self.dock.set_gesture("Gesture: —")
+            return
+        extra = " · DRAG" if state.pinch else ""
+        self.dock.set_gesture(f"Gesture: {state.label.upper()}{extra}")
+
+    def _apply_gesture_drag(self, nx: float, ny: float) -> None:
+        if self._gesture_locked:
+            return
+        w, h = max(1, self.width()), max(1, self.height())
+        if nx < 0.42 and self.news.isVisible():
+            target = self.news
+        else:
+            target = self.dock
+        x = int(nx * w - target.width() / 2)
+        y = int(ny * h - target.height() / 2)
+        x = max(0, min(w - target.width(), x))
+        y = max(0, min(h - target.height(), y))
+        target.move(x, y)
+        target.raise_()
+
+    def _apply_swipe(self, direction: str) -> None:
+        if self._gesture_locked:
+            return
+        if direction == "left" and not self.news.isVisible():
+            self._show_news_top_left()
+        elif direction == "right" and self.news.isVisible():
+            self.news.hide()
+        elif direction == "down":
+            self.dock.move(
+                max(12, self.width() - self.dock.width() - 20),
+                max(12, self.height() - self.dock.height() - 20),
+            )

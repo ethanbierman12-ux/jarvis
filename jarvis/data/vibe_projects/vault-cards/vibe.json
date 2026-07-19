@@ -1,0 +1,14 @@
+{
+  "name": "Vault Cards",
+  "stack": "web",
+  "pitch": "flashcard drill with keyboard shortcuts",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "styles.css",
+    "app.js",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\vault-cards",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\vault-cards\\index.html"
+}

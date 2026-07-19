@@ -1,0 +1,29 @@
+[
+  {
+    "id": "T-1001",
+    "from": "Ava Chen",
+    "email": "ava.chen@northwind.io",
+    "subject": "Checkout crashes on empty cart",
+    "body": "Every time I clear my cart and hit Pay, the site crashes with a null total. This is blocking our launch demo.",
+    "status": "open",
+    "tags": ["bug", "complaint", "critical"]
+  },
+  {
+    "id": "T-1002",
+    "from": "Marcus Lee",
+    "email": "marcus@brightside.co",
+    "subject": "Invoice PDF missing logo",
+    "body": "Minor branding issue on invoices — logo does not render in Firefox.",
+    "status": "open",
+    "tags": ["bug"]
+  },
+  {
+    "id": "T-1003",
+    "from": "Priya Nair",
+    "email": "priya@example.com",
+    "subject": "How do I reset my password?",
+    "body": "Can't find the reset link on mobile.",
+    "status": "open",
+    "tags": ["question"]
+  }
+]

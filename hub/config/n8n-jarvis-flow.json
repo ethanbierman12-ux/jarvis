@@ -1,0 +1,30 @@
+{
+  "name": "JARVIS Hub chat",
+  "nodes": [
+    {
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "parameters": { "path": "jarvis-in", "httpMethod": "POST" }
+    },
+    {
+      "name": "Hub Chat",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "http://127.0.0.1:8787/v1/chat",
+        "method": "POST",
+        "jsonBody": "={{ { text: $json.text || $json.message, sessionId: $json.sessionId } }}"
+      }
+    },
+    {
+      "name": "Slack Out",
+      "type": "n8n-nodes-base.slack",
+      "parameters": {
+        "text": "={{ $json.reply }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Hub Chat" }]] },
+    "Hub Chat": { "main": [[{ "node": "Slack Out" }]] }
+  }
+}

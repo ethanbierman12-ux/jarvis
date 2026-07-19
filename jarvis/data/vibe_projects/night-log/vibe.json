@@ -1,0 +1,13 @@
+{
+  "name": "Night Log",
+  "stack": "python",
+  "pitch": "daily journal CLI that writes markdown files",
+  "engine": "template",
+  "files": [
+    "main.py",
+    "requirements.txt",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\night-log",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\night-log\\main.py"
+}

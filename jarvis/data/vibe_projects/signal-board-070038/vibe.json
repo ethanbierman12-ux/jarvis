@@ -1,0 +1,14 @@
+{
+  "name": "Signal Board",
+  "stack": "dashboard",
+  "pitch": "live ops status tiles for a one-person team",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "styles.css",
+    "app.js",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\signal-board-070038",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\signal-board-070038\\index.html"
+}

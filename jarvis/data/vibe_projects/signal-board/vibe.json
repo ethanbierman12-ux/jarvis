@@ -1,0 +1,14 @@
+{
+  "name": "Signal Board",
+  "stack": "web",
+  "pitch": "a tiny focus timer web app",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "styles.css",
+    "app.js",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\signal-board",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\signal-board\\index.html"
+}

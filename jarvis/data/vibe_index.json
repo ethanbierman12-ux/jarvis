@@ -1,0 +1,68 @@
+{
+  "projects": [
+    {
+      "slug": "signal-board",
+      "name": "Signal Board",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\signal-board",
+      "created": "2026-07-19T06:26:36"
+    },
+    {
+      "slug": "relay-chat-ui",
+      "name": "Relay Chat UI",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\relay-chat-ui",
+      "created": "2026-07-19T06:26:54"
+    },
+    {
+      "slug": "focus-timer",
+      "name": "Focus Timer",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\focus-timer",
+      "created": "2026-07-19T06:27:12"
+    },
+    {
+      "slug": "signal-board-062712",
+      "name": "Signal Board",
+      "stack": "dashboard",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\signal-board-062712",
+      "created": "2026-07-19T06:27:14"
+    },
+    {
+      "slug": "orbit-todo",
+      "name": "Orbit Todo",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\orbit-todo",
+      "created": "2026-07-19T06:28:52"
+    },
+    {
+      "slug": "vault-cards",
+      "name": "Vault Cards",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\vault-cards",
+      "created": "2026-07-19T06:29:59"
+    },
+    {
+      "slug": "night-log",
+      "name": "Night Log",
+      "stack": "python",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\night-log",
+      "created": "2026-07-19T06:48:09"
+    },
+    {
+      "slug": "signal-board-070038",
+      "name": "Signal Board",
+      "stack": "dashboard",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\signal-board-070038",
+      "created": "2026-07-19T07:00:39"
+    }
+  ]
+}

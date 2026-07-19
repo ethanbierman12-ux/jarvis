@@ -1,0 +1,21 @@
+{
+  "transports": [
+    "wifi",
+    "bluetooth"
+  ],
+  "target_mac": "CC:BA:BD:4B:CC:9F",
+  "wifi_mac": "CC:BA:BD:4B:CC:9F",
+  "broadcast": "10.0.0.255",
+  "port": 9,
+  "bluetooth_mac": "8A:88:0B:81:2F:B9",
+  "bluetooth_channel": 1,
+  "mic": "auto",
+  "mic_name": "",
+  "claps_required": 2,
+  "clap_window_sec": 1.2,
+  "cooldown_sec": 10.0,
+  "peak_threshold": 0.35,
+  "min_gap_sec": 0.12,
+  "sample_rate": 16000,
+  "block_size": 1024
+}

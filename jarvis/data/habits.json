@@ -1,0 +1,761 @@
+{
+  "events": [
+    {
+      "ts": "2026-07-19T00:22:11",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "note",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:22:11",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "schedule",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:22:13",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "day_review",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:22:13",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "image_search",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:22:13",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": "focus"
+    },
+    {
+      "ts": "2026-07-19T00:22:14",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "work_mode",
+      "detail": "start"
+    },
+    {
+      "ts": "2026-07-19T00:22:15",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "task_add",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:24:29",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "activity",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:24:33",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "activity",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:24:42",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "open_app",
+      "detail": "browser"
+    },
+    {
+      "ts": "2026-07-19T00:27:58",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "chrome"
+    },
+    {
+      "ts": "2026-07-19T00:28:06",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "on google"
+    },
+    {
+      "ts": "2026-07-19T00:28:13",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "dog"
+    },
+    {
+      "ts": "2026-07-19T00:29:26",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:29:32",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:29:32",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:29:37",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:33:38",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:33:44",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:35:54",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:35:54",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "note_mode",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:35:54",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "note",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:36:11",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "note_mode",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:36:11",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "note",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:37:09",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:37:15",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:37:31",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:37:40",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:38:17",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "activity",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:44:53",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "scan",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:53:02",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "note_mode",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T00:53:10",
+      "hour": 0,
+      "weekday": "Sunday",
+      "kind": "work_mode",
+      "detail": "start"
+    },
+    {
+      "ts": "2026-07-19T01:07:53",
+      "hour": 1,
+      "weekday": "Sunday",
+      "kind": "open_app",
+      "detail": "spotify"
+    },
+    {
+      "ts": "2026-07-19T05:25:54",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-19T05:25:54",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-19T05:26:25",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "latest ai news"
+    },
+    {
+      "ts": "2026-07-19T05:26:50",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "how much is a lambo"
+    },
+    {
+      "ts": "2026-07-19T05:30:45",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "open_app",
+      "detail": "chrome"
+    },
+    {
+      "ts": "2026-07-19T05:30:45",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "scan",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T05:30:45",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T05:30:47",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "email",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T05:30:48",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "business_find",
+      "detail": "coffee near me"
+    },
+    {
+      "ts": "2026-07-19T05:30:50",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-19T05:30:50",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "open_app",
+      "detail": "gmail"
+    },
+    {
+      "ts": "2026-07-19T05:30:53",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "open_app",
+      "detail": "chrome"
+    },
+    {
+      "ts": "2026-07-19T05:30:54",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "open_app",
+      "detail": "youtube"
+    },
+    {
+      "ts": "2026-07-19T05:30:54",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "news"
+    },
+    {
+      "ts": "2026-07-19T05:35:54",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "open_app",
+      "detail": "chrome"
+    },
+    {
+      "ts": "2026-07-19T05:35:54",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "open_app",
+      "detail": "chrome"
+    },
+    {
+      "ts": "2026-07-19T05:35:54",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "open_app",
+      "detail": "gmail"
+    },
+    {
+      "ts": "2026-07-19T05:35:54",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "email",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T05:35:54",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T05:35:54",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-19T05:35:54",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "note",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T05:38:19",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "a local coffee shop"
+    },
+    {
+      "ts": "2026-07-19T05:40:22",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "news_abc",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T05:40:22",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "news_abc",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T05:40:22",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "news_abc",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T05:42:23",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T05:42:26",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T05:42:29",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "a bakery"
+    },
+    {
+      "ts": "2026-07-19T05:42:49",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T05:42:49",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T05:42:49",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T05:42:49",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T05:42:49",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "a bakery"
+    },
+    {
+      "ts": "2026-07-19T05:45:03",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T05:45:48",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-19T05:46:22",
+      "hour": 5,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T06:03:28",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "news_abc",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T06:12:34",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "scan",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T06:20:20",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T06:28:32",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T06:28:51",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "vibe_code",
+      "detail": "coding"
+    },
+    {
+      "ts": "2026-07-19T06:29:36",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "business_find",
+      "detail": "coffee near me"
+    },
+    {
+      "ts": "2026-07-19T06:29:58",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "vibe_code",
+      "detail": "coding"
+    },
+    {
+      "ts": "2026-07-19T06:35:39",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "business_find",
+      "detail": "businesses near me"
+    },
+    {
+      "ts": "2026-07-19T06:36:58",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T06:40:11",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T06:48:07",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "vibe_code",
+      "detail": "coding"
+    },
+    {
+      "ts": "2026-07-19T06:48:30",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "latest ai news"
+    },
+    {
+      "ts": "2026-07-19T06:48:44",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "latest ai news"
+    },
+    {
+      "ts": "2026-07-19T06:48:48",
+      "hour": 6,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "dog"
+    },
+    {
+      "ts": "2026-07-19T07:00:38",
+      "hour": 7,
+      "weekday": "Sunday",
+      "kind": "vibe_code",
+      "detail": "coding"
+    },
+    {
+      "ts": "2026-07-19T07:00:45",
+      "hour": 7,
+      "weekday": "Sunday",
+      "kind": "open_app",
+      "detail": "pictures"
+    },
+    {
+      "ts": "2026-07-19T07:02:09",
+      "hour": 7,
+      "weekday": "Sunday",
+      "kind": "business_find",
+      "detail": "businesses near me"
+    },
+    {
+      "ts": "2026-07-19T07:03:04",
+      "hour": 7,
+      "weekday": "Sunday",
+      "kind": "email",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T07:12:02",
+      "hour": 7,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "latest ai news"
+    },
+    {
+      "ts": "2026-07-19T07:12:35",
+      "hour": 7,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T07:26:02",
+      "hour": 7,
+      "weekday": "Sunday",
+      "kind": "vibe_code",
+      "detail": "coding"
+    },
+    {
+      "ts": "2026-07-19T07:54:49",
+      "hour": 7,
+      "weekday": "Sunday",
+      "kind": "open_app",
+      "detail": "chrome"
+    },
+    {
+      "ts": "2026-07-19T07:54:56",
+      "hour": 7,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "for dog"
+    },
+    {
+      "ts": "2026-07-19T07:56:27",
+      "hour": 7,
+      "weekday": "Sunday",
+      "kind": "business_find",
+      "detail": "businesses near me"
+    },
+    {
+      "ts": "2026-07-19T07:56:56",
+      "hour": 7,
+      "weekday": "Sunday",
+      "kind": "business_find",
+      "detail": "coffee"
+    },
+    {
+      "ts": "2026-07-19T08:14:38",
+      "hour": 8,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": "focus"
+    },
+    {
+      "ts": "2026-07-19T08:16:44",
+      "hour": 8,
+      "weekday": "Sunday",
+      "kind": "scan",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T08:18:51",
+      "hour": 8,
+      "weekday": "Sunday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-19T08:19:06",
+      "hour": 8,
+      "weekday": "Sunday",
+      "kind": "vibe_code",
+      "detail": "coding"
+    },
+    {
+      "ts": "2026-07-19T08:21:19",
+      "hour": 8,
+      "weekday": "Sunday",
+      "kind": "business_find",
+      "detail": "coffee"
+    },
+    {
+      "ts": "2026-07-19T09:03:56",
+      "hour": 9,
+      "weekday": "Sunday",
+      "kind": "work_mode",
+      "detail": "start"
+    },
+    {
+      "ts": "2026-07-19T09:15:54",
+      "hour": 9,
+      "weekday": "Sunday",
+      "kind": "business_find",
+      "detail": "businesses near me"
+    },
+    {
+      "ts": "2026-07-19T09:30:42",
+      "hour": 9,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "latest ai news"
+    },
+    {
+      "ts": "2026-07-19T09:31:12",
+      "hour": 9,
+      "weekday": "Sunday",
+      "kind": "weather",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-19T09:31:24",
+      "hour": 9,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "my name"
+    },
+    {
+      "ts": "2026-07-19T09:32:12",
+      "hour": 9,
+      "weekday": "Sunday",
+      "kind": "vibe_code",
+      "detail": "coding"
+    },
+    {
+      "ts": "2026-07-19T09:33:18",
+      "hour": 9,
+      "weekday": "Sunday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-19T09:35:11",
+      "hour": 9,
+      "weekday": "Sunday",
+      "kind": "web_search",
+      "detail": "dog"
+    },
+    {
+      "ts": "2026-07-19T09:39:44",
+      "hour": 9,
+      "weekday": "Sunday",
+      "kind": "vibe_code",
+      "detail": "coding"
+    }
+  ],
+  "priorities": []
+}

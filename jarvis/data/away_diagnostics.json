@@ -1,0 +1,15 @@
+{
+  "cpu": 47.1,
+  "ram": 52.3,
+  "ram_used_gb": 8.4,
+  "disk": 72.9,
+  "battery": "n/a",
+  "top": [
+    "winlogon.exe (0%)",
+    "wininit.exe (0%)",
+    "taskhostw.exe (0%)",
+    "svchost.exe (0%)",
+    "svchost.exe (0%)"
+  ],
+  "ts": "2026-07-19T09:18:58"
+}

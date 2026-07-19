@@ -1,0 +1,10 @@
+node_modules/
+dashboard/node_modules/
+dist/
+dashboard/.next/
+.env
+dashboard/.env.local
+*.log
+data/prs.json
+data/calendar.json
+.DS_Store

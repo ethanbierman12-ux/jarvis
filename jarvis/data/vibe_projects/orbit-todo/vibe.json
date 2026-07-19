@@ -1,0 +1,14 @@
+{
+  "name": "Orbit Todo",
+  "stack": "web",
+  "pitch": "space-themed task board with local storage",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "styles.css",
+    "app.js",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\orbit-todo",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\orbit-todo\\index.html"
+}

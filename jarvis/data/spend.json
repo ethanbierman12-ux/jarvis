@@ -1,0 +1,12 @@
+{
+  "currency": "USD",
+  "entries": [
+    {
+      "ts": "2026-07-19T04:48:45",
+      "day": "2026-07-19",
+      "amount": 4.5,
+      "note": "coffee",
+      "source": "voice"
+    }
+  ]
+}
