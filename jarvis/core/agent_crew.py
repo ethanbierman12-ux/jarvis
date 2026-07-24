@@ -632,6 +632,55 @@ class AgentCrew:
 
     def debate(self, question: str) -> str:
         """Multi-agent debate: advocate vs devil's advocate, VECTOR verdict."""
+        from jarvis.core.debate_topics import (
+            list_summary,
+            pick_by_index,
+            pick_random,
+            resolve_category,
+            spoken_menu,
+            topic_count,
+        )
+
+        raw = (question or "").strip()
+        if not raw:
+            return "Nothing to debate."
+
+        low = raw.lower().strip(" .,!?")
+        # Library commands
+        if low in ("list", "lists", "topics", "menu", "options", "help"):
+            return list_summary()
+        if low in ("random", "surprise", "any", "pick one", "pick a debate"):
+            cat, q = pick_random()
+            self._progress(f"Random debate [{cat}]: {q}")
+            body = self._debate_run(q)
+            return f"TOPIC [{cat}]: {q}\n\n{body}"
+        # Category: "tech", "money", "philly"…
+        cat = resolve_category(low)
+        if cat:
+            c, q = pick_random(category=cat)
+            self._progress(f"Category debate [{c}]: {q}")
+            body = self._debate_run(q)
+            return f"TOPIC [{c}]: {q}\n\n{body}"
+        # Numbered: "12" or "number 12"
+        m = re.match(r"^(?:number\s+|#)?(\d{1,3})$", low)
+        if m:
+            picked = pick_by_index(int(m.group(1)))
+            if not picked:
+                return f"No debate #{m.group(1)} — pick 1–{topic_count()}."
+            c, q = picked
+            self._progress(f"Debate #{m.group(1)} [{c}]: {q}")
+            body = self._debate_run(q)
+            return f"TOPIC #{m.group(1)} [{c}]: {q}\n\n{body}"
+
+        return self._debate_run(raw)
+
+    def debate_menu_spoken(self) -> str:
+        from jarvis.core.debate_topics import spoken_menu
+
+        return spoken_menu()
+
+    def _debate_run(self, question: str) -> str:
+        """Core advocate / devil / verdict pipeline."""
         question = (question or "").strip()
         if not question:
             return "Nothing to debate."

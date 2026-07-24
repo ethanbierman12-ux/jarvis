@@ -2966,6 +2966,33 @@ class Brain:
         if re.search(r"\b(crew|agent\s*crew)\s+(health|diagnostics)\b", t):
             return self._flavor("ok", crew.guardian.report())
 
+        # Debate menu / list (no LLM needed)
+        if re.search(
+            r"\b(?:crew|crude)\s+debates?\b|"
+            r"\b(?:crew|crude)\s+debate\s+(?:list|topics|menu|options|help)\b|"
+            r"\bwhat\s+debates?\b|"
+            r"\blist\s+debates?\b",
+            t,
+        ) and not re.search(
+            r"\bdebate\s+(?:random|tech|money|ai|career|health|gaming|home|"
+            r"business|philly|philadelphia|lifestyle|\d+)",
+            t,
+        ) and not re.search(r"\bdebate\s+.+\?|\bdebate\s+should\b", t):
+            # Bare "crew debates" / "crew debate list" → menu
+            if re.search(
+                r"\b(?:crew|crude)\s+debates?\s*$|"
+                r"\b(?:crew|crude)\s+debate\s+(?:list|topics|menu|options|help)\b|"
+                r"\b(?:what|list)\s+debates?\b",
+                t,
+            ):
+                from jarvis.core.debate_topics import list_summary, spoken_menu
+
+                self._emit(
+                    "artifact",
+                    {"title": "AGENT CREW · DEBATE MENU", "text": list_summary()},
+                )
+                return self._flavor("ok", spoken_menu())
+
         # Soft STT variants: "crude debate", "crew debates", "ask crew to debate"
         m = re.search(
             r"(?:^|\b)(?:ask\s+(?:the\s+)?crew\s+to\s+)?(?:crew|crude)\s+debates?\s+(.+)$",
@@ -2974,6 +3001,13 @@ class Brain:
         )
         if not m:
             m = re.search(r"^crew\s+debate\s+(.+)$", t.strip(), re.I)
+        if not m:
+            # Also: "debate random" / "start a debate about tech" when wake-armed
+            m = re.search(
+                r"^(?:start\s+a\s+)?debates?\s+(?:about\s+|on\s+)?(.+)$",
+                t.strip(),
+                re.I,
+            )
         if m:
             question = m.group(1).strip(" .,!?")
             if not question:
@@ -2990,16 +3024,27 @@ class Brain:
                     result = crew.debate(q)
                 except Exception as e:
                     result = f"Debate failed: {e}"
+                title = "AGENT CREW · DEBATE"
+                if result.startswith("TOPIC"):
+                    head = result.split("\n", 1)[0][:80]
+                    title = f"DEBATE · {head}"
                 self._emit(
                     "artifact",
-                    {"title": "AGENT CREW · DEBATE", "text": result},
+                    {"title": title, "text": result},
                 )
                 try:
+                    # Menu-only replies have no VERDICT
+                    if "VERDICT:" not in result:
+                        spoken = crew.debate_menu_spoken()
+                        self.voice.say_protected(spoken)
+                        return result[:200]
                     verdict = result.rsplit("VERDICT:", 1)[-1].strip()
+                    topic_line = ""
+                    if result.startswith("TOPIC"):
+                        topic_line = result.split("\n", 1)[0].strip()
                     if not verdict or "LLM backend" in result:
                         spoken = "The debate chamber could not reach a verdict, sir."
                     else:
-                        # Speak a clear answer, not a truncated fragment
                         if len(verdict) > 480:
                             cut = verdict[:480]
                             spoken = (
@@ -3010,7 +3055,27 @@ class Brain:
                             spoken += " The full debate is on screen."
                         else:
                             spoken = f"My verdict: {verdict}"
-                    # Protected — do not let speaker bleed cut off the answer
+                        q_low = q.lower().strip()
+                        library_pick = q_low in (
+                            "random",
+                            "surprise",
+                            "any",
+                            "tech",
+                            "money",
+                            "ai",
+                            "career",
+                            "lifestyle",
+                            "health",
+                            "gaming",
+                            "home",
+                            "philadelphia",
+                            "philly",
+                            "business",
+                            "finance",
+                            "gadgets",
+                        ) or q_low.isdigit()
+                        if library_pick and topic_line:
+                            spoken = f"{topic_line}. {spoken}"
                     self.voice.say_protected(spoken)
                 except Exception as e:
                     print(f"[crew] debate speak: {e}")
