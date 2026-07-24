@@ -90,6 +90,8 @@ class VoiceEngine:
         self._speak_until = 0.0
         self._barge_after = 0.0  # ignore barge-in until this timestamp
         self._barge_hits = 0  # consecutive loud frames required
+        self._interim_barge_hits = 0  # consecutive non-echo interim hits
+        self._interim_barge_text = ""
         self._thread: threading.Thread | None = None
         self._level_thread: threading.Thread | None = None
         self._speak_lock = threading.Lock()
@@ -102,6 +104,8 @@ class VoiceEngine:
         self._busy = False  # processing a command — ignore new speech
         self._level = 0.0
         self._barge_armed = True
+        # Strict by default — open speakers + Deepgram interim caused self-cutoff
+        self._barge_strict = True
 
     def start(self) -> None:
         if self._running:
@@ -127,8 +131,25 @@ class VoiceEngine:
         """While True, ignore new transcripts (avoids double-fires mid-command)."""
         self._busy = bool(busy)
 
+    def set_barge_armed(self, armed: bool) -> None:
+        """Disarm barge-in for protected answers (debate verdicts, long reports)."""
+        self._barge_armed = bool(armed)
+        self._barge_hits = 0
+        self._interim_barge_hits = 0
+
+    def say_protected(self, text: str, *, polish: bool = True) -> None:
+        """Speak a critical answer without allowing interruption."""
+        was = self._barge_armed
+        self.set_barge_armed(False)
+        try:
+            self.say_wait(text, polish=polish)
+        finally:
+            self.set_barge_armed(was)
+
     def barge_in(self) -> None:
         """Interrupt Jarvis mid-sentence — stop TTS and reopen the mic."""
+        if not self._barge_armed:
+            return
         # Grace window after TTS starts — EMEET easily false-triggers on speakers
         if time.time() < float(getattr(self, "_barge_after", 0) or 0):
             return
@@ -138,6 +159,7 @@ class VoiceEngine:
         self._speak_until = 0.0
         self._busy = False
         self._barge_hits = 0
+        self._interim_barge_hits = 0
         print("[voice] barge-in — TTS stopped")
         self._emit_speaking(False)
 
@@ -232,8 +254,10 @@ class VoiceEngine:
             self._speaking = True
             self._mute = True
             self._barge_hits = 0
-            # Ignore barge for first 1.2s — calibration / echo spike
-            self._barge_after = time.time() + 1.2
+            self._interim_barge_hits = 0
+            self._interim_barge_text = ""
+            # Ignore barge for first 2.5s — speaker bleed / echo spike on open mics
+            self._barge_after = time.time() + 2.5
             self._last_spoken = text
             self._last_spoken_at = time.time()
             self._emit_speaking(True)
@@ -257,10 +281,11 @@ class VoiceEngine:
                 print(f"[tts] {e}")
             finally:
                 # Echo-guard mute so mic doesn't eat the end of the sentence
-                self._speak_until = time.time() + 0.85
+                self._speak_until = time.time() + 1.5
                 self._speaking = False
                 self._mute = False
                 self._barge_hits = 0
+                self._interim_barge_hits = 0
                 self._emit_speaking(False)
                 if out and out.exists():
 
@@ -662,12 +687,18 @@ class VoiceEngine:
         from jarvis.core.duplex_voice import DeepgramDuplex
 
         def _should_send() -> bool:
-            # Keep streaming while Jarvis talks (barge-in); stop only on
-            # explicit mic mute or engine shutdown.
+            # Keep streaming while listening. While Jarvis talks, only forward
+            # audio when the mic is loud enough to be a real talk-over —
+            # otherwise Deepgram hears speaker bleed and invents barge-ins.
             if not self._running:
                 return False
             if self._mute and not self._speaking:
                 return False
+            if self._speaking:
+                if not self._barge_armed:
+                    return False
+                # Need clear user voice above speaker bleed
+                return float(self._level) >= 0.55
             return True
 
         duplex = DeepgramDuplex(
@@ -682,7 +713,7 @@ class VoiceEngine:
         )
         self._duplex = duplex
         duplex.start()
-        print("[voice] duplex STT online (deepgram)")
+        print("[voice] duplex STT online (deepgram, strict barge)")
         busy_since = 0.0
         try:
             while self._running and duplex.is_alive():
@@ -709,20 +740,47 @@ class VoiceEngine:
         else:
             self._level = max(0.0, min(1.0, float(level)))
 
+    def _content_words(self, text: str) -> list[str]:
+        stop = {
+            "a", "an", "the", "to", "of", "and", "or", "so", "my", "i", "im",
+            "you", "your", "is", "are", "was", "be", "it", "that", "this",
+            "uh", "um", "ah", "oh", "yeah", "yes", "no", "ok", "okay",
+        }
+        return [
+            w
+            for w in self._norm_speech(text).split()
+            if len(w) > 1 and w not in stop
+        ]
+
+    def _looks_like_real_barge(self, text: str) -> bool:
+        """Strict talk-over gate — open speakers produce endless false positives."""
+        if not self._barge_armed:
+            return False
+        if time.time() < float(getattr(self, "_barge_after", 0) or 0):
+            return False
+        if self._sounds_like_echo(text):
+            return False
+        words = self._content_words(text)
+        # Need a real phrase, not "so my" / "did you"
+        if len(words) < 3:
+            return False
+        # Mic must be clearly louder than speaker bleed
+        if float(self._level) < 0.50:
+            return False
+        return True
+
     def _on_duplex_final(self, text: str) -> None:
         text = re.sub(r"\s+", " ", (text or "").lower().strip())
         if not text:
             return
         if self._speaking:
-            # Talking over Jarvis with a real (non-echo) utterance: interrupt
-            # AND act on it — that is the whole point of duplex.
-            if self._sounds_like_echo(text) or time.time() < self._barge_after:
+            if not self._looks_like_real_barge(text):
                 return
             self.barge_in()
         elif self._mute or self._busy:
             return
-        elif time.time() < self._speak_until + 3.0 and self._sounds_like_echo(text):
-            # Deepgram finals can lag past the 0.85s echo-guard — drop late echoes
+        elif time.time() < self._speak_until + 4.0 and self._sounds_like_echo(text):
+            # Deepgram finals can lag past playback — drop late echoes
             return
         if self._should_ignore(text):
             print(f"[voice] ignored echo/dup: {text[:60]}")
@@ -737,15 +795,29 @@ class VoiceEngine:
             print(f"[voice] on_heard: {e}")
 
     def _on_duplex_interim(self, text: str) -> None:
-        # Barge-in on interim transcripts — fires mid-sentence, no level gate
+        # Strict interim barge — requires growing phrase + loud mic + not echo
         if not self._speaking or not self._barge_armed:
+            self._interim_barge_hits = 0
             return
         if time.time() < float(getattr(self, "_barge_after", 0) or 0):
             return
-        t = (text or "").lower().strip()
-        if len(t.split()) < 2:
-            return  # single-word blips are usually speaker bleed
+        t = (text or "").strip()
         if self._sounds_like_echo(t):
+            self._interim_barge_hits = 0
+            return
+        words = self._content_words(t)
+        if len(words) < 3 or float(self._level) < 0.55:
+            self._interim_barge_hits = 0
+            return
+        # Require two consecutive growing interims (filters one-shot bleed)
+        prev = self._interim_barge_text
+        growing = len(t) > len(prev) + 2
+        self._interim_barge_text = t
+        if growing:
+            self._interim_barge_hits += 1
+        else:
+            self._interim_barge_hits = 1
+        if self._interim_barge_hits < 2:
             return
         print(f"[voice] barge-in via transcript: {t[:50]}")
         self.barge_in()
@@ -760,24 +832,32 @@ class VoiceEngine:
         """Does this transcript look like the mic hearing Jarvis's own TTS?"""
         if not self._last_spoken:
             return False
-        if time.time() - self._last_spoken_at > 25.0:
+        if time.time() - self._last_spoken_at > 30.0:
             return False
         spoken = self._norm_speech(self._last_spoken)
         t = self._norm_speech(text)
         if not t:
             return True
-        if len(t) >= 8 and t in spoken:
+        if len(t) >= 6 and t in spoken:
             return True
         ratio = difflib.SequenceMatcher(None, t, spoken).ratio()
-        if ratio >= 0.5:
+        if ratio >= 0.45:
             return True
-        # Fragment echo — most words of the heard text appear in the reply
+        # Fragment echo — most content words appear in the reply
         words = [w for w in t.split() if len(w) > 2]
         if words:
             spoken_words = set(spoken.split())
             hits = sum(1 for w in words if w in spoken_words or w in spoken)
-            if hits / len(words) >= 0.7:
+            if hits / len(words) >= 0.6:
                 return True
+        # Short bleed crumbs that commonly leak from Edge TTS
+        crumbs = (
+            "welcome", "sir", "systems", "online", "standing", "by",
+            "very well", "one moment", "consider it", "right away",
+            "verdict", "debate", "full report", "on screen",
+        )
+        if any(c in t for c in crumbs) and any(c in spoken for c in crumbs):
+            return True
         return False
 
     def _emit_level(self, level: float) -> None:
@@ -815,15 +895,18 @@ class VoiceEngine:
                             self._emit_level(level)
                         else:
                             self._level = level  # still track for barge
-                        # Barge-in: sustained loud speech only (not speaker bleed)
+                        # Barge-in via level: ONLY when classic STT is active.
+                        # Duplex owns barge via transcript+level gate — dual
+                        # triggers were cutting Jarvis off on speaker bleed.
                         if (
                             self._speaking
                             and self._barge_armed
+                            and self._duplex is None
                             and time.time() >= float(getattr(self, "_barge_after", 0) or 0)
                         ):
-                            if level > 0.72:
+                            if level > 0.78:
                                 self._barge_hits = int(getattr(self, "_barge_hits", 0)) + 1
-                                if self._barge_hits >= 5:  # ~0.4s sustained
+                                if self._barge_hits >= 8:  # ~0.7s sustained
                                     self.barge_in()
                             else:
                                 self._barge_hits = 0

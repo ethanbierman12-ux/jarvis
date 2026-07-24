@@ -660,11 +660,16 @@ class AgentCrew:
         self._progress("Debate: VECTOR ruling…")
         verdict = complete(
             f"Question: {question}\n\nFOR:\n{pro}\n\nAGAINST:\n{con}\n\n"
-            "Weigh both sides and deliver a verdict with the key deciding factors "
-            "and a clear recommendation. Address the user as sir.",
-            system="You are JARVIS, an impartial judge. Be decisive and concise.",
+            "Deliver a decisive spoken verdict for Tony Stark's JARVIS. "
+            "Start with a clear recommendation in one sentence "
+            "(e.g. 'Sir, I would wait.' or 'Sir, buy it now.'), then 2-3 short "
+            "reasons. Keep the whole verdict under 90 words. Address the user as sir.",
+            system=(
+                "You are JARVIS. Be decisive, concise, and speakable aloud. "
+                "No bullet lists — flowing sentences only."
+            ),
             temperature=0.3,
-            max_tokens=450,
+            max_tokens=220,
         )
         return (
             f"THE CASE FOR:\n{pro}\n\nTHE CASE AGAINST:\n{con}\n\n"

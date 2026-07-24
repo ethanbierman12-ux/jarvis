@@ -2983,10 +2983,24 @@ class Brain:
                 )
                 try:
                     verdict = result.rsplit("VERDICT:", 1)[-1].strip()
-                    spoken = verdict[:320] if verdict else result[:320]
-                    self.voice.say(spoken + " The full debate is on screen.")
-                except Exception:
-                    pass
+                    if not verdict or "LLM backend" in result:
+                        spoken = "The debate chamber could not reach a verdict, sir."
+                    else:
+                        # Speak a clear answer, not a truncated fragment
+                        if len(verdict) > 480:
+                            cut = verdict[:480]
+                            spoken = (
+                                cut.rsplit(".", 1)[0] + "."
+                                if "." in cut
+                                else cut
+                            )
+                            spoken += " The full debate is on screen."
+                        else:
+                            spoken = f"My verdict: {verdict}"
+                    # Protected — do not let speaker bleed cut off the answer
+                    self.voice.say_protected(spoken)
+                except Exception as e:
+                    print(f"[crew] debate speak: {e}")
                 return result[:200]
 
             self.tasks.submit(f"crew-debate:{question[:20]}", _debate_job)
@@ -3017,18 +3031,18 @@ class Brain:
                 },
             )
             try:
-                if len(result) <= 320:
+                if len(result) <= 420:
                     spoken = result
                 else:
-                    head = result[:300]
+                    head = result[:400]
                     spoken = (
                         head.rsplit(".", 1)[0] + ". The full report is on screen."
                         if "." in head
                         else head + "… full report on screen."
                     )
-                self.voice.say(spoken)
-            except Exception:
-                pass
+                self.voice.say_protected(spoken)
+            except Exception as e:
+                print(f"[crew] speak: {e}")
             return result[:200]
 
         self.tasks.submit(f"crew:{request[:24]}", _job)
