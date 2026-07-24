@@ -52,7 +52,7 @@ Optional ElevenLabs: set `elevenlabs_api_key` in `config/settings.json` (mirrore
 
 - **ChromaDB** vector memory → `jarvis/data/chroma`
 - **Duplex voice**: set `deepgram_api_key` in `config/settings.json` → streaming STT (<300ms finals) + talk-over-Jarvis barge-in; classic STT is the fallback
-- **Agent crew**: say `crew <request>` / `crew status` — six agents (VECTOR routes, SCHOLAR researches via Tavily/Serper/DDG, ARCHIVE remembers, FORGE runs tools, HERALD notifies, SENTINEL reviews); LLM via local Ollama or vaulted Anthropic/OpenAI keys
+- **Agent crew**: say `crew <request>` / `crew status` / `crew health` / `crew debate <question>` — eight agents (VECTOR routes, SCHOLAR researches via Tavily/Serper/DDG, ARCHIVE remembers, FORGE runs tools + organizes Downloads, HERALD notifies, SENTINEL reviews, CODESMITH writes/runs sandboxed code with self-correction, WARDEN watches telemetry/crashes); LLM via local Ollama or vaulted Anthropic/OpenAI keys
 - **Rotating logs** (5 MB × 3) → `jarvis/data/jarvis.log`
 - **Mic hot-plug recovery** in the voice loop
 - **Windows Startup**: `install_jarvis_startup.bat`

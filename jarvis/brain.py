@@ -540,8 +540,8 @@ class Brain:
                 )
                 self.registry.register(
                     "agent_crew",
-                    version="1.0",
-                    note="6-agent crew: VECTOR route / SCHOLAR / ARCHIVE / FORGE / HERALD / SENTINEL",
+                    version="1.1",
+                    note="8-agent crew + debate: VECTOR/SCHOLAR/ARCHIVE/FORGE/HERALD/SENTINEL/CODESMITH/WARDEN",
                 )
                 self.registry.register(
                     "computer_use",
@@ -2962,6 +2962,37 @@ class Brain:
 
         if re.search(r"\b(crew|agent\s*crew)\s+status\b", t):
             return self._flavor("ok", crew.status())
+
+        if re.search(r"\b(crew|agent\s*crew)\s+(health|diagnostics)\b", t):
+            return self._flavor("ok", crew.guardian.report())
+
+        m = re.search(r"^crew\s+debate\s+(.+)$", t.strip(), re.I)
+        if m:
+            question = m.group(1).strip(" .,!?")
+            if not question:
+                return self._flavor("clarify", "What shall the crew debate, sir?")
+
+            def _debate_job(q: str = question) -> str:
+                try:
+                    result = crew.debate(q)
+                except Exception as e:
+                    result = f"Debate failed: {e}"
+                self._emit(
+                    "artifact",
+                    {"title": "AGENT CREW · DEBATE", "text": result},
+                )
+                try:
+                    verdict = result.rsplit("VERDICT:", 1)[-1].strip()
+                    spoken = verdict[:320] if verdict else result[:320]
+                    self.voice.say(spoken + " The full debate is on screen.")
+                except Exception:
+                    pass
+                return result[:200]
+
+            self.tasks.submit(f"crew-debate:{question[:20]}", _debate_job)
+            return self._flavor(
+                "ok", "The debate chamber is in session — verdict shortly, sir."
+            )
 
         m = re.search(
             r"^(?:ask\s+the\s+crew|ask\s+crew|crew)\s+(.+)$", t.strip(), re.I

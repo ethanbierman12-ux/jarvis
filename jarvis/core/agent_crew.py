@@ -1,13 +1,20 @@
-"""Agent crew — six cooperating agents behind one supervisor.
+"""Agent crew — eight cooperating agents behind one supervisor.
 
-  1. VECTOR   (Supervisor/Router)  — analyzes requests, routes to specialists,
-                                     synthesizes the final answer
-  2. SCHOLAR  (Research)           — live web search: Tavily → Serper → DuckDuckGo
-  3. ARCHIVE  (Memory/Context)     — ChromaDB long-term memory: recall + persist
-  4. FORGE    (Operator/Tools)     — file reading, allowlisted terminal,
-                                     browser automation handoff (computer-use)
-  5. HERALD   (Comms/Notify)       — phone push (ntfy), n8n webhooks, drafts
-  6. SENTINEL (Critic/QC)          — reviews draft output before it reaches you
+  1. VECTOR    (Supervisor/Router)  — analyzes requests, routes to specialists,
+                                      synthesizes the final answer
+  2. SCHOLAR   (Research)           — live web search: Tavily → Serper → DuckDuckGo
+  3. ARCHIVE   (Memory/Context)     — ChromaDB long-term memory: recall + persist
+  4. FORGE     (Operator/Tools)     — file reading, allowlisted terminal, file
+                                      organization, browser handoff (computer-use)
+  5. HERALD    (Comms/Notify)       — phone push (ntfy), n8n webhooks, drafts
+  6. SENTINEL  (Critic/QC)          — reviews draft output before it reaches you
+  7. CODESMITH (Code Engineer)      — writes Python to a sandbox, executes it,
+                                      reads tracebacks, self-corrects
+  8. WARDEN    (Infra Guardian)     — hardware telemetry, crash forensics,
+                                      recent-log health signal
+
+Debate protocol: "crew debate <question>" pits an advocate against a
+devil's-advocate counter-argument agent, then VECTOR renders a verdict.
 
 All LLM calls go through jarvis.core.llm_client (Ollama → Anthropic → OpenAI).
 Additive and boot-safe: every dependency is injected or lazily created, every
@@ -20,12 +27,13 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 import time
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
-from jarvis.config import ROOT
+from jarvis.config import DATA_DIR, ROOT
 from jarvis.core.llm_client import backend_name, complete
 
 # Terminal commands FORGE may run — read-only diagnostics only.
@@ -225,6 +233,209 @@ class OperatorAgent:
         except Exception as e:
             return f"Browser handoff failed: {e}"
 
+    FILE_CATEGORIES: dict[str, tuple[str, ...]] = {
+        "Images": (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".heic"),
+        "Documents": (".pdf", ".docx", ".doc", ".txt", ".md", ".xlsx", ".csv", ".pptx"),
+        "Installers": (".exe", ".msi", ".apk"),
+        "Archives": (".zip", ".rar", ".7z", ".tar", ".gz"),
+        "Media": (".mp3", ".wav", ".mp4", ".mkv", ".mov", ".flac"),
+        "Code": (".py", ".js", ".ts", ".json", ".html", ".css", ".bat", ".ps1"),
+    }
+
+    def organize_downloads(self) -> str:
+        """Sort loose Downloads files into categorized subfolders (move-only, no deletes)."""
+        downloads = Path.home() / "Downloads"
+        if not downloads.is_dir():
+            return "Downloads folder not found."
+        sorted_root = downloads / "Jarvis Sorted"
+        moved: dict[str, int] = {}
+        skipped = 0
+        now = time.time()
+        for item in downloads.iterdir():
+            try:
+                if item.is_dir() or item.name.startswith((".", "~")):
+                    continue
+                # Never grab a file mid-download
+                if now - item.stat().st_mtime < 90:
+                    skipped += 1
+                    continue
+                ext = item.suffix.lower()
+                category = next(
+                    (c for c, exts in self.FILE_CATEGORIES.items() if ext in exts),
+                    "Other",
+                )
+                dest_dir = sorted_root / category
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                dest = dest_dir / item.name
+                stem, n = item.stem, 1
+                while dest.exists():
+                    dest = dest_dir / f"{stem}_{n}{item.suffix}"
+                    n += 1
+                item.rename(dest)
+                moved[category] = moved.get(category, 0) + 1
+            except Exception:
+                skipped += 1
+        if not moved:
+            return "Downloads already tidy — nothing to move."
+        summary = ", ".join(f"{n} → {cat}" for cat, n in sorted(moved.items()))
+        note = f" ({skipped} skipped)" if skipped else ""
+        return f"Organized {sum(moved.values())} files into {sorted_root}: {summary}{note}"
+
+
+class CodeAgent:
+    """CODESMITH — sandboxed code generation with a self-correcting run loop."""
+
+    name = "CODESMITH"
+    SANDBOX = DATA_DIR / "sandbox"
+    MAX_ATTEMPTS = 3
+    RUN_TIMEOUT = 25
+
+    # Never allow generated code to touch these — the sandbox is for computation
+    DENY_PATTERNS = (
+        "subprocess",
+        "os.system",
+        "os.remove",
+        "os.unlink",
+        "os.rmdir",
+        "shutil.rmtree",
+        "shutil.move",
+        ".unlink(",
+        "rmdir(",
+        "winreg",
+        "ctypes",
+        "socket.socket",
+        "eval(",
+        "exec(",
+        "__import__",
+    )
+
+    def _safety_scan(self, code: str) -> str:
+        low = code.lower()
+        for pat in self.DENY_PATTERNS:
+            if pat.lower() in low:
+                return pat
+        return ""
+
+    def _generate(self, request: str, previous: str = "", error: str = "") -> str:
+        if previous and error:
+            prompt = (
+                f"TASK:\n{request}\n\nPREVIOUS SCRIPT:\n{previous}\n\n"
+                f"IT FAILED WITH:\n{error}\n\n"
+                "Fix the script. Output ONLY the corrected Python code, no fences, "
+                "no commentary."
+            )
+        else:
+            prompt = (
+                f"TASK:\n{request}\n\n"
+                "Write a single self-contained Python 3 script that accomplishes the "
+                "task and prints its result to stdout. Standard library only. "
+                "Output ONLY the code, no fences, no commentary."
+            )
+        out = complete(
+            prompt,
+            system=(
+                "You are an expert Python engineer writing sandboxed computation "
+                "scripts. No file deletion, no subprocess, no network servers, "
+                "no registry access — computation, text processing, and printing only."
+            ),
+            temperature=0.2,
+            max_tokens=900,
+        )
+        # Strip accidental markdown fences
+        out = re.sub(r"^```(?:python)?\s*|\s*```$", "", out.strip(), flags=re.M)
+        return out.strip()
+
+    def build_and_run(self, request: str) -> str:
+        self.SANDBOX.mkdir(parents=True, exist_ok=True)
+        code, error = "", ""
+        for attempt in range(1, self.MAX_ATTEMPTS + 1):
+            code = self._generate(request, previous=code, error=error)
+            if not code:
+                return "No LLM backend available for code generation."
+            blocked = self._safety_scan(code)
+            if blocked:
+                error = f"Script used forbidden API: {blocked}. Rewrite without it."
+                continue
+            script = self.SANDBOX / f"task_{int(time.time())}_{attempt}.py"
+            script.write_text(code, encoding="utf-8")
+            try:
+                proc = subprocess.run(
+                    [sys.executable, "-I", str(script)],
+                    cwd=str(self.SANDBOX),
+                    capture_output=True,
+                    text=True,
+                    timeout=self.RUN_TIMEOUT,
+                    creationflags=0x08000000,  # CREATE_NO_WINDOW
+                )
+            except subprocess.TimeoutExpired:
+                error = f"Timed out after {self.RUN_TIMEOUT}s — likely an infinite loop."
+                continue
+            if proc.returncode == 0:
+                out = (proc.stdout or "").strip()[:2500]
+                return (
+                    f"Script succeeded on attempt {attempt} ({script.name}).\n"
+                    f"OUTPUT:\n{out or '(no output)'}"
+                )
+            error = ((proc.stderr or "").strip() or f"exit code {proc.returncode}")[-1200:]
+            print(f"[crew:{self.name}] attempt {attempt} failed: {error[:120]}")
+        return (
+            f"Gave up after {self.MAX_ATTEMPTS} attempts. Last error:\n{error[:800]}"
+        )
+
+
+class GuardianAgent:
+    """WARDEN — infrastructure health: telemetry, crash forensics, log signal."""
+
+    name = "WARDEN"
+
+    def report(self) -> str:
+        lines: list[str] = []
+        try:
+            import psutil
+
+            cpu = psutil.cpu_percent(interval=0.4)
+            mem = psutil.virtual_memory()
+            disk = psutil.disk_usage(str(ROOT.drive + "\\") if ROOT.drive else "/")
+            lines.append(
+                f"CPU {cpu:.0f}% · RAM {mem.percent:.0f}% "
+                f"({mem.used / 1e9:.1f} GB) · Disk {disk.percent:.0f}%"
+            )
+            try:
+                batt = psutil.sensors_battery()
+                if batt is not None:
+                    plug = "charging" if batt.power_plugged else "on battery"
+                    lines.append(f"Battery {batt.percent:.0f}% ({plug})")
+            except Exception:
+                pass
+        except Exception as e:
+            lines.append(f"Telemetry unavailable: {e}")
+
+        crash_log = DATA_DIR / "last_crash.txt"
+        try:
+            if crash_log.is_file():
+                tail = crash_log.read_text(encoding="utf-8").strip().splitlines()[-3:]
+                if tail:
+                    lines.append("Recent crashes: " + " | ".join(tail))
+            else:
+                lines.append("No recorded crashes.")
+        except Exception:
+            pass
+
+        try:
+            from jarvis.core.health_check import _recent_log_issues
+
+            count, samples = _recent_log_issues(DATA_DIR / "jarvis.log")
+            if count:
+                lines.append(
+                    f"Log issues (3 days): {count} — e.g. {'; '.join(samples[:2])}"
+                )
+            else:
+                lines.append("Log clean over the last 3 days.")
+        except Exception:
+            pass
+
+        return "\n".join(lines) or "Guardian telemetry offline."
+
 
 class CommsAgent:
     """HERALD — outbound: phone push, n8n webhooks, LLM-drafted messages."""
@@ -293,7 +504,7 @@ class SupervisorAgent:
 
     name = "VECTOR"
 
-    ROUTES = ("research", "memory", "operator", "comms", "answer")
+    ROUTES = ("research", "memory", "operator", "comms", "code", "guardian", "answer")
 
     def plan(self, request: str) -> list[str]:
         """Which specialists does this request need? LLM first, keywords fallback."""
@@ -302,8 +513,10 @@ class SupervisorAgent:
             "Which specialists are needed? Reply with ONLY a JSON array using "
             'these labels: "research" (live web data / current events / prices), '
             '"memory" (recall past preferences or notes), '
-            '"operator" (read files, run diagnostics, browser tasks), '
+            '"operator" (read files, run diagnostics, organize folders, browser tasks), '
             '"comms" (send notification, draft email/message), '
+            '"code" (write and run a script / compute something programmatically), '
+            '"guardian" (system health, CPU/RAM, crashes), '
             '"answer" (pure reasoning, no tools). Example: ["research","memory"]',
             system="You are a precise task router. JSON only.",
             temperature=0.1,
@@ -329,10 +542,14 @@ class SupervisorAgent:
             routes.append("research")
         if re.search(r"\b(remember|recall|preference|last time|previous|history)\b", t):
             routes.append("memory")
-        if re.search(r"\b(file|read|folder|command|terminal|browser|run|check)\b", t):
+        if re.search(r"\b(file|read|folder|organize|downloads|terminal|browser|clean)\b", t):
             routes.append("operator")
         if re.search(r"\b(notify|alert|email|message|draft|send|text me)\b", t):
             routes.append("comms")
+        if re.search(r"\b(script|write code|python|compute|calculate|generate.*code|program)\b", t):
+            routes.append("code")
+        if re.search(r"\b(health|telemetry|cpu|ram|memory usage|temperature|crash|diagnostic)\b", t):
+            routes.append("guardian")
         return routes or ["answer"]
 
     def synthesize(self, request: str, findings: dict[str, str]) -> str:
@@ -384,6 +601,8 @@ class AgentCrew:
         self.operator = OperatorAgent(computer_use)
         self.comms = CommsAgent(phone, n8n)
         self.critic = CriticAgent()
+        self.code = CodeAgent()
+        self.guardian = GuardianAgent()
         self.last_run: dict[str, Any] = {}
 
     def _progress(self, msg: str) -> None:
@@ -404,10 +623,52 @@ class AgentCrew:
             else "duckduckgo"
         )
         return (
-            f"Crew online — 6 agents. Brain: {backend_name()}. "
+            f"Crew online — 8 agents. Brain: {backend_name()}. "
             f"VECTOR routing, SCHOLAR via {research_backend}, ARCHIVE memory {mem}, "
             f"FORGE tools ready, HERALD comms "
-            f"{'linked' if self.comms._phone else 'unlinked'}, SENTINEL QC armed."
+            f"{'linked' if self.comms._phone else 'unlinked'}, SENTINEL QC armed, "
+            f"CODESMITH sandbox ready, WARDEN watching telemetry."
+        )
+
+    def debate(self, question: str) -> str:
+        """Multi-agent debate: advocate vs devil's advocate, VECTOR verdict."""
+        question = (question or "").strip()
+        if not question:
+            return "Nothing to debate."
+        self._progress("Debate: advocate arguing…")
+        pro = complete(
+            f"Question: {question}\n\nMake the strongest case FOR. "
+            "3-4 concise points with concrete reasoning.",
+            system="You are a persuasive advocate. Argue the affirmative honestly and sharply.",
+            temperature=0.6,
+            max_tokens=400,
+        )
+        self._progress("Debate: devil's advocate rebutting…")
+        con = complete(
+            f"Question: {question}\n\nARGUMENT IN FAVOUR:\n{pro}\n\n"
+            "Play devil's advocate: attack the weakest points above and make the "
+            "strongest case AGAINST. 3-4 concise points.",
+            system=(
+                "You are a rigorous devil's advocate hired to stress-test decisions. "
+                "Find real risks, hidden costs, and flawed assumptions."
+            ),
+            temperature=0.6,
+            max_tokens=400,
+        )
+        if not pro or not con:
+            return "The debate chamber needs an LLM backend — none reachable."
+        self._progress("Debate: VECTOR ruling…")
+        verdict = complete(
+            f"Question: {question}\n\nFOR:\n{pro}\n\nAGAINST:\n{con}\n\n"
+            "Weigh both sides and deliver a verdict with the key deciding factors "
+            "and a clear recommendation. Address the user as sir.",
+            system="You are JARVIS, an impartial judge. Be decisive and concise.",
+            temperature=0.3,
+            max_tokens=450,
+        )
+        return (
+            f"THE CASE FOR:\n{pro}\n\nTHE CASE AGAINST:\n{con}\n\n"
+            f"VERDICT:\n{verdict or 'No verdict — LLM backend dropped mid-debate.'}"
         )
 
     def dispatch(self, request: str) -> str:
@@ -437,6 +698,11 @@ class AgentCrew:
             findings["FORGE (tools)"] = self._operator_pass(request)
         if "comms" in routes:
             findings["HERALD (comms)"] = self._comms_pass(request)
+        if "code" in routes:
+            self._progress("CODESMITH engineering…")
+            findings["CODESMITH (code)"] = self.code.build_and_run(request)
+        if "guardian" in routes:
+            findings["WARDEN (infrastructure)"] = self.guardian.report()
 
         draft = self.supervisor.synthesize(request, findings)
         self._progress("SENTINEL reviewing…")
@@ -460,6 +726,8 @@ class AgentCrew:
 
     def _operator_pass(self, request: str) -> str:
         t = request.lower()
+        if re.search(r"\b(organize|clean|tidy|sort)\b.*\bdownloads?\b", t):
+            return self.operator.organize_downloads()
         m = re.search(r"\bread\s+(?:file\s+)?([\w\-./\\:~]+\.\w+)", t)
         if m:
             return self.operator.read_file(m.group(1))
