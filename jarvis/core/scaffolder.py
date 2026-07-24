@@ -1,4 +1,4 @@
-"""Project scaffolder — create React / Python / HTML starters + live preview."""
+"""Project scaffolder — create React / Python / HTML starters + live preview + publish."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 
+from jarvis.config import ROOT
+
 
 @dataclass
 class ScaffoldResult:
@@ -23,11 +25,14 @@ class ScaffoldResult:
 
 
 class ProjectScaffolder:
+    TEMPLATES = ROOT / "jarvis" / "templates"
+
     def __init__(self, root: str | Path | None = None) -> None:
         home = Path.home()
         self.root = Path(root) if root else (home / "jarvis-projects")
         self.root.mkdir(parents=True, exist_ok=True)
         self._dev_proc: subprocess.Popen | None = None
+        self._preview_proc: subprocess.Popen | None = None
         self.last: ScaffoldResult | None = None
 
     def status(self) -> str:
@@ -71,6 +76,149 @@ class ProjectScaffolder:
         self.last = result
         return result
 
+    def latest_project(self, kind: str = "") -> Path | None:
+        if self.last and self.last.path and self.last.path.exists():
+            if not kind or self.last.kind == kind or (
+                kind == "react" and self.last.kind in ("react", "vite")
+            ):
+                return self.last.path
+        kids = [p for p in self.root.iterdir() if p.is_dir()]
+        if not kids:
+            return None
+        if kind in ("react", "vite"):
+            kids = [p for p in kids if (p / "package.json").exists()] or kids
+        elif kind in ("html", "site"):
+            kids = [p for p in kids if (p / "index.html").exists() and not (p / "package.json").exists()] or kids
+        kids.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return kids[0] if kids else None
+
+    def publish(self, name: str = "") -> str:
+        """Build React app for production and serve dist (publishable preview)."""
+        dest = None
+        if name:
+            dest = self.root / self._slug(name)
+            if not dest.exists():
+                # fuzzy match
+                needle = self._slug(name)
+                for p in self.root.iterdir():
+                    if p.is_dir() and needle in p.name:
+                        dest = p
+                        break
+        if dest is None or not dest.exists():
+            dest = self.latest_project("react")
+        if dest is None or not dest.exists():
+            return "No React project to publish. Say scaffold react first."
+        if not (dest / "package.json").exists():
+            return f"{dest.name} is not a React/Vite app."
+
+        if not (dest / "node_modules").exists():
+            self._try_npm_install(dest)
+
+        try:
+            build = subprocess.run(
+                ["npm", "run", "build"],
+                cwd=str(dest),
+                capture_output=True,
+                text=True,
+                timeout=180,
+                shell=True,
+            )
+        except Exception as e:
+            return f"Build failed to start: {e}"
+        if build.returncode != 0:
+            err = (build.stderr or build.stdout or "")[-400:]
+            return f"Build failed for {dest.name}: {err}"
+
+        dist = dest / "dist"
+        if not dist.exists():
+            return f"Build finished but dist/ missing in {dest.name}."
+
+        url = self._serve_dist(dest)
+        try:
+            from jarvis.core import app_scores
+
+            app_scores.register_publish(
+                dest.name,
+                title=self._title_case(dest.name),
+                url=url or "",
+                path=str(dest),
+            )
+        except Exception as e:
+            print(f"[scaffold] score register: {e}")
+
+        # Write publish marker for Jarvis
+        try:
+            (dest / ".jarvis-publish.json").write_text(
+                json.dumps(
+                    {
+                        "app_id": dest.name,
+                        "url": url,
+                        "built_at": time.time(),
+                        "dist": str(dist),
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
+        msg = (
+            f"Published {dest.name} — production build ready. "
+            f"Live preview: {url or 'dist/'}. "
+            "Also deployable: drag dist/ to Netlify, or run npx vercel --prod."
+        )
+        if url:
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+        return msg
+
+    def _serve_dist(self, dest: Path) -> str:
+        self._stop_preview()
+        creation = 0
+        if sys.platform == "win32":
+            creation = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        try:
+            self._preview_proc = subprocess.Popen(
+                ["npm", "run", "preview", "--", "--host", "127.0.0.1", "--port", "4173"],
+                cwd=str(dest),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                shell=True,
+                creationflags=creation,
+            )
+        except Exception as e:
+            print(f"[scaffold] preview serve: {e}")
+            return ""
+
+        deadline = time.time() + 20.0
+        while time.time() < deadline:
+            if self._port_open(4173):
+                return "http://127.0.0.1:4173"
+            if self._preview_proc.poll() is not None:
+                break
+            time.sleep(0.35)
+        return "http://127.0.0.1:4173"
+
+    def _stop_preview(self) -> None:
+        proc = self._preview_proc
+        self._preview_proc = None
+        if not proc or proc.poll() is not None:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=3)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
     def launch_preview(self, dest: Path, kind: str) -> str:
         """Start/open a browser-tab preview. Returns URL or empty."""
         kind_l = (kind or "").strip().lower()
@@ -113,7 +261,6 @@ class ProjectScaffolder:
         return url
 
     def _preview_vite(self, dest: Path) -> str:
-        # Prefer existing node_modules; try install if missing
         if not (dest / "node_modules").exists():
             self._try_npm_install(dest)
         self._stop_dev()
@@ -134,7 +281,6 @@ class ProjectScaffolder:
             )
         except Exception as e:
             print(f"[scaffold] vite start: {e}")
-            # Fallback: open index.html (won't run JSX, but something shows)
             index = dest / "index.html"
             if index.exists():
                 url = index.resolve().as_uri()
@@ -157,12 +303,10 @@ class ProjectScaffolder:
 
         threading.Thread(target=_watch, daemon=True, name="jarvis-vite-log").start()
 
-        # Wait up to ~25s for Vite ready
         deadline = time.time() + 25.0
         while time.time() < deadline:
             if url_holder:
                 break
-            # Port probe
             if self._port_open(5173):
                 url_holder.append("http://127.0.0.1:5173")
                 break
@@ -209,399 +353,45 @@ class ProjectScaffolder:
         words = re.sub(r"[-_]+", " ", slug or "app").strip()
         return " ".join(w.capitalize() for w in words.split()) or "App"
 
-    def _react_vite(self, dest: Path, slug: str) -> ScaffoldResult:
+    def _copy_template(self, template_name: str, dest: Path, slug: str, title: str) -> None:
+        src = self.TEMPLATES / template_name
+        if not src.is_dir():
+            raise FileNotFoundError(f"Missing template {src}")
         dest.mkdir(parents=True, exist_ok=False)
+        for path in src.rglob("*"):
+            if path.is_dir():
+                continue
+            rel = path.relative_to(src)
+            out = dest / rel
+            out.parent.mkdir(parents=True, exist_ok=True)
+            text = path.read_text(encoding="utf-8")
+            text = text.replace("{{SLUG}}", slug).replace("{{TITLE}}", title)
+            out.write_text(text, encoding="utf-8")
+
+    def _react_vite(self, dest: Path, slug: str) -> ScaffoldResult:
         title = self._title_case(slug)
-        (dest / "package.json").write_text(
-            json.dumps(
-                {
-                    "name": slug,
-                    "private": True,
-                    "version": "0.0.1",
-                    "type": "module",
-                    "scripts": {
-                        "dev": "vite",
-                        "build": "vite build",
-                        "preview": "vite preview",
-                    },
-                    "dependencies": {"react": "^19.0.0", "react-dom": "^19.0.0"},
-                    "devDependencies": {
-                        "@vitejs/plugin-react": "^4.3.4",
-                        "vite": "^6.0.0",
-                    },
-                },
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        (dest / "vite.config.js").write_text(
-            "import { defineConfig } from 'vite'\n"
-            "import react from '@vitejs/plugin-react'\n"
-            "export default defineConfig({ plugins: [react()], "
-            "server: { host: '127.0.0.1', port: 5173, strictPort: false } })\n",
-            encoding="utf-8",
-        )
-        (dest / "index.html").write_text(
-            "<!doctype html>\n<html lang=\"en\">\n<head>\n"
-            "  <meta charset=\"UTF-8\" />\n"
-            "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n"
-            f"  <title>{title}</title>\n"
-            "  <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\" />\n"
-            "  <link href=\"https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&family=Instrument+Serif:ital@0;1&display=swap\" rel=\"stylesheet\" />\n"
-            "</head>\n<body>\n"
-            "  <div id=\"root\"></div>\n"
-            "  <script type=\"module\" src=\"/src/main.jsx\"></script>\n"
-            "</body>\n</html>\n",
-            encoding="utf-8",
-        )
-        src = dest / "src"
-        src.mkdir()
-        (src / "main.jsx").write_text(
-            "import React from 'react'\n"
-            "import { createRoot } from 'react-dom/client'\n"
-            "import App from './App.jsx'\n"
-            "import './styles.css'\n"
-            "createRoot(document.getElementById('root')).render(<App />)\n",
-            encoding="utf-8",
-        )
-        (src / "data.js").write_text(
-            "export const SEED = [\n"
-            "  { id: 1, title: 'Neon Briefing', tag: 'Ops', status: 'Live',\n"
-            "    blurb: 'Morning status pack with weather, calendar, and priorities.' },\n"
-            "  { id: 2, title: 'Vault Notes', tag: 'Memory', status: 'Draft',\n"
-            "    blurb: 'Pinned facts and project context for quick recall.' },\n"
-            "  { id: 3, title: 'Signal Desk', tag: 'Comms', status: 'Live',\n"
-            "    blurb: 'Inbox triage board with starred threads and drafts.' },\n"
-            "  { id: 4, title: 'Forge Lab', tag: 'Build', status: 'Live',\n"
-            "    blurb: 'Active builds, preview links, and ship checklist.' },\n"
-            "  { id: 5, title: 'Night Watch', tag: 'Ops', status: 'Paused',\n"
-            "    blurb: 'Quiet-hours monitor for CPU, disk, and door alerts.' },\n"
-            "  { id: 6, title: 'Atlas Map', tag: 'Travel', status: 'Live',\n"
-            "    blurb: 'Saved places, routes, and sector scans.' },\n"
-            "  { id: 7, title: 'Pulse Media', tag: 'Media', status: 'Draft',\n"
-            "    blurb: 'Playlist queue and focus soundscapes.' },\n"
-            "  { id: 8, title: 'Healer Bay', tag: 'System', status: 'Live',\n"
-            "    blurb: 'Process health, RAM pressure, and kill suggestions.' },\n"
-            "]\n"
-            "export const TAGS = ['All', 'Ops', 'Memory', 'Comms', 'Build', 'Travel', 'Media', 'System']\n",
-            encoding="utf-8",
-        )
-        (src / "styles.css").write_text(
-            """:root {
-  --bg: #071018;
-  --panel: #0d1822;
-  --line: rgba(0, 232, 255, 0.18);
-  --text: #e8f4ff;
-  --muted: #8aa4b8;
-  --cyan: #00e8ff;
-  --amber: #ffb020;
-  --ok: #3dff9a;
-  --warn: #ff8a5c;
-}
-* { box-sizing: border-box; }
-html, body, #root { margin: 0; min-height: 100%; }
-body {
-  font-family: "DM Sans", system-ui, sans-serif;
-  background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(0,232,255,.12), transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, rgba(255,176,32,.08), transparent 50%),
-    var(--bg);
-  color: var(--text);
-}
-.app { max-width: 1100px; margin: 0 auto; padding: 28px 22px 64px; }
-.top {
-  display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;
-  justify-content: space-between; margin-bottom: 28px;
-}
-.brand h1 {
-  font-family: "Instrument Serif", Georgia, serif;
-  font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 400;
-  margin: 0 0 6px; letter-spacing: 0.02em;
-}
-.brand p { margin: 0; color: var(--muted); max-width: 42ch; line-height: 1.45; }
-.stats { display: flex; gap: 10px; flex-wrap: wrap; }
-.stat {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: 12px; padding: 10px 14px; min-width: 88px;
-}
-.stat b { display: block; font-size: 1.25rem; color: var(--cyan); }
-.stat span { font-size: 0.75rem; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
-.toolbar {
-  display: grid; grid-template-columns: 1fr auto; gap: 12px;
-  margin-bottom: 18px;
-}
-@media (max-width: 720px) { .toolbar { grid-template-columns: 1fr; } }
-.search {
-  display: flex; align-items: center; gap: 10px;
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: 14px; padding: 12px 14px;
-}
-.search input {
-  flex: 1; border: 0; outline: 0; background: transparent;
-  color: var(--text); font-size: 1rem; font-family: inherit;
-}
-.search input::placeholder { color: var(--muted); }
-.tags { display: flex; flex-wrap: wrap; gap: 8px; align-content: center; }
-.tag {
-  border: 1px solid var(--line); background: transparent; color: var(--muted);
-  border-radius: 999px; padding: 8px 12px; cursor: pointer; font: inherit;
-}
-.tag.on, .tag:hover { color: var(--bg); background: var(--cyan); border-color: var(--cyan); }
-.layout { display: grid; grid-template-columns: 1.4fr 0.9fr; gap: 16px; }
-@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.card {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
-  padding: 16px; display: flex; flex-direction: column; gap: 10px;
-  transition: border-color .15s, transform .15s;
-}
-.card:hover { border-color: rgba(0,232,255,.45); transform: translateY(-2px); }
-.card.selected { border-color: var(--amber); box-shadow: 0 0 0 1px rgba(255,176,32,.25); }
-.card-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
-.pill {
-  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
-  border-radius: 999px; padding: 4px 8px; border: 1px solid var(--line); color: var(--muted);
-}
-.pill.live { color: var(--ok); border-color: rgba(61,255,154,.35); }
-.pill.draft { color: var(--amber); border-color: rgba(255,176,32,.35); }
-.pill.paused { color: var(--warn); border-color: rgba(255,138,92,.35); }
-.card h3 { margin: 0; font-size: 1.05rem; }
-.card p { margin: 0; color: var(--muted); font-size: 0.92rem; line-height: 1.4; flex: 1; }
-.card button {
-  align-self: start; border: 0; border-radius: 10px; padding: 8px 12px;
-  background: rgba(0,232,255,.12); color: var(--cyan); font: inherit; cursor: pointer;
-}
-.card button:hover { background: rgba(0,232,255,.22); }
-.side {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
-  padding: 18px; min-height: 280px;
-}
-.side h2 { margin: 0 0 8px; font-family: "Instrument Serif", Georgia, serif; font-weight: 400; font-size: 1.7rem; }
-.side .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 14px; }
-.composer { display: grid; gap: 8px; margin-top: 16px; }
-.composer input, .composer textarea, .composer select {
-  width: 100%; background: #08131c; border: 1px solid var(--line); border-radius: 10px;
-  color: var(--text); padding: 10px 12px; font: inherit;
-}
-.composer textarea { min-height: 72px; resize: vertical; }
-.composer button {
-  border: 0; border-radius: 10px; padding: 11px 14px; font: inherit; font-weight: 700;
-  background: var(--cyan); color: #041018; cursor: pointer;
-}
-.empty { color: var(--muted); padding: 28px; text-align: center; border: 1px dashed var(--line); border-radius: 14px; }
-.foot { margin-top: 22px; color: var(--muted); font-size: 0.85rem; }
-""",
-            encoding="utf-8",
-        )
-        # App.jsx — functional hub with search, filters, detail, add form
-        app_jsx = f'''import React, {{ useMemo, useState }} from 'react'
-import {{ SEED, TAGS }} from './data.js'
-
-const statusClass = (s) => {{
-  const v = (s || '').toLowerCase()
-  if (v === 'live') return 'pill live'
-  if (v === 'draft') return 'pill draft'
-  return 'pill paused'
-}}
-
-export default function App() {{
-  const [items, setItems] = useState(SEED)
-  const [query, setQuery] = useState('')
-  const [tag, setTag] = useState('All')
-  const [selectedId, setSelectedId] = useState(SEED[0]?.id ?? null)
-  const [draft, setDraft] = useState({{ title: '', tag: 'Ops', blurb: '', status: 'Draft' }})
-
-  const filtered = useMemo(() => {{
-    const q = query.trim().toLowerCase()
-    return items.filter((item) => {{
-      const tagOk = tag === 'All' || item.tag === tag
-      if (!tagOk) return false
-      if (!q) return true
-      return (
-        item.title.toLowerCase().includes(q) ||
-        item.blurb.toLowerCase().includes(q) ||
-        item.tag.toLowerCase().includes(q) ||
-        item.status.toLowerCase().includes(q)
-      )
-    }})
-  }}, [items, query, tag])
-
-  const selected = items.find((i) => i.id === selectedId) || filtered[0] || null
-
-  const liveCount = items.filter((i) => i.status === 'Live').length
-
-  function addItem(e) {{
-    e.preventDefault()
-    if (!draft.title.trim()) return
-    const next = {{
-      id: Date.now(),
-      title: draft.title.trim(),
-      tag: draft.tag,
-      status: draft.status,
-      blurb: draft.blurb.trim() || 'New module added from the composer.',
-    }}
-    setItems((prev) => [next, ...prev])
-    setSelectedId(next.id)
-    setDraft({{ title: '', tag: 'Ops', blurb: '', status: 'Draft' }})
-    setQuery('')
-    setTag('All')
-  }}
-
-  function toggleStatus(id) {{
-    setItems((prev) =>
-      prev.map((item) => {{
-        if (item.id !== id) return item
-        const order = ['Live', 'Draft', 'Paused']
-        const i = order.indexOf(item.status)
-        return {{ ...item, status: order[(i + 1) % order.length] }}
-      }})
-    )
-  }}
-
-  return (
-    <div className="app">
-      <header className="top">
-        <div className="brand">
-          <h1>{title}</h1>
-          <p>
-            Live command hub — search modules, filter by lane, open a detail pane,
-            and add new cards. Fully interactive in the browser.
-          </p>
-        </div>
-        <div className="stats">
-          <div className="stat"><b>{{items.length}}</b><span>Modules</span></div>
-          <div className="stat"><b>{{liveCount}}</b><span>Live</span></div>
-          <div className="stat"><b>{{filtered.length}}</b><span>Showing</span></div>
-        </div>
-      </header>
-
-      <div className="toolbar">
-        <label className="search">
-          <span aria-hidden="true">⌕</span>
-          <input
-            value={{query}}
-            onChange={{(e) => setQuery(e.target.value)}}
-            placeholder="Search title, tag, status, or notes…"
-            aria-label="Search modules"
-          />
-        </label>
-        <div className="tags" role="tablist" aria-label="Filter by tag">
-          {{TAGS.map((t) => (
-            <button
-              key={{t}}
-              type="button"
-              className={{`tag ${{tag === t ? 'on' : ''}}`}}
-              onClick={{() => setTag(t)}}
-            >
-              {{t}}
-            </button>
-          ))}}
-        </div>
-      </div>
-
-      <div className="layout">
-        <section>
-          {{filtered.length === 0 ? (
-            <div className="empty">No modules match “{{query || tag}}”. Clear search or add one.</div>
-          ) : (
-            <div className="grid">
-              {{filtered.map((item) => (
-                <article
-                  key={{item.id}}
-                  className={{`card ${{selected?.id === item.id ? 'selected' : ''}}`}}
-                >
-                  <div className="card-top">
-                    <span className="pill">{{item.tag}}</span>
-                    <span className={{statusClass(item.status)}}>{{item.status}}</span>
-                  </div>
-                  <h3>{{item.title}}</h3>
-                  <p>{{item.blurb}}</p>
-                  <button type="button" onClick={{() => setSelectedId(item.id)}}>
-                    Open details
-                  </button>
-                </article>
-              ))}}
-            </div>
-          )}}
-        </section>
-
-        <aside className="side">
-          {{selected ? (
-            <>
-              <h2>{{selected.title}}</h2>
-              <div className="meta">
-                {{selected.tag}} · {{selected.status}} · id {{selected.id}}
-              </div>
-              <p>{{selected.blurb}}</p>
-              <p style={{{{ color: '#8aa4b8', marginTop: 12 }}}}>
-                Tip: cycle status, refine search, or compose a new module on the right.
-              </p>
-              <button
-                type="button"
-                style={{{{
-                  marginTop: 14, border: 0, borderRadius: 10, padding: '10px 12px',
-                  background: 'rgba(255,176,32,.16)', color: '#ffb020', font: 'inherit', cursor: 'pointer'
-                }}}}
-                onClick={{() => toggleStatus(selected.id)}}
-              >
-                Cycle status
-              </button>
-            </>
-          ) : (
-            <p className="meta">Select a card to inspect it.</p>
-          )}}
-
-          <form className="composer" onSubmit={{addItem}}>
-            <strong>Add module</strong>
-            <input
-              value={{draft.title}}
-              onChange={{(e) => setDraft({{ ...draft, title: e.target.value }})}}
-              placeholder="Title"
-              required
-            />
-            <select
-              value={{draft.tag}}
-              onChange={{(e) => setDraft({{ ...draft, tag: e.target.value }})}}
-            >
-              {{TAGS.filter((t) => t !== 'All').map((t) => (
-                <option key={{t}} value={{t}}>{{t}}</option>
-              ))}}
-            </select>
-            <select
-              value={{draft.status}}
-              onChange={{(e) => setDraft({{ ...draft, status: e.target.value }})}}
-            >
-              <option>Live</option>
-              <option>Draft</option>
-              <option>Paused</option>
-            </select>
-            <textarea
-              value={{draft.blurb}}
-              onChange={{(e) => setDraft({{ ...draft, blurb: e.target.value }})}}
-              placeholder="Short description"
-            />
-            <button type="submit">Add to hub</button>
-          </form>
-        </aside>
-      </div>
-
-      <p className="foot">Built by Jarvis · Vite + React · edit src/App.jsx to evolve this hub.</p>
-    </div>
-  )
-}}
-'''
-        (src / "App.jsx").write_text(app_jsx, encoding="utf-8")
-        (dest / "README.md").write_text(
-            f"# {title}\n\n"
-            "Interactive React hub with search, tag filters, detail pane, and add form.\n\n"
-            "```bash\nnpm install\nnpm run dev\n```\n",
-            encoding="utf-8",
-        )
+        try:
+            self._copy_template("react-pulse", dest, slug, title)
+        except Exception as e:
+            return ScaffoldResult(ok=False, message=f"React template failed: {e}")
         npm = self._try_npm_install(dest)
+        try:
+            from jarvis.core import app_scores
+
+            app_scores.ingest(
+                {
+                    "app_id": slug,
+                    "title": title,
+                    "kind": "action",
+                    "points": 10,
+                    "label": "scaffold",
+                }
+            )
+        except Exception:
+            pass
         return ScaffoldResult(
             ok=True,
-            message=f"React hub “{title}” ready at {dest}. {npm}",
+            message=f"Pulse Arena “{title}” ready at {dest}. {npm}",
             path=dest,
             kind="react",
         )
@@ -609,6 +399,7 @@ export default function App() {{
     def _python_pkg(self, dest: Path, slug: str) -> ScaffoldResult:
         dest.mkdir(parents=True, exist_ok=False)
         pkg = re.sub(r"[^a-z0-9_]", "_", slug)
+        title = self._title_case(slug)
         (dest / "pyproject.toml").write_text(
             f'[project]\nname = "{slug}"\nversion = "0.1.0"\n'
             'requires-python = ">=3.11"\n'
@@ -622,11 +413,21 @@ export default function App() {{
         mod.mkdir()
         (mod / "__init__.py").write_text('__version__ = "0.1.0"\n', encoding="utf-8")
         (mod / "__main__.py").write_text(
-            f'print("Hello from {slug}")\n',
+            f'print("Hello from {title} — run me, rack a win, tell Jarvis.")\n'
+            f'print("Package: {pkg}")\n',
+            encoding="utf-8",
+        )
+        (mod / "score.py").write_text(
+            '"""Local score helper — Jarvis can also track via publish/scaffold."""\n'
+            "SCORE = 0\n\n"
+            "def bump(n: int = 1) -> int:\n"
+            "    global SCORE\n"
+            "    SCORE += n\n"
+            "    return SCORE\n",
             encoding="utf-8",
         )
         (dest / "README.md").write_text(
-            f"# {slug}\n\n```bash\n{sys.executable} -m {pkg}\n```\n",
+            f"# {title}\n\n```bash\n{sys.executable} -m {pkg}\n```\n",
             encoding="utf-8",
         )
         return ScaffoldResult(
@@ -645,20 +446,29 @@ export default function App() {{
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#050b12" />
   <title>{title}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div class="aurora"></div>
   <div class="app">
     <header>
+      <p class="eyebrow">Jarvis Pulse · static</p>
       <h1>{title}</h1>
-      <p class="sub">Searchable board with live filters — no build step needed.</p>
+      <p class="sub">Searchable arena with live filters + local scoreboard.</p>
+      <div class="scorebar">
+        <div class="chip"><span>Score</span><b id="score">0</b></div>
+        <div class="chip"><span>Best</span><b id="best">0</b></div>
+        <div class="chip"><span>Showing</span><b id="showing">0</b></div>
+      </div>
     </header>
     <div class="toolbar">
       <input id="q" type="search" placeholder="Search cards…" aria-label="Search" />
       <div id="tags" class="tags"></div>
     </div>
-    <div id="stats" class="stats"></div>
     <div id="grid" class="grid"></div>
   </div>
   <script src="app.js"></script>
@@ -668,72 +478,125 @@ export default function App() {{
             encoding="utf-8",
         )
         (dest / "styles.css").write_text(
-            """body{margin:0;font-family:Georgia,serif;background:#071018;color:#e8f4ff}
-.app{max-width:960px;margin:0 auto;padding:2rem}
-h1{margin:0 0 .35rem;font-size:2.4rem;color:#00e8ff}
-.sub{color:#8aa4b8;margin:0 0 1.25rem}
+            """:root{--bg:#050b12;--panel:#0a1622;--line:rgba(0,240,255,.2);--text:#e7f6ff;--muted:#7f9bb0;--cyan:#00f0ff;--amber:#ffc14a}
+*{box-sizing:border-box}body{margin:0;font-family:Sora,system-ui,sans-serif;background:var(--bg);color:var(--text)}
+.aurora{position:fixed;inset:-10% 0 auto;height:50vh;background:radial-gradient(circle at 20% 40%,rgba(0,240,255,.2),transparent 45%),radial-gradient(circle at 80% 10%,rgba(255,193,74,.14),transparent 40%);pointer-events:none;filter:blur(6px)}
+.app{position:relative;max-width:980px;margin:0 auto;padding:2rem 1.25rem 3rem}
+.eyebrow{letter-spacing:.16em;text-transform:uppercase;color:var(--cyan);font-size:.72rem;font-weight:700;margin:0 0 .4rem}
+h1{margin:0 0 .4rem;font-family:Orbitron,sans-serif;font-size:clamp(2rem,5vw,3rem);background:linear-gradient(110deg,#fff,var(--cyan),var(--amber));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--muted);margin:0 0 1rem}
+.scorebar{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:.45rem .85rem;display:flex;gap:.45rem;align-items:baseline}
+.chip span{font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.chip b{font-family:Orbitron,sans-serif;color:var(--cyan)}
 .toolbar{display:flex;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem}
-#q{flex:1;min-width:200px;padding:.75rem 1rem;border-radius:12px;border:1px solid rgba(0,232,255,.25);background:#0d1822;color:#e8f4ff;font:inherit}
+#q{flex:1;min-width:200px;padding:.8rem 1rem;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit}
 .tags{display:flex;flex-wrap:wrap;gap:.4rem}
-.tag{border:1px solid rgba(0,232,255,.25);background:transparent;color:#8aa4b8;border-radius:999px;padding:.4rem .75rem;cursor:pointer;font:inherit}
-.tag.on{background:#00e8ff;color:#041018;border-color:#00e8ff}
-.stats{color:#8aa4b8;margin-bottom:1rem}
+.tag{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:.45rem .75rem;cursor:pointer;font:inherit}
+.tag.on{background:linear-gradient(120deg,var(--cyan),#7dfff0);color:#041018;border-color:transparent;font-weight:700}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem}
-.card{background:#0d1822;border:1px solid rgba(0,232,255,.18);border-radius:14px;padding:1rem}
-.card h3{margin:.2rem 0;font-size:1.05rem}
-.card p{margin:0;color:#8aa4b8;font-size:.92rem}
-.pill{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#ffb020}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:1rem;transition:transform .15s,border-color .15s;cursor:pointer}
+.card:hover{transform:translateY(-3px);border-color:rgba(0,240,255,.5)}
+.card h3{margin:.25rem 0;font-size:1.05rem}
+.card p{margin:0;color:var(--muted);font-size:.92rem}
+.pill{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--amber)}
 """,
             encoding="utf-8",
         )
         (dest / "app.js").write_text(
-            """const DATA = [
-  { title: 'Neon Briefing', tag: 'Ops', blurb: 'Morning pack with weather and priorities.' },
-  { title: 'Vault Notes', tag: 'Memory', blurb: 'Pinned facts for quick recall.' },
-  { title: 'Signal Desk', tag: 'Comms', blurb: 'Starred threads and drafts.' },
-  { title: 'Forge Lab', tag: 'Build', blurb: 'Active builds and ship checklist.' },
-  { title: 'Atlas Map', tag: 'Travel', blurb: 'Saved places and routes.' },
-  { title: 'Healer Bay', tag: 'System', blurb: 'CPU and process health.' },
+            f"""const APP_ID = {json.dumps(slug)};
+const APP_TITLE = {json.dumps(title)};
+const SCORE_URL = 'http://127.0.0.1:8766/api/scores';
+const DATA = [
+  {{ title: 'Neon Briefing', tag: 'Ops', blurb: 'Morning pack with weather and priorities.', power: 90 }},
+  {{ title: 'Vault Notes', tag: 'Memory', blurb: 'Pinned facts for quick recall.', power: 72 }},
+  {{ title: 'Signal Desk', tag: 'Comms', blurb: 'Starred threads and drafts.', power: 85 }},
+  {{ title: 'Forge Lab', tag: 'Build', blurb: 'Active builds and ship checklist.', power: 94 }},
+  {{ title: 'Atlas Map', tag: 'Travel', blurb: 'Saved places and routes.', power: 78 }},
+  {{ title: 'Healer Bay', tag: 'System', blurb: 'CPU and process health.', power: 83 }},
 ];
 const TAGS = ['All', ...new Set(DATA.map(d => d.tag))];
 let tag = 'All';
+let score = Number(localStorage.getItem(APP_ID + ':score') || 0);
+let best = Number(localStorage.getItem(APP_ID + ':best') || 0);
 const q = document.getElementById('q');
 const grid = document.getElementById('grid');
 const tagsEl = document.getElementById('tags');
-const stats = document.getElementById('stats');
 
-function renderTags() {
+function saveScore() {{
+  localStorage.setItem(APP_ID + ':score', String(score));
+  localStorage.setItem(APP_ID + ':best', String(best));
+  document.getElementById('score').textContent = score;
+  document.getElementById('best').textContent = best;
+}}
+
+function track(kind, points, label) {{
+  score += points;
+  best = Math.max(best, score);
+  saveScore();
+  fetch(SCORE_URL, {{
+    method: 'POST',
+    headers: {{ 'Content-Type': 'application/json' }},
+    body: JSON.stringify({{ app_id: APP_ID, title: APP_TITLE, kind, points, label }}),
+    mode: 'cors',
+    keepalive: true,
+  }}).catch(() => {{}});
+}}
+
+function renderTags() {{
   tagsEl.innerHTML = TAGS.map(t =>
-    `<button class="tag ${t === tag ? 'on' : ''}" data-tag="${t}">${t}</button>`
+    `<button class="tag ${{t === tag ? 'on' : ''}}" data-tag="${{t}}">${{t}}</button>`
   ).join('');
-  tagsEl.querySelectorAll('.tag').forEach(btn => {
-    btn.onclick = () => { tag = btn.dataset.tag; render(); };
-  });
-}
+  tagsEl.querySelectorAll('.tag').forEach(btn => {{
+    btn.onclick = () => {{ tag = btn.dataset.tag; track('action', 1, 'filter'); render(); }};
+  }});
+}}
 
-function render() {
+function render() {{
   const query = (q.value || '').trim().toLowerCase();
-  const rows = DATA.filter(d => {
+  const rows = DATA.filter(d => {{
     const tagOk = tag === 'All' || d.tag === tag;
     if (!tagOk) return false;
     if (!query) return true;
     return (d.title + d.blurb + d.tag).toLowerCase().includes(query);
-  });
-  stats.textContent = `Showing ${rows.length} of ${DATA.length}`;
+  }});
+  document.getElementById('showing').textContent = rows.length;
   grid.innerHTML = rows.map(d =>
-    `<article class="card"><div class="pill">${d.tag}</div><h3>${d.title}</h3><p>${d.blurb}</p></article>`
-  ).join('') || '<p class="stats">No matches.</p>';
+    `<article class="card" data-title="${{d.title}}"><div class="pill">${{d.tag}} · ${{d.power}}</div><h3>${{d.title}}</h3><p>${{d.blurb}}</p></article>`
+  ).join('') || '<p class="sub">No matches.</p>';
+  grid.querySelectorAll('.card').forEach(card => {{
+    card.onclick = () => track('score', 5, 'inspect ' + card.dataset.title);
+  }});
   renderTags();
-}
+}}
 
-q.addEventListener('input', render);
+q.addEventListener('input', () => {{
+  if ((q.value || '').trim().length === 1) track('search', 2, 'search');
+  render();
+}});
+track('visit', 5, 'session');
+saveScore();
 render();
 """,
             encoding="utf-8",
         )
+        try:
+            from jarvis.core import app_scores
+
+            app_scores.ingest(
+                {
+                    "app_id": slug,
+                    "title": title,
+                    "kind": "action",
+                    "points": 10,
+                    "label": "scaffold",
+                }
+            )
+        except Exception:
+            pass
         return ScaffoldResult(
             ok=True,
-            message=f"HTML hub “{title}” ready at {dest}.",
+            message=f"HTML Pulse “{title}” ready at {dest}.",
             path=dest,
             kind="html",
         )

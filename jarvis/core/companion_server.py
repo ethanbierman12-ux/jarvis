@@ -40,10 +40,12 @@ class CompanionServer:
         web_root: Path | None = None,
         on_status: Callable[[], dict] | None = None,
         on_handoff: Callable[[dict], dict] | None = None,
+        on_score: Callable[[dict], dict] | None = None,
     ) -> None:
         self.on_chat = on_chat
         self.on_status = on_status
         self.on_handoff = on_handoff
+        self.on_score = on_score
         self.token = (token or "").strip()
         self.host = host
         self.port = int(port)
@@ -142,6 +144,17 @@ class CompanionServer:
                     )
                     return
 
+                if path == "/api/scores":
+                    # Public read of leaderboard (no secrets) for HUD / apps
+                    try:
+                        from jarvis.core import app_scores
+
+                        board = app_scores.leaderboard(12)
+                        self._json(200, {"ok": True, "leaderboard": board})
+                    except Exception as e:
+                        self._json(500, {"ok": False, "error": str(e)})
+                    return
+
                 if path.startswith("/api/"):
                     self._json(404, {"ok": False, "error": "not found"})
                     return
@@ -152,18 +165,38 @@ class CompanionServer:
             def do_POST(self) -> None:  # noqa: N802
                 parsed = urlparse(self.path)
                 path = parsed.path or "/"
-                if path not in ("/api/chat", "/api/handoff"):
+                if path not in ("/api/chat", "/api/handoff", "/api/scores"):
                     self._json(404, {"ok": False, "error": "not found"})
                     return
-                if not self._auth_ok():
-                    self._json(401, {"ok": False, "error": "unauthorized"})
-                    return
                 length = int(self.headers.get("Content-Length") or 0)
-                raw = self.rfile.read(max(0, min(length, 64_000))) if length else b"{}"
+                # Scores ingest is intentionally open (CORS apps) — tiny payloads only
+                max_len = 8_000 if path == "/api/scores" else 64_000
+                raw = self.rfile.read(max(0, min(length, max_len))) if length else b"{}"
                 try:
                     data = json.loads(raw.decode("utf-8") or "{}")
                 except Exception:
                     data = {}
+
+                if path == "/api/scores":
+                    try:
+                        if server.on_score:
+                            payload = server.on_score(data if isinstance(data, dict) else {})
+                        else:
+                            from jarvis.core import app_scores
+
+                            payload = app_scores.ingest(
+                                data if isinstance(data, dict) else {}
+                            )
+                        if not isinstance(payload, dict):
+                            payload = {"ok": True, "reply": str(payload)}
+                        self._json(200, payload)
+                    except Exception as e:
+                        self._json(500, {"ok": False, "error": str(e)})
+                    return
+
+                if not self._auth_ok():
+                    self._json(401, {"ok": False, "error": "unauthorized"})
+                    return
 
                 if path == "/api/handoff":
                     try:

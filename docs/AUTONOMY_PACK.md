@@ -20,9 +20,12 @@ Crash runner also calls `scripts/crash_snapshot.py`.
 Manual: `consolidate memory`
 
 ## Scaffold
-- `scaffold react`
+- `scaffold react` → **Pulse Arena** (search, power meters, score sync, Vercel/Netlify configs)
 - `scaffold python named mytool`
-- `scaffold html`
+- `scaffold html` → static Pulse board with local + Jarvis scores
+- `publish app` → production `npm run build` + live preview on `:4173`
+- `app scores` / `scoreboard` → Jarvis leaderboard (`jarvis/data/app_scores.json`)
+- Apps POST telemetry to companion `POST /api/scores` (override with `VITE_JARVIS_SCORE_URL`)
 Projects land in `~/jarvis-projects` (or `scaffold_root`).
 
 ## Background research

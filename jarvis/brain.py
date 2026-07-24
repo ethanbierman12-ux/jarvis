@@ -43,6 +43,7 @@ from jarvis.core.macro_gateway import MacroGateway
 from jarvis.core.doorbell_bridge import DoorbellBridge
 from jarvis.core.healer import PcHealer
 from jarvis.core.scaffolder import ProjectScaffolder
+from jarvis.core import app_scores
 from jarvis.core.memory_consolidate import MemoryConsolidator
 from jarvis.core.clipboard_insight import ClipboardInsight
 from jarvis.core.iot_bridge import IoTBridge
@@ -1892,6 +1893,9 @@ class Brain:
             port=port,
             on_status=_status,
             on_handoff=self._companion_handoff,
+            on_score=lambda data: app_scores.ingest(
+                data if isinstance(data, dict) else {}
+            ),
         )
         self.companion.start()
 
@@ -3409,6 +3413,30 @@ class Brain:
             return self._flavor("ok", self._scaffold_with_preview(kind, name))
         if re.search(r"\bscaffold status\b", t) and getattr(self, "scaffolder", None):
             return self._flavor("ok", self.scaffolder.status())
+
+        # Publish scaffolded React app (production build + preview)
+        m = re.search(
+            r"\b(?:publish|ship|deploy)\s+(?:the\s+)?(?:scaffold(?:ed)?\s+)?(?:react\s+)?(?:app|project|site|hub)\b"
+            r"(?:\s+(?:named|called)\s+(\S+))?",
+            t,
+        )
+        if m and getattr(self, "scaffolder", None):
+            name = (m.group(1) or "").strip()
+            return self._flavor("ok", self.scaffolder.publish(name))
+        if re.search(r"^\s*(publish|ship)\s+(app|it|this)\s*$", t) and getattr(
+            self, "scaffolder", None
+        ):
+            return self._flavor("ok", self.scaffolder.publish())
+
+        # App scoreboard
+        if re.search(
+            r"\b(app scores?|scoreboard|leaderboard|pulse scores?|how('?s| is) (my |the )?app(s)? (doing|scoring))\b",
+            t,
+        ):
+            return self._flavor("ok", app_scores.summary())
+        m = re.search(r"\b(?:scores? for|app score)\s+(.+)$", t)
+        if m:
+            return self._flavor("ok", app_scores.app_detail(m.group(1).strip(" .,!?")))
 
         # Background web research (explicit only)
         m = re.search(r"\bbackground research\s+(.+)$", t)

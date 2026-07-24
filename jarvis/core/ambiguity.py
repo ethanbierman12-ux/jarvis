@@ -64,8 +64,15 @@ _RULES: list[tuple[re.Pattern[str], ClarifyPrompt]] = [
         ClarifyPrompt(
             title="Deploy where?",
             detail="Choose a deploy target.",
-            options=["Git commit", "Git commit and push", "Safety snapshot", "Cancel"],
+            options=[
+                "Publish scaffold app",
+                "Git commit",
+                "Git commit and push",
+                "Safety snapshot",
+                "Cancel",
+            ],
             rewrite={
+                "Publish scaffold app": "publish app",
                 "Git commit": "auto commit changes",
                 "Git commit and push": "auto commit and push",
                 "Safety snapshot": "safety snapshot",
