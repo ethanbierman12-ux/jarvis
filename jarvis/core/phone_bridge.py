@@ -57,6 +57,10 @@ class PhoneBridge:
             return ""
         return f"{self.server}/{self.topic}"
 
+    def ping(self, message: str, *, title: str = "JARVIS") -> str:
+        """High-priority alert alias used by security / doorbell paths."""
+        return self.notify(message, title=title, priority=5)
+
     def notify(self, message: str, *, title: str = "JARVIS", priority: int = 3) -> str:
         msg = (message or "").strip()
         if not msg:

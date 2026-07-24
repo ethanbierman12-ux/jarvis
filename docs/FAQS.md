@@ -17,10 +17,13 @@ HUD shows INITIATING SYSTEM → loading % → boot sound → main HUD.
 
 ---
 
-## Voice / F5 / hotkeys
+## Voice / F3 / hotkeys
 
 **How do I wake or soft-reload?**  
-**F5** via `install_f5_wake.bat` / `run.bat wake`: launches when closed; soft-reloads when open. HUD-focused F5 also reloads if the wake agent is not armed.
+**Double-tap F3** via `install_f5_wake.bat` / `run.bat wake`: launches when closed; soft-reloads when open. A single F3 only focuses an already-open HUD (stops bed/laptop accidental launches). Crash auto-recover is off unless `JARVIS_RECOVER_CRASH=1`.
+
+**Why does Jarvis start on his own?**  
+Usually an accidental F3 (laptop lid / bed) or an old crash-recovery loop. Fix: wake agent requires double-tap F3; watchdog no longer relaunches after crashes by default. Kill leftover `runner.py` / `main.py` if needed, then `python restart_wake.py`.
 
 **Why does Jarvis wake / talk on his own?**  
 Voice now requires the wake word (**Jarvis**) unless you are in the short “armed” window after he says “Yes?”. Ambient TV/chat is ignored. Say **wake word only** (default) or **always listen** to toggle. Also try **suggestions off** if tips feel like random speech.

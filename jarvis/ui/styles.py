@@ -171,10 +171,8 @@ def stylesheet(theme: Theme, mood: str = "clear") -> str:
     QScrollArea > QWidget {{
         background: transparent;
     }}
-    QScrollArea > QWidget > QWidget {{
-        background-color: {p["panel"]};
-        border-radius: 10px;
-    }}
+    /* Do NOT style QScrollArea > QWidget > QWidget globally —
+       that painted opaque panels through sibling widgets. */
     QFrame#KpiCard {{
         background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
             stop:0 rgba(0, 28, 48, 170), stop:1 rgba(0, 10, 22, 200));
@@ -310,11 +308,12 @@ def stylesheet(theme: Theme, mood: str = "clear") -> str:
         border-radius: 4px;
         color: {p["dim"]};
         font-family: {UI_MONO};
-        font-size: 9px;
+        font-size: 8px;
         font-weight: 700;
         letter-spacing: 1px;
-        padding: 8px 4px;
-        min-height: 40px;
+        padding: 4px 2px;
+        min-height: 32px;
+        max-height: 36px;
     }}
     QPushButton#QuickToggle:hover {{
         border-color: {accent};

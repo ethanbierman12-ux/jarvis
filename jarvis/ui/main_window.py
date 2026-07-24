@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt6.QtGui import QColor, QPalette, QShortcut, QKeySequence
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QTextEdit,
-    QGraphicsOpacityEffect, QLineEdit, QStackedWidget, QFrame,
+    QGraphicsOpacityEffect, QLineEdit, QStackedWidget, QFrame, QScrollArea,
+    QSizePolicy,
 )
 
 from jarvis.config import Settings
@@ -98,7 +100,8 @@ class MainWindow(QMainWindow):
         self.start_btn = CmdButton("START", "start", kind="start")
         self.start_btn.setMinimumWidth(108)
         self.start_btn.setToolTip(
-            "Engage systems (voice: start) — F3 reloads core / wake agent launches when closed"
+            "Engage systems (voice: start) — double-tap F3 to launch/reload "
+            "(single F3 only focuses when open)"
         )
         self.start_btn.fired.connect(lambda _: self._on_start_clicked())
         header.addWidget(self.start_btn)
@@ -123,9 +126,13 @@ class MainWindow(QMainWindow):
 
         # Body
         body = QHBoxLayout()
-        body.setSpacing(16)
+        body.setSpacing(12)
 
-        left = QVBoxLayout()
+        # Left rail — scroll so dense widgets never crush / paint through each other
+        left_inner = QWidget()
+        left_inner.setObjectName("LeftRailInner")
+        left = QVBoxLayout(left_inner)
+        left.setContentsMargins(0, 0, 2, 0)
         left.setSpacing(8)
         self.clock = ClockPanel(
             timezone=getattr(settings, "timezone", "America/New_York")
@@ -142,13 +149,23 @@ class MainWindow(QMainWindow):
         self.media.action.connect(self._media_action)
         left.addWidget(self.clock, 0)
         left.addWidget(self.toggles, 0)
-        left.addWidget(self.controls, 1)  # stretch — scrollable, not squashed
+        left.addWidget(self.controls, 0)
         left.addWidget(self.media, 0)
-        left_w = QWidget()
-        left_w.setLayout(left)
-        left_w.setFixedWidth(300)
-        left_w.setMinimumWidth(280)
-        body.addWidget(left_w)
+        left.addStretch(1)
+
+        left_scroll = QScrollArea()
+        left_scroll.setObjectName("LeftRail")
+        left_scroll.setWidget(left_inner)
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        left_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        left_scroll.setFixedWidth(300)
+        left_scroll.setMinimumWidth(280)
+        left_scroll.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        body.addWidget(left_scroll)
+        self._left_rail = left_scroll
+        self._left_inner = left_inner
 
         center = QVBoxLayout()
         center.setSpacing(8)
@@ -169,7 +186,7 @@ class MainWindow(QMainWindow):
         self.log = QTextEdit()
         self.log.setObjectName("Log")
         self.log.setReadOnly(True)
-        self.log.setFixedHeight(140)
+        self.log.setFixedHeight(110)
         self.log.setPlaceholderText("MISSION LOG  ·  terminal feed")
         try:
             # Cap growth — unbounded append() was a long-session lag source
@@ -397,9 +414,18 @@ class MainWindow(QMainWindow):
             self._close_map_mode()
 
     def _on_wake_reload(self) -> None:
-        """F3 → same path as voice 'reload core' (exit 0 for watchdog relaunch)."""
+        """HUD F3 — double-tap to soft-reload (matches global wake agent)."""
         if getattr(self, "_reload_armed", False):
             return
+        import time as _time
+
+        now = _time.monotonic()
+        armed_until = float(getattr(self, "_f3_arm_until", 0.0) or 0.0)
+        if now > armed_until:
+            self._f3_arm_until = now + 1.2
+            self.append_log("CORE › F3 armed — tap again to reload")
+            return
+        self._f3_arm_until = 0.0
         self._reload_armed = True
         self.append_log("CORE › F3 reload")
         self._request_app_exit(0)
@@ -674,24 +700,37 @@ class MainWindow(QMainWindow):
         self.hitl_gate.offer(payload)
         self.hitl_gate.move(
             max(20, (self.width() - self.hitl_gate.width()) // 2),
-            max(40, self.height() // 5),
+            max(48, self.height() // 6),
         )
         self.hitl_gate.raise_()
-        self.append_log(f"HITL › {payload.get('title') or 'permission'}")
+        self.hitl_gate.activateWindow()
+        title = payload.get("title") or "permission"
+        self.append_log(f"HITL › {title}")
+        for i, opt in enumerate(payload.get("options") or [], start=1):
+            self.append_log(f"  {i}. {opt}")
         try:
             self._reactor_activity("fetch")
         except Exception:
             pass
+        self.status.setText("● CHOOSE OPTION")
 
     def _on_hitl_decided(self, request_id: str, approve: bool, answer: str) -> None:
         if not self.brain:
             return
+        # Async multi-choice clarify chips
+        if getattr(self.brain, "_pending_clarify", None) and (
+            answer or not approve
+        ):
+            msg = self.brain.resolve_clarify_choice(answer if approve else "cancel")
+            self.append_log(f"CLARIFY › {msg or 'cancelled'}")
+            return
         msg = self.brain.resolve_hitl(request_id, approve=approve, answer=answer)
         self.append_log(f"HITL › {msg}")
-        try:
-            self.brain.say(msg)
-        except Exception:
-            pass
+        if not answer:
+            try:
+                self.brain.say(msg)
+            except Exception:
+                pass
 
     def _accept_quick_action(self) -> None:
         if self.brain:
@@ -845,7 +884,7 @@ class MainWindow(QMainWindow):
             "mute": "mute",
         }
         self.append_log(f"PLAYER › {action}")
-        self.brain.handle_utterance(mapping.get(action, action))
+        self._dispatch_brain(mapping.get(action, action))
 
     def _do_scan(self, ocr: bool = True) -> None:
         if not self.brain:
@@ -1072,18 +1111,17 @@ class MainWindow(QMainWindow):
                 if not hasattr(self, "_full_geometry"):
                     self._full_geometry = self.geometry()
                 self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-                # Hide dense columns — keep reactor + log + wave + talk
+                rail = getattr(self, "_left_rail", None)
+                if rail:
+                    rail.hide()
+                # Hide right column
                 if getattr(self, "_hud", None):
                     lay = self._hud.layout()
                     if lay and lay.count() >= 3:
-                        left = lay.itemAt(0).widget()
                         right = lay.itemAt(2).widget()
-                        if left:
-                            left.hide()
                         if right:
                             right.hide()
                 self.resize(520, 640)
-                # Park bottom-right
                 screen = self.screen()
                 if screen:
                     geo = screen.availableGeometry()
@@ -1092,13 +1130,13 @@ class MainWindow(QMainWindow):
                 self.append_log("HUD › mini mode — corner widget")
             else:
                 self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+                rail = getattr(self, "_left_rail", None)
+                if rail:
+                    rail.show()
                 if getattr(self, "_hud", None):
                     lay = self._hud.layout()
                     if lay and lay.count() >= 3:
-                        left = lay.itemAt(0).widget()
                         right = lay.itemAt(2).widget()
-                        if left:
-                            left.show()
                         if right:
                             right.show()
                 if hasattr(self, "_full_geometry") and self._full_geometry:
@@ -1465,6 +1503,15 @@ class MainWindow(QMainWindow):
             self.status.setText("● AGENTIC CODING")
             self._reactor_activity("build")
             return
+        url = str(payload.get("url") or "").strip()
+        brand = str(payload.get("brand") or "")
+        prompt = str(payload.get("prompt") or "")
+        if url:
+            self.site_preview.show_url(url, brand=brand or "scaffold", prompt=prompt or url)
+            self.append_log(f"SITE › preview tab — {url}")
+            self.status.setText("● PREVIEW")
+            self._reactor_activity("idle")
+            return
         path = payload.get("path") or ""
         if not path:
             self.append_log("SITE › build finished but no path")
@@ -1474,10 +1521,10 @@ class MainWindow(QMainWindow):
         p = Path(path)
         self.site_preview.show_site(
             p,
-            brand=str(payload.get("brand") or ""),
-            prompt=str(payload.get("prompt") or ""),
+            brand=brand,
+            prompt=prompt,
         )
-        self.append_log(f"SITE › live preview — {payload.get('brand') or p.parent.name}")
+        self.append_log(f"SITE › live preview — {brand or p.parent.name}")
         self.status.setText("● SITE READY")
         self._reactor_activity("idle")
 
@@ -1874,9 +1921,7 @@ class MainWindow(QMainWindow):
         if self.brain:
             QTimer.singleShot(
                 0,
-                lambda: self.brain.handle_utterance(
-                    f"build a website for number {index}"
-                ),
+                lambda: self._dispatch_brain(f"build a website for number {index}"),
             )
 
     def _close_map_mode(self) -> None:
@@ -2057,9 +2102,26 @@ class MainWindow(QMainWindow):
             return
 
         if self.brain:
-            self.brain.handle_utterance(text)
+            # Never run the brain on the Qt GUI thread — HITL / network / healer
+            # waits would freeze the HUD ("Not Responding").
+            threading.Thread(
+                target=self.brain.handle_utterance,
+                args=(text,),
+                daemon=True,
+                name="jarvis-hud-cmd",
+            ).start()
         else:
             self.append_log("CMD › brain not ready")
+
+    def _dispatch_brain(self, text: str) -> None:
+        if not self.brain or not text:
+            return
+        threading.Thread(
+            target=self.brain.handle_utterance,
+            args=(text,),
+            daemon=True,
+            name="jarvis-hud-cmd",
+        ).start()
 
     def _launch_agentic_site(self) -> None:
         """Open the agentic workbench immediately, then run the site agent."""
@@ -2083,7 +2145,7 @@ class MainWindow(QMainWindow):
             self.append_log("SITE › brain not ready")
             return
 
-        # Kick the autonomous agent directly (don't rely on voice routing)
+        # Kick the autonomous agent on a worker thread (never freeze HUD)
         def _go() -> None:
             try:
                 reply = self.brain._run_site_build(brief="")
@@ -2092,11 +2154,11 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 self.append_log(f"SITE › agent failed: {e}")
                 try:
-                    self.brain.handle_utterance("build a site")
+                    self._dispatch_brain("build a site")
                 except Exception:
                     pass
 
-        QTimer.singleShot(50, _go)
+        threading.Thread(target=_go, daemon=True, name="jarvis-site-build").start()
 
     def _launch_away_agent(self) -> None:
         """Open away theater immediately and run the live away agent."""
@@ -2120,11 +2182,11 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 self.append_log(f"AWAY › agent failed: {e}")
                 try:
-                    self.brain.handle_utterance("away mode")
+                    self._dispatch_brain("away mode")
                 except Exception:
                     pass
 
-        QTimer.singleShot(50, _go)
+        threading.Thread(target=_go, daemon=True, name="jarvis-away-agent").start()
 
     def _toggle_away(self, payload) -> None:
         if payload is False or payload == 0 or payload == "close":

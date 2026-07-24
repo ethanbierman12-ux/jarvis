@@ -112,3 +112,51 @@ class GitHubAutoCommitter:
             else:
                 result += " Pushed to GitHub."
         return result
+
+    def snapshot(self, label: str = "jarvis-safe") -> str:
+        """Lightweight safety commit for revert-on-crash (no push)."""
+        code, out, err = self._git("status", "--porcelain")
+        if code != 0:
+            return f"Snapshot failed: {err or out}"
+        if not out.strip():
+            # Still drop a tag on HEAD if possible
+            return self._tag(label, "clean tree — tagged HEAD only")
+        # Bypass cooldown for safety snapshots
+        self._last_run = 0.0
+        msg = self.commit_all(hint=f"safety: {label}", push=False)
+        if msg.startswith("Committed") or "Nothing to commit" in msg:
+            return self._tag(label, msg)
+        return msg
+
+    def _tag(self, label: str, note: str) -> str:
+        safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in (label or "safe"))[:40]
+        tag = f"jarvis-safe-{safe}-{int(time.time())}"
+        code, out, err = self._git("tag", tag)
+        if code != 0:
+            return f"{note} (tag failed: {err or out})"
+        # Remember last tag for revert
+        marker = self.repo / "jarvis" / "data" / "last_git_snapshot.txt"
+        try:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text(tag + "\n", encoding="utf-8")
+        except Exception:
+            pass
+        return f"{note} · snapshot tag {tag}"
+
+    def revert_last_snapshot(self) -> str:
+        marker = self.repo / "jarvis" / "data" / "last_git_snapshot.txt"
+        if not marker.exists():
+            return "No safety snapshot on file."
+        tag = marker.read_text(encoding="utf-8").strip().splitlines()[0].strip()
+        if not tag:
+            return "Snapshot tag empty."
+        code, out, err = self._git("reset", "--hard", tag)
+        if code != 0:
+            return f"Revert to {tag} failed: {err or out}"
+        return f"Reverted working tree to snapshot {tag}."
+
+    def last_snapshot(self) -> str:
+        marker = self.repo / "jarvis" / "data" / "last_git_snapshot.txt"
+        if not marker.exists():
+            return "No safety snapshot yet."
+        return f"Last snapshot: {marker.read_text(encoding='utf-8').strip()}"

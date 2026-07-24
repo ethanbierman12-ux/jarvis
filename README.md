@@ -18,7 +18,7 @@ Starts the **watchdog** (`runner.py`), which keeps Jarvis alive:
 
 Voice: **reload core** / **reboot jarvis** → reload · **go offline** / **power down** → stop · **Ctrl+Alt+K** → emergency kill (crash-recover).
 
-**F3** (global via `install_f5_wake.bat` / `run.bat wake`): launches Jarvis when closed; soft-reloads core when open. HUD-focused F3 does the same reload when the wake agent is not armed.
+**Double-tap F3** (global via `install_f5_wake.bat` / `run.bat wake`): launches Jarvis when closed; soft-reloads when open. A single F3 only focuses an already-open HUD (prevents bed/laptop accidental launches). Crash auto-recover is off by default.
 
 Boot shows **INITIATING SYSTEM 1…** with loading % → 100 and boot sound, then blooms into the main HUD.
 

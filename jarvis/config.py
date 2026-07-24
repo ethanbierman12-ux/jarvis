@@ -120,7 +120,15 @@ class Settings:
     mic_reject_loopback: bool = True
     # Stream Deck / silent macro HTTP pad
     macro_gateway_enabled: bool = True
+    macro_gateway_host: str = "0.0.0.0"  # LAN so Home Assistant can hit doorbell macros
     macro_gateway_port: int = 8765
+    macro_gateway_token: str = ""  # optional shared secret (?token= / JSON token)
+    # Ring / doorbell alerts
+    doorbell_cooldown_sec: float = 45.0
+    # Alexa/IFTTT → ntfy → Jarvis (no open ports / no Home Assistant)
+    doorbell_ntfy_enabled: bool = True
+    doorbell_ntfy_topic: str = ""  # auto-generated private topic
+    doorbell_ntfy_server: str = "https://ntfy.sh"
     # Home Assistant
     ha_enabled: bool = False
     ha_url: str = "http://127.0.0.1:8123"
@@ -162,6 +170,13 @@ class Settings:
     computer_use_openai_model: str = "gpt-4.1"
     anthropic_api_key: str = ""  # vaulted
     openai_api_key: str = ""  # vaulted
+    whisper_mode: bool = False  # soft TTS when you whisper / late night
+    whisper_volume: str = "-20%"
+    healer_enabled: bool = True
+    clipboard_insight_enabled: bool = True
+    ambiguity_clarify: bool = True
+    memory_consolidate_enabled: bool = True
+    scaffold_root: str = ""  # default ~/jarvis-projects
     # iPhone / phone push (ntfy App Store app)
     phone_enabled: bool = True
     phone_ntfy_topic: str = ""  # auto-generated on first link

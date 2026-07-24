@@ -20,7 +20,7 @@ class StatGauge(QWidget):
         parent=None,
     ) -> None:
         super().__init__(parent)
-        self.setFixedSize(92, 92)
+        self.setFixedSize(76, 76)
         self._label = (label or "CPU").upper()
         self._value = 0.0
         self._accent = QColor(accent)

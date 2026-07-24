@@ -12,7 +12,8 @@ class _ToggleCell(QPushButton):
         self.key = key
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumSize(64, 44)
+        self.setMinimumSize(0, 34)
+        self.setMaximumHeight(36)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setObjectName("QuickToggle")
         self._refresh()
@@ -33,16 +34,20 @@ class QuickToggleGrid(QFrame):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("GlassPanel")
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setMaximumHeight(128)
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(10, 8, 10, 8)
-        lay.setSpacing(6)
+        lay.setContentsMargins(8, 6, 8, 6)
+        lay.setSpacing(4)
 
         head = QLabel("QUICK  ·  RELAYS")
         head.setObjectName("SectionTitle")
         lay.addWidget(head)
 
         grid = QGridLayout()
-        grid.setSpacing(6)
+        grid.setSpacing(4)
+        grid.setContentsMargins(0, 0, 0, 0)
         self._cells: dict[str, _ToggleCell] = {}
         specs = (
             ("lamp", "LAMP"),
@@ -58,11 +63,6 @@ class QuickToggleGrid(QFrame):
             self._cells[key] = cell
             grid.addWidget(cell, i // 3, i % 3)
         lay.addLayout(grid)
-
-        tip = QLabel("tap · lamp · optics · focus · hud")
-        tip.setObjectName("Dim")
-        tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lay.addWidget(tip)
 
     def set_state(self, key: str, on: bool) -> None:
         cell = self._cells.get(key)

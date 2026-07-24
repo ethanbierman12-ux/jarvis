@@ -11,9 +11,10 @@ from urllib.parse import parse_qs, urlparse
 
 class MacroGateway:
     """
-    Local HTTP pad for Stream Deck / Elgato / curl.
+    Local HTTP pad for Stream Deck / Elgato / Home Assistant / curl.
     GET  http://127.0.0.1:8765/macro?cmd=stop
-    POST http://127.0.0.1:8765/macro  {"cmd":"lock"}
+    POST http://127.0.0.1:8765/macro  {"cmd":"doorbell"}
+    Optional: ?token=... or JSON "token" when macro_gateway_token is set.
     """
 
     def __init__(
@@ -22,10 +23,12 @@ class MacroGateway:
         *,
         host: str = "127.0.0.1",
         port: int = 8765,
+        token: str = "",
     ) -> None:
         self.on_command = on_command
-        self.host = host
+        self.host = (host or "127.0.0.1").strip() or "127.0.0.1"
         self.port = int(port)
+        self.token = (token or "").strip()
         self._httpd: HTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -46,6 +49,11 @@ class MacroGateway:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def _token_ok(self, provided: str) -> bool:
+                if not gateway.token:
+                    return True
+                return (provided or "").strip() == gateway.token
+
             def do_GET(self) -> None:  # noqa: N802
                 parsed = urlparse(self.path)
                 if parsed.path in ("/", "/health"):
@@ -55,6 +63,9 @@ class MacroGateway:
                     self._reply(404, {"ok": False, "error": "not found"})
                     return
                 qs = parse_qs(parsed.query)
+                if not self._token_ok((qs.get("token") or [""])[0]):
+                    self._reply(401, {"ok": False, "error": "unauthorized"})
+                    return
                 cmd = (qs.get("cmd") or qs.get("c") or [""])[0].strip()
                 if not cmd:
                     self._reply(
@@ -68,6 +79,8 @@ class MacroGateway:
                                 "camera",
                                 "mute",
                                 "brief",
+                                "doorbell",
+                                "doorbell_motion",
                                 "go offline",
                             ],
                         },
@@ -86,7 +99,23 @@ class MacroGateway:
                     data = json.loads(raw.decode("utf-8") or "{}")
                 except Exception:
                     data = {}
-                cmd = str(data.get("cmd") or data.get("command") or "").strip()
+                parsed = urlparse(self.path)
+                qs = parse_qs(parsed.query)
+                tok = str(
+                    data.get("token")
+                    or (qs.get("token") or [""])[0]
+                    or self.headers.get("X-Jarvis-Token")
+                    or ""
+                )
+                if not self._token_ok(tok):
+                    self._reply(401, {"ok": False, "error": "unauthorized"})
+                    return
+                if parsed.path not in ("/macro", "/"):
+                    self._reply(404, {"ok": False, "error": "not found"})
+                    return
+                cmd = str(
+                    data.get("cmd") or data.get("command") or data.get("event") or ""
+                ).strip()
                 if not cmd:
                     self._reply(400, {"ok": False, "error": "missing cmd"})
                     return
@@ -107,7 +136,7 @@ class MacroGateway:
             name="jarvis-macro",
         )
         self._thread.start()
-        print(f"[macro] Stream Deck gateway on http://{self.host}:{self.port}/macro")
+        print(f"[macro] gateway on http://{self.host}:{self.port}/macro")
 
     def stop(self) -> None:
         if self._httpd:

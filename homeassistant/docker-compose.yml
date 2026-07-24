@@ -1,0 +1,14 @@
+# Home Assistant Container (Docker Desktop on Windows)
+# Data lives in ./config — do not commit secrets from there.
+
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    volumes:
+      - ./config:/config
+    environment:
+      - TZ=America/New_York
+    restart: unless-stopped
+    ports:
+      - "8123:8123"

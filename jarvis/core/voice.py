@@ -70,6 +70,8 @@ class VoiceEngine:
         self.rate = rate or "-8%"
         self.pitch = pitch or "-4Hz"
         self.volume = volume or "+0%"
+        self._whisper_mode = False
+        self._whisper_volume = "-20%"
         self.noise_reduce = noise_reduce
         self.mic_prefer = mic_prefer
         self.allow_virtual_mic = allow_virtual_mic
@@ -162,6 +164,11 @@ class VoiceEngine:
             self.say_wait(text, polish=polish)
         finally:
             self.set_barge_armed(was)
+
+    def set_whisper_mode(self, on: bool, volume: str = "-20%") -> None:
+        """Soft TTS for late-night / whispered replies."""
+        self._whisper_mode = bool(on)
+        self._whisper_volume = (volume or "-20%").strip() or "-20%"
 
     def barge_in(self) -> None:
         """Interrupt Jarvis mid-sentence — stop TTS and reopen the mic."""
@@ -368,7 +375,11 @@ class VoiceEngine:
                 self.voice,
                 rate=self.rate,
                 pitch=self.pitch,
-                volume=self.volume,
+                volume=(
+                    self._whisper_volume
+                    if getattr(self, "_whisper_mode", False)
+                    else self.volume
+                ),
             )
             await communicate.save(str(out))
 

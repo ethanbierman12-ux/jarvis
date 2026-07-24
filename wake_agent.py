@@ -1,9 +1,10 @@
 """
-Always-on F3 wake agent — the global START button.
+Always-on F3 wake agent — the global START button (double-tap).
 
-Press F3 anywhere on Windows:
+Press F3 twice within 1.2s anywhere on Windows:
   - If Jarvis is not running → launch it
   - If Jarvis is already running → soft-reload core (exit 0) and ensure relaunch
+Single F3: focus only when open; when closed, arms then expires (no launch).
 
 Uses Win32 RegisterHotKey (reliable) with keyboard-lib fallback.
 Install: install_f5_wake.bat
@@ -26,7 +27,12 @@ PY = Path(r"C:\Users\ethan\AppData\Local\Programs\Python\Python313\python.exe")
 PYW = Path(r"C:\Users\ethan\AppData\Local\Programs\Python\Python313\pythonw.exe")
 
 _last_wake = 0.0
+_arm_until = 0.0  # first F3 arms; second within window fires
 HOTKEY_ID = 0x4A46  # "JF"
+# Accidental bed/laptop F3 presses — require a deliberate double-tap
+DOUBLE_TAP_SEC = 1.2
+DEBOUNCE_SEC = 0.25
+
 
 
 def _log(msg: str) -> None:
@@ -257,19 +263,31 @@ def _ensure_relaunch_after_exit(*, had_watchdog: bool) -> None:
 
 
 def _on_wake() -> None:
-    global _last_wake
+    """F3 wake — deliberate double-tap only (stops bed/laptop ghosts)."""
+    global _last_wake, _arm_until
     try:
         now = time.time()
-        if now - _last_wake < 0.7:
+        if now - _last_wake < DEBOUNCE_SEC:
             return
         _last_wake = now
-        _log("F3 pressed")
+
+        # First tap: arm. Second tap within DOUBLE_TAP_SEC: act.
+        if now > _arm_until:
+            _arm_until = now + DOUBLE_TAP_SEC
+            if _jarvis_running():
+                _focus()
+                _log("F3 armed — press F3 again to reload (single tap only focuses)")
+            else:
+                _log("F3 armed — press F3 again within 1.2s to launch")
+            return
+
+        _arm_until = 0.0
+        _log("F3 double-tap confirmed")
 
         if _jarvis_running():
             had_watchdog = _watchdog_running()
             _focus()
             _request_hud_reload()
-            # Wait for soft exit (HUD polls reload.request)
             soft_deadline = time.time() + 5.0
             while time.time() < soft_deadline and _jarvis_running():
                 time.sleep(0.2)

@@ -16,11 +16,13 @@ class MediaPanel(QFrame):
     def __init__(self, parent=None, playlist_id: str = "") -> None:
         super().__init__(parent)
         self.setObjectName("GlassPanel")
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._playlist_id = (playlist_id or DEFAULT_PLAYLIST_ID).strip() or DEFAULT_PLAYLIST_ID
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 12, 14, 12)
-        lay.setSpacing(8)
+        lay.setContentsMargins(10, 8, 10, 8)
+        lay.setSpacing(6)
 
         head = QHBoxLayout()
         title = QLabel("PLAYER")
@@ -41,8 +43,8 @@ class MediaPanel(QFrame):
 
         # Embed host — compact so the left column stays clean
         self._host = QWidget()
-        self._host.setMinimumHeight(120)
-        self._host.setMaximumHeight(148)
+        self._host.setMinimumHeight(96)
+        self._host.setMaximumHeight(112)
         self._host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         host_lay = QVBoxLayout(self._host)
         host_lay.setContentsMargins(0, 0, 0, 0)

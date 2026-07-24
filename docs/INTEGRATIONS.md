@@ -25,12 +25,60 @@ Settings: `macro_gateway_enabled`, `macro_gateway_port` (default `8765`).
 ```json
 {
   "ha_enabled": true,
-  "ha_url": "http://127.0.0.1:8123",
+  "ha_url": "http://homeassistant.local:8123",
   "ha_token": "YOUR_TOKEN"
 }
 ```
 
 Jarvis maps reactor activity (build / fetch / brief / …) to those scenes. Voice: **"HA status"**, **"HA scene jarvis_build"**.
+
+If `homeassistant.local` does not resolve on Windows, use the HA box LAN IP (`http://192.168.x.x:8123`).
+
+## Ring doorbell (best simple path: Alexa → IFTTT → ntfy → Jarvis)
+
+No Home Assistant and no open ports. IFTTT posts to a private **ntfy** topic; Jarvis listens and announces.
+
+### Your webhook URL
+
+Jarvis creates a private topic on boot. Say **"doorbell setup"** (or check `doorbell_ntfy_topic` in settings). Example shape:
+
+`https://ntfy.sh/jarvis-door-xxxxxxxx`
+
+### IFTTT applet (click-by-click)
+
+1. Create a free account at [ifttt.com](https://ifttt.com).
+2. Enable the **Webhooks** service (search “Webhooks” → Connect).
+3. **Create** → **If This** — pick one:
+   - **Amazon Alexa** → connect Alexa → choose a trigger you can fire from a Routine, **or**
+   - **Ring** → “New ding detected” / doorbell pressed (if Ring still offers it on IFTTT).
+4. **Then That** → **Webhooks** → **Make a web request**:
+   - **URL:** your `https://ntfy.sh/jarvis-door-…` URL  
+   - **Method:** `POST`  
+   - **Content Type:** `text/plain`  
+   - **Body:** `ding` (use `motion` for motion alerts)
+5. Save the applet.
+
+### Alexa Routine (if IFTTT trigger is Alexa)
+
+1. Alexa app → **More** → **Routines** → **+**
+2. **When** → **Device** / **Doorbell** → Ring doorbell pressed (or motion).
+3. **Add action** → **IFTTT** → select the applet you just made  
+   (IFTTT Alexa skill must be enabled in Alexa).
+4. Save.
+
+### Test
+
+1. Jarvis running (double-tap F3 if needed).
+2. Say **"test doorbell"** — he should announce the door.
+3. Or from any browser/PC:  
+   `curl -d "ding" https://ntfy.sh/YOUR_TOPIC`
+4. Then press the real doorbell.
+
+Cooldown default: 45s between announces (`doorbell_cooldown_sec`).
+
+## Ring via Home Assistant (optional / advanced)
+
+Alexa can keep Ring for Echo announcements. For HA, see older notes / `docs/ha_ring_jarvis.yaml` if you install HA later.
 
 ## iPhone 14 link (ntfy)
 

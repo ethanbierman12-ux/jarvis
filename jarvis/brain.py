@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import json
 import threading
 import time
 import webbrowser
@@ -39,6 +40,13 @@ from jarvis.core.memory import VectorMemory
 from jarvis.core.audio_devices import AudioRouter
 from jarvis.core.home_assistant import HomeAssistant
 from jarvis.core.macro_gateway import MacroGateway
+from jarvis.core.doorbell_bridge import DoorbellBridge
+from jarvis.core.healer import PcHealer
+from jarvis.core.scaffolder import ProjectScaffolder
+from jarvis.core.memory_consolidate import MemoryConsolidator
+from jarvis.core.clipboard_insight import ClipboardInsight
+from jarvis.core.iot_bridge import IoTBridge
+from jarvis.core.ambiguity import classify_ambiguity, resolve_option
 from jarvis.core.companion_server import CompanionServer, make_token
 from jarvis.core.companion_pack import build_companion_setup_zip, companion_url
 from jarvis.core.task_queue import TaskQueue
@@ -234,6 +242,20 @@ class Brain:
             server=getattr(settings, "phone_ntfy_server", "") or "https://ntfy.sh",
             shortcuts_webhook=getattr(settings, "phone_shortcuts_webhook", "") or "",
             enabled=bool(getattr(settings, "phone_enabled", True)),
+        )
+        door_topic = (getattr(settings, "doorbell_ntfy_topic", "") or "").strip()
+        if not door_topic and bool(getattr(settings, "doorbell_ntfy_enabled", True)):
+            door_topic = DoorbellBridge.make_topic()
+            try:
+                self.settings.doorbell_ntfy_topic = door_topic
+                self.settings.save()
+            except Exception:
+                pass
+        self.doorbell = DoorbellBridge(
+            topic=door_topic,
+            server=getattr(settings, "doorbell_ntfy_server", "") or "https://ntfy.sh",
+            enabled=bool(getattr(settings, "doorbell_ntfy_enabled", True)),
+            on_event=self.handle_doorbell,
         )
         self.rlhf = RLHFEngine()
         self.n8n = N8nBridge(
@@ -514,20 +536,60 @@ class Brain:
             except Exception as e:
                 print(f"[autobug/audit] init: {e}")
             try:
+                self.healer = PcHealer()
+                self.scaffolder = ProjectScaffolder(
+                    getattr(settings, "scaffold_root", "") or None
+                )
+                self.memory_night = MemoryConsolidator(self.vstore)
+                self.iot = IoTBridge(
+                    on_event=lambda kind, data: self._on_iot_event(kind, data)
+                )
                 self.proactive = ProactiveAgent(
                     telemetry_fn=lambda: self.system.telemetry(),
                     on_say=lambda t: self.say(t),
                     on_alert=lambda t: self._emit("hud_alert", t),
+                    on_healer=lambda hog: self._on_healer_prompt(hog),
+                    on_writing_break=lambda: self._on_writing_break(),
                     mood=self.mood,
+                    healer=self.healer,
                 )
                 self.proactive.set_enabled(
                     bool(getattr(settings, "proactive_enabled", True))
                 )
+                if bool(getattr(settings, "clipboard_insight_enabled", True)):
+                    self.clip_insight = ClipboardInsight(
+                        on_error=lambda snip: self._on_clipboard_error(snip),
+                        enabled=True,
+                    )
+                    self.clip_insight.start()
+                else:
+                    self.clip_insight = None
             except Exception as e:
                 print(f"[proactive] init: {e}")
+                self.healer = None
+                self.scaffolder = None
+                self.memory_night = None
+                self.iot = None
+                self.clip_insight = None
+            try:
+                if bool(getattr(settings, "whisper_mode", False)) and getattr(
+                    self, "voice", None
+                ):
+                    self.voice.set_whisper_mode(
+                        True,
+                        volume=str(
+                            getattr(settings, "whisper_volume", "-20%") or "-20%"
+                        ),
+                    )
+            except Exception:
+                pass
             try:
                 self.registry.register("live_context", version="1.0", note="Date/weather ground truth")
                 self.registry.register("proactive", version="1.0", note="CPU/late/idle nudges")
+                self.registry.register("healer", version="1.0", note="CPU hog intervene")
+                self.registry.register("scaffolder", version="1.0", note="React/Python/HTML scaffolds")
+                self.registry.register("ambiguity", version="1.0", note="Multi-choice clarify")
+                self.registry.register("iot_bridge", version="1.0", note="Room/NFC/mirror hooks")
                 self.registry.register("github_autocommit", version="1.0", note="AI-ish commit+push")
                 self.registry.register("smart_calendar", version="1.0", note="Spoken schedule → ICS")
                 self.registry.register("security_gate", version="1.0", note="Face greet + intruder")
@@ -628,16 +690,27 @@ class Brain:
             threading.Timer(45.0, self._proactive_loop).start()
         except Exception:
             pass
-        # Silent Stream Deck / macro pad
+        # Silent Stream Deck / macro pad (LAN-open for Home Assistant Ring)
         if getattr(self.settings, "macro_gateway_enabled", True):
             try:
                 self.macro = MacroGateway(
                     self.handle_macro,
+                    host=str(
+                        getattr(self.settings, "macro_gateway_host", "0.0.0.0")
+                        or "0.0.0.0"
+                    ),
                     port=int(getattr(self.settings, "macro_gateway_port", 8765) or 8765),
+                    token=str(getattr(self.settings, "macro_gateway_token", "") or ""),
                 )
                 self.macro.start()
             except Exception as e:
                 print(f"[macro] {e}")
+        # Alexa / IFTTT doorbell via ntfy (no inbound ports)
+        try:
+            if getattr(self, "doorbell", None):
+                self.doorbell.start()
+        except Exception as e:
+            print(f"[doorbell] {e}")
         # iPhone companion PWA (Tailscale)
         if getattr(self.settings, "companion_enabled", True):
             try:
@@ -959,6 +1032,29 @@ class Brain:
 
     def _proactive_loop(self) -> None:
         try:
+            # Writing-session detect via active window title
+            if getattr(self, "proactive", None) and getattr(self, "screen", None):
+                try:
+                    title = (self.screen.active_window_title() or "").lower()
+                    writing = any(
+                        k in title
+                        for k in (
+                            "word",
+                            "docs",
+                            "notion",
+                            "obsidian",
+                            "notepad",
+                            "onenote",
+                            "google docs",
+                            "typora",
+                            "cursor",
+                            "visual studio code",
+                            "code.exe",
+                        )
+                    )
+                    self.proactive.note_writing(writing)
+                except Exception:
+                    pass
             if getattr(self, "proactive", None):
                 self.proactive.tick()
         except Exception as e:
@@ -973,7 +1069,119 @@ class Brain:
         except Exception:
             pass
         try:
+            if getattr(self, "memory_night", None) and bool(
+                getattr(self.settings, "memory_consolidate_enabled", True)
+            ):
+                msg = self.memory_night.maybe_nightly()
+                if msg:
+                    self._emit("hud_alert", "Memory consolidate")
+                    self._emit("heard", f"[memory] {msg}")
+        except Exception:
+            pass
+        try:
             threading.Timer(60.0, self._proactive_loop).start()
+        except Exception:
+            pass
+
+    def _on_healer_prompt(self, hog) -> None:
+        name = getattr(hog, "name", "process")
+        cpu = float(getattr(hog, "cpu", 0) or 0)
+        self._emit("hud_alert", f"HEALER · {name}")
+        if not getattr(self, "hitl", None):
+            self.say(
+                f"{name} is using {cpu:.0f} percent CPU. "
+                "Say healer kill or healer ignore."
+            )
+            return
+
+        def _ask() -> None:
+            try:
+                res = self.hitl.ask_clarify(
+                    title=f"{name} is freezing the system",
+                    detail=f"CPU {cpu:.0f}% · pid {getattr(hog, 'pid', '?')}",
+                    agent="healer",
+                    options=[
+                        f"Terminate {name}",
+                        "Leave it alone",
+                        "Show top processes",
+                    ],
+                )
+                ans = (res.answer or "").strip()
+                from jarvis.core.hitl import HitlDecision
+
+                if res.decision in (HitlDecision.DENIED, HitlDecision.TIMEOUT):
+                    self.healer.clear_pending()
+                    self.say("Leaving it alone.")
+                    return
+                if ans.startswith("Terminate") or "terminate" in ans.lower():
+                    msg = self.healer.kill_hog(hog)
+                    self.say(msg)
+                elif "Show" in ans or "top" in ans.lower():
+                    self.say(self.healer.status())
+                else:
+                    self.healer.clear_pending()
+                    self.say("Leaving it alone.")
+            except Exception as e:
+                print(f"[healer] hitl: {e}")
+
+        threading.Thread(target=_ask, daemon=True, name="jarvis-healer-hitl").start()
+        self.say(
+            f"Sir, {name} is using {cpu:.0f} percent CPU. "
+            "Choose on the HITL panel — terminate, leave it, or show processes."
+        )
+
+    def _on_writing_break(self) -> None:
+        if not getattr(self, "hitl", None):
+            self.say(
+                "You've been writing for a while. "
+                "Should I summarize your progress, or fetch a coffee update?"
+            )
+            return
+
+        def _ask() -> None:
+            try:
+                res = self.hitl.ask_clarify(
+                    title="Writing break?",
+                    detail="You've been on documents for a while.",
+                    agent="wellness",
+                    options=[
+                        "Summarize my progress",
+                        "Coffee / stretch reminder",
+                        "Keep working",
+                    ],
+                )
+                ans = (res.answer or "").lower()
+                if "summarize" in ans:
+                    self.handle_utterance("summarize my progress")
+                elif "coffee" in ans or "stretch" in ans:
+                    self.say(
+                        "Coffee window — stand, hydrate, five minutes. I'll hold the fort."
+                    )
+                else:
+                    self.say("Very well — staying quiet.")
+            except Exception as e:
+                print(f"[wellness] {e}")
+
+        threading.Thread(target=_ask, daemon=True, name="jarvis-writing-hitl").start()
+
+    def _on_clipboard_error(self, snippet: str) -> None:
+        self._emit("hud_alert", "CLIPBOARD · ERROR DETECTED")
+        self._last_clip_error = snippet
+        self.say(
+            "You copied what looks like an error. "
+            "Say fix clipboard error if you want me to diagnose it."
+        )
+
+    def _on_iot_event(self, kind: str, data: dict) -> None:
+        try:
+            self._emit("heard", f"[iot] {kind}: {data}")
+            if kind == "room":
+                self._emit("hud_alert", f"ROOM · {data.get('room', '')}".upper())
+            elif kind == "nfc":
+                self._emit("hud_alert", f"NFC · {data.get('tag', '')}".upper())
+                msg = data.get("message") or ""
+                if msg:
+                    self.say(msg)
         except Exception:
             pass
 
@@ -1512,6 +1720,38 @@ class Brain:
     def handle_macro(self, cmd: str) -> str:
         """Silent Stream Deck / HTTP macros — no TTS required for stop."""
         c = (cmd or "").strip().lower()
+        if c in (
+            "doorbell",
+            "ding",
+            "ring",
+            "ring ding",
+            "doorbell_ding",
+            "doorbell ding",
+        ):
+            return self.handle_doorbell("ding")
+        if c in (
+            "doorbell_motion",
+            "ring_motion",
+            "motion",
+            "doorbell motion",
+            "ring motion",
+        ):
+            return self.handle_doorbell("motion")
+        if c.startswith("room ") or c.startswith("nfc ") or c.startswith("mirror "):
+            if getattr(self, "iot", None):
+                return self.iot.handle(c)
+        if c in ("healer", "healer status"):
+            if getattr(self, "healer", None):
+                return self.healer.status()
+        if c in ("healer kill", "healer_kill"):
+            if getattr(self, "healer", None):
+                return self.healer.kill_hog() or self.healer.kill_top()
+        if c.startswith("scaffold "):
+            parts = c.split(None, 2)
+            kind = parts[1] if len(parts) > 1 else "html"
+            name = parts[2] if len(parts) > 2 else ""
+            if getattr(self, "scaffolder", None):
+                return self._scaffold_with_preview(kind, name)
         aliases = {
             "stop": "panic off",
             "halt": "panic off",
@@ -1545,6 +1785,51 @@ class Brain:
             return f"Macro ran: {utterance}"
         except Exception as e:
             return f"Macro error: {e}"
+
+    def handle_doorbell(self, event: str = "ding") -> str:
+        """Ring / HA doorbell alert — speak, HUD, phone (debounced)."""
+        import time as _time
+
+        kind = (event or "ding").strip().lower()
+        if kind not in ("ding", "motion"):
+            kind = "ding"
+        now = _time.monotonic()
+        until = float(getattr(self, "_doorbell_until", 0.0) or 0.0)
+        cooldown = float(
+            getattr(self.settings, "doorbell_cooldown_sec", 45.0) or 45.0
+        )
+        if now < until:
+            left = int(until - now)
+            self._emit("heard", f"[doorbell] suppressed ({kind}, {left}s left)")
+            return f"Doorbell {kind} suppressed ({left}s cooldown)."
+        self._doorbell_until = now + max(5.0, cooldown)
+
+        if kind == "motion":
+            line = "Motion at the front door."
+            hud = "RING › MOTION"
+            phone_msg = "Ring: motion at the front door"
+        else:
+            line = "Someone is at the front door."
+            hud = "RING › DOORBELL"
+            phone_msg = "Ring: someone is at the front door"
+
+        try:
+            self._emit("hud_alert", hud)
+            self._emit("heard", f"[doorbell] {kind}")
+        except Exception:
+            pass
+        try:
+            if hasattr(self.voice, "say_protected"):
+                self.voice.say_protected(line)
+            else:
+                self.say(line)
+        except Exception as e:
+            print(f"[doorbell] speak: {e}")
+        try:
+            self.phone.notify(phone_msg, title="JARVIS · Door", priority=5)
+        except Exception as e:
+            print(f"[doorbell] phone: {e}")
+        return line
 
     def handle_companion(self, text: str) -> str:
         """iPhone PWA chat — same brain router, return spoken reply for the phone UI."""
@@ -1585,10 +1870,19 @@ class Brain:
         port = int(getattr(self.settings, "companion_port", 8766) or 8766)
 
         def _status() -> dict:
+            note = ""
+            try:
+                note = getattr(self.companion, "handoff_note", "") or ""
+                hp = DATA_DIR / "handoff.json"
+                if not note and hp.exists():
+                    note = json.loads(hp.read_text(encoding="utf-8")).get("note", "")
+            except Exception:
+                pass
             return {
                 "user": self.settings.user_name,
                 "listening": not bool(getattr(self, "_handling", False)),
                 "port": port,
+                "handoff": note,
             }
 
         self.companion = CompanionServer(
@@ -1597,9 +1891,62 @@ class Brain:
             host=host,
             port=port,
             on_status=_status,
+            on_handoff=self._companion_handoff,
         )
         self.companion.start()
 
+    def _companion_handoff(self, data: dict) -> dict:
+        """PC shutdown / sleep → save context for iPad companion."""
+        target = str((data or {}).get("target") or "ipad")
+        project = str((data or {}).get("project") or getattr(self.settings, "work_project_path", "") or "")
+        ctx = str((data or {}).get("context") or "")
+        win = ""
+        try:
+            if getattr(self, "screen", None):
+                win = self.screen.active_window_title() or ""
+        except Exception:
+            pass
+        note = (
+            f"Main terminal offline. Saved progress"
+            + (f" on {Path(project).name}" if project else "")
+            + (f" · last window: {win[:80]}" if win else "")
+            + ". Shall we proceed from here, sir?"
+        )
+        if ctx:
+            note = f"{ctx.rstrip('.')}. {note}"
+        path = DATA_DIR / "handoff.json"
+        try:
+            path.write_text(
+                json.dumps(
+                    {
+                        "target": target,
+                        "project": project,
+                        "window": win,
+                        "context": ctx,
+                        "note": note,
+                        "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+        if getattr(self, "companion", None):
+            self.companion.handoff_note = note
+        try:
+            if getattr(self, "phone", None):
+                self.phone.notify(note, title="JARVIS · handoff", priority=4)
+        except Exception:
+            pass
+        try:
+            self.vstore.remember(
+                f"Handoff: user left desk; project={project or 'unknown'}; window={win or 'unknown'}",
+                kind="handoff",
+            )
+        except Exception:
+            pass
+        return {"note": note, "target": target, "window": win}
     def companion_status_line(self) -> str:
         if not getattr(self.settings, "companion_enabled", True):
             return "Phone companion is disabled in settings."
@@ -2154,10 +2501,17 @@ class Brain:
         except Exception:
             pass
         try:
-            self._emit(
-                "speak_ui",
-                f"Human in the loop — {req.action} needs your OK. Approve or deny.",
-            )
+            if req.kind.value == "clarify" if hasattr(req.kind, "value") else str(req.kind) == "clarify":
+                opts = ", ".join(str(o) for o in (req.options or [])[:4])
+                self._emit(
+                    "speak_ui",
+                    f"Clarify — {req.title}. Options: {opts}",
+                )
+            else:
+                self._emit(
+                    "speak_ui",
+                    f"Human in the loop — {req.action} needs your OK. Approve or deny.",
+                )
         except Exception:
             pass
 
@@ -2407,13 +2761,15 @@ class Brain:
             except Exception:
                 pass
 
-            # HITL voice resolve takes priority while a gate is open
+            # HITL voice resolve takes priority while a classic gate is open
             hitl_msg = self.hitl.resolve_voice(text)
             if hitl_msg:
-                self._emit("speak_ui", hitl_msg)
-                self._emit("hud_alert", hitl_msg)
-                self.say(hitl_msg)
-                return
+                # If async clarify is pending, prefer that path below after wake strip
+                if not getattr(self, "_pending_clarify", None):
+                    self._emit("speak_ui", hitl_msg)
+                    self._emit("hud_alert", hitl_msg)
+                    self.say(hitl_msg)
+                    return
 
             # Feature freeze during upgrade — additive gate (allowlist only)
             try:
@@ -2461,6 +2817,25 @@ class Brain:
                 self._cased_cmd, _ = self._strip_wake_preserve(text)
             except Exception:
                 self._cased_cmd = text
+
+            # Pending multi-choice clarify — typed option name / number
+            if getattr(self, "_pending_clarify", None):
+                from jarvis.core.ambiguity import resolve_option as _res_opt
+
+                choice = (low or text).strip()
+                got = _res_opt(self._pending_clarify, choice)
+                if got is not None or choice.lower() in (
+                    "cancel",
+                    "skip",
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                ):
+                    msg = self.resolve_clarify_choice(choice)
+                    if msg:
+                        self._emit("speak_ui", msg)
+                    return
 
             # Bare wake word → short ack, stay ready (don't dump help menu)
             if woke and not low:
@@ -2770,6 +3145,385 @@ class Brain:
                 self.phone.notify("Jarvis ping — systems nominal."),
             )
         return None
+
+    def _try_doorbell_cmd(self, t: str) -> str | None:
+        """Alexa/IFTTT doorbell setup + test."""
+        if not t:
+            return None
+        if re.search(
+            r"\b(doorbell\s+setup|setup\s+(the\s+)?doorbell|"
+            r"ring\s+setup|ifttt\s+doorbell|"
+            r"doorbell\s+(link|status|url))\b",
+            t,
+        ):
+            return self._flavor("ok", self.doorbell_setup_message())
+        if re.search(
+            r"\b(test\s+(the\s+)?doorbell|doorbell\s+test|"
+            r"simulate\s+(door|ding|doorbell))\b",
+            t,
+        ):
+            return self._flavor("ok", self.handle_doorbell("ding"))
+        return None
+
+    def doorbell_setup_message(self) -> str:
+        door = getattr(self, "doorbell", None)
+        if door is None:
+            return "Doorbell bridge is not loaded."
+        topic = (door.topic or "").strip()
+        if not topic:
+            topic = DoorbellBridge.make_topic()
+            door.topic = topic
+            door.enabled = True
+            try:
+                self.settings.doorbell_ntfy_topic = topic
+                self.settings.doorbell_ntfy_enabled = True
+                self.settings.save()
+            except Exception:
+                pass
+            try:
+                door.start()
+            except Exception:
+                pass
+        url = door.webhook_url()
+        try:
+            self._emit(
+                "artifact",
+                {
+                    "title": "DOORBELL · Alexa / IFTTT",
+                    "body": (
+                        "1) Create a free IFTTT account and enable Webhooks.\n"
+                        "2) New applet → If: Amazon Alexa (or Ring) → "
+                        "doorbell pressed / routine.\n"
+                        "3) Then: Webhooks → Make a web request\n"
+                        f"   URL: {url}\n"
+                        "   Method: POST\n"
+                        "   Content Type: text/plain\n"
+                        "   Body: ding\n"
+                        "4) Alexa app → Routines → When doorbell pressed → "
+                        "run that IFTTT applet (if using Alexa trigger).\n"
+                        "5) Say: test doorbell\n"
+                        f"\nStatus: {door.status()}"
+                    ),
+                },
+            )
+        except Exception:
+            pass
+        return (
+            f"Doorbell webhook ready. In IFTTT Webhooks, POST to {url} "
+            "with body ding. Say test doorbell to try the announce."
+        )
+
+    def _maybe_clarify_ambiguous(self, t: str) -> str | None:
+        """
+        Non-blocking multi-choice: show HUD chips, stash prompt, stop this route.
+        Clicking a chip (or typing the option) continues via resolve_clarify_choice.
+        """
+        prompt = classify_ambiguity(t)
+        if prompt is None:
+            return None
+        self._pending_clarify = prompt
+        req_id = f"clarify-{int(time.time() * 1000) % 10_000_000}"
+        self._pending_clarify_id = req_id
+        payload = {
+            "id": req_id,
+            "kind": "clarify",
+            "title": prompt.title,
+            "detail": prompt.detail,
+            "action": "clarify",
+            "agent": "ambiguity",
+            "options": list(prompt.options),
+            "meta": {"async_clarify": True},
+        }
+        self._emit("hitl_ask", payload)
+        self._emit("hud_alert", f"CLARIFY · {prompt.title}")
+        for i, opt in enumerate(prompt.options, start=1):
+            self._emit("heard", f"[clarify] {i}. {opt}")
+        opts = "; ".join(f"{i}) {o}" for i, o in enumerate(prompt.options, start=1))
+        self.say(f"{prompt.title} Choose on the HUD: {opts}")
+        # Stop this route — chip click will run the concrete command
+        return ""
+
+    def _scaffold_with_preview(self, kind: str, name: str = "") -> str:
+        """Create project, open browser tab + HUD site preview."""
+        if not getattr(self, "scaffolder", None):
+            return "Scaffolder offline."
+        brand = (name or kind or "app").strip()
+        try:
+            self._emit(
+                "site_ui",
+                {"building": True, "hint": f"scaffold {kind} {brand}".strip()},
+            )
+        except Exception:
+            pass
+        result = self.scaffolder.create_project(kind, name, preview=True)
+        url = (result.preview_url or "").strip()
+        path = result.path
+        try:
+            if url:
+                self._emit(
+                    "site_ui",
+                    {
+                        "url": url,
+                        "brand": brand,
+                        "prompt": result.message[:160],
+                        "path": str(path) if path else "",
+                    },
+                )
+            elif path and (path / "index.html").exists():
+                self._emit(
+                    "site_ui",
+                    {
+                        "path": str(path / "index.html"),
+                        "brand": brand,
+                        "prompt": result.message[:160],
+                    },
+                )
+            else:
+                self._emit("site_ui", False)
+        except Exception as e:
+            print(f"[scaffold] site_ui: {e}")
+        return result.message
+
+    def resolve_clarify_choice(self, answer: str) -> str:
+        """HUD chip / typed option → rewrite and run the real command (no busy lock)."""
+        prompt = getattr(self, "_pending_clarify", None)
+        self._pending_clarify = None
+        self._pending_clarify_id = ""
+        self._emit("hitl_clear", True)
+        if prompt is None:
+            return ""
+        rewritten = resolve_option(prompt, answer)
+        if not rewritten:
+            self.say("Cancelled.")
+            return "Clarify cancelled."
+        self._emit("heard", f"[clarify] → {rewritten}")
+        self._emit("hud_alert", f"RUN · {rewritten[:60]}")
+
+        cmd = rewritten.strip()
+
+        def _go() -> None:
+            # Bypass handle_utterance busy lock — chip clicks / typed "1"
+            # often fire while the parent utterance still holds _handling.
+            try:
+                self._handling = False
+                try:
+                    self.voice.set_busy(False)
+                except Exception:
+                    pass
+                reply = self._route(cmd.lower())
+                if reply:
+                    self.say(reply)
+                    self._emit("speak_ui", reply)
+                else:
+                    self._emit("heard", f"[clarify] done: {cmd}")
+            except Exception as e:
+                print(f"[clarify] run: {e}")
+                try:
+                    self.say(f"Could not run that: {e}")
+                except Exception:
+                    pass
+
+        threading.Thread(
+            target=_go, daemon=True, name="jarvis-clarify-run"
+        ).start()
+        return f"Running: {cmd}"
+
+    def _try_autonomy_cmd(self, t: str) -> str | None:
+        """Healer, scaffold, research jobs, git safety, whisper, IoT, memory."""
+        if not t:
+            return None
+
+        # Whisper / soft speak
+        if re.search(r"\b(whisper mode|soft speak|quiet voice)\s+on\b", t):
+            self.settings.whisper_mode = True
+            try:
+                self.voice.set_whisper_mode(
+                    True, volume=str(getattr(self.settings, "whisper_volume", "-20%"))
+                )
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Whisper mode on — I'll keep my voice down.")
+        if re.search(r"\b(whisper mode|soft speak|quiet voice)\s+off\b", t):
+            self.settings.whisper_mode = False
+            try:
+                self.voice.set_whisper_mode(False)
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Whisper mode off — normal volume.")
+
+        # Healer
+        if re.search(r"\bhealer status\b|\b(pc |system )?healer\b", t) and not re.search(
+            r"\b(kill|terminate|ignore)\b", t
+        ):
+            if not getattr(self, "healer", None):
+                return self._flavor("ok", "Healer offline.")
+            return self._flavor("ok", self.healer.status())
+        if re.search(r"\bhealer (kill|terminate)( top)?\b|\bkill top process\b", t):
+            if not getattr(self, "healer", None):
+                return self._flavor("ok", "Healer offline.")
+            if getattr(self, "gitbot", None):
+                try:
+                    self.gitbot.snapshot("pre-healer-kill")
+                except Exception:
+                    pass
+            return self._flavor("ok", self.healer.kill_top())
+        if re.search(r"\bhealer (kill|terminate) pending\b|\bhealer kill\b", t):
+            if not getattr(self, "healer", None):
+                return self._flavor("ok", "Healer offline.")
+            return self._flavor("ok", self.healer.kill_hog())
+        if re.search(r"\bhealer ignore\b", t):
+            if getattr(self, "healer", None):
+                self.healer.clear_pending()
+            return self._flavor("ok", "Ignoring the process.")
+
+        # Git safety
+        if re.search(r"\b(safety snapshot|git snapshot|snapshot (repo|code))\b", t):
+            if not getattr(self, "gitbot", None):
+                return self._flavor("ok", "Git bot offline.")
+            return self._flavor("ok", self.gitbot.snapshot("manual"))
+        if re.search(r"\b(revert (last )?snapshot|rollback snapshot)\b", t):
+            if not getattr(self, "gitbot", None):
+                return self._flavor("ok", "Git bot offline.")
+            return self._flavor("ok", self.gitbot.revert_last_snapshot())
+        if re.search(r"\blast (git )?snapshot\b", t):
+            if not getattr(self, "gitbot", None):
+                return self._flavor("ok", "Git bot offline.")
+            return self._flavor("ok", self.gitbot.last_snapshot())
+
+        # Scaffold
+        m = re.search(
+            r"\bscaffold\s+(react|vite|python|py|html|site|static)"
+            r"(?:\s+(?:app|project|package|site))?(?:\s+(?:named|called)\s+(\S+))?",
+            t,
+        )
+        if m and getattr(self, "scaffolder", None):
+            kind = m.group(1)
+            name = (m.group(2) or "").strip()
+            if getattr(self, "gitbot", None):
+                try:
+                    self.gitbot.snapshot("pre-scaffold")
+                except Exception:
+                    pass
+            return self._flavor("ok", self._scaffold_with_preview(kind, name))
+        if re.search(r"\bscaffold status\b", t) and getattr(self, "scaffolder", None):
+            return self._flavor("ok", self.scaffolder.status())
+
+        # Background web research (explicit only)
+        m = re.search(r"\bbackground research\s+(.+)$", t)
+        if m:
+            return self._flavor("ok", self._start_research_job(m.group(1).strip(" .,!?")))
+        m = re.search(r"\bresearch in background\s+(.+)$", t)
+        if m:
+            return self._flavor("ok", self._start_research_job(m.group(1).strip(" .,!?")))
+        m = re.search(
+            r"\b(?:find|research)\s+(.+?)\s+and (?:notify|tell) me\b",
+            t,
+        )
+        if m:
+            return self._flavor("ok", self._start_research_job(m.group(1).strip(" .,!?")))
+
+        # Memory consolidate now
+        if re.search(r"\b(consolidate memory|memory consolidate|overnight memory)\b", t):
+            if not getattr(self, "memory_night", None):
+                return self._flavor("ok", "Memory consolidator offline.")
+            return self._flavor("ok", self.memory_night.run())
+
+        # Fix clipboard error
+        if re.search(r"\b(fix|diagnose)\s+(the\s+)?clipboard error\b", t):
+            snip = getattr(self, "_last_clip_error", "") or ""
+            if not snip:
+                return self._flavor(
+                    "ok", "No recent clipboard error. Copy a traceback first."
+                )
+            return self._flavor(
+                "ok",
+                self._start_research_job(f"Explain and fix this error:\n{snip[:800]}"),
+            )
+
+        # IoT
+        if re.search(
+            r"\b(iot status|room status|presence status|nfc |room |mirror )\b", t
+        ) or t.startswith("room ") or t.startswith("nfc ") or t.startswith("mirror "):
+            if not getattr(self, "iot", None):
+                return self._flavor("ok", "IoT bridge offline.")
+            return self._flavor("ok", self.iot.handle(t))
+
+        # Codesmith / run python in sandbox with snapshot
+        m = re.search(r"\b(?:run code|codesmith|sandbox run)\s+(.+)$", t)
+        if m and getattr(self, "crew", None):
+            req = m.group(1).strip()
+            if getattr(self, "gitbot", None):
+                try:
+                    self.gitbot.snapshot("pre-codesmith")
+                except Exception:
+                    pass
+            tid = self.tasks.submit(
+                f"codesmith:{req[:40]}",
+                lambda r=req: self.crew.code.build_and_run(r),
+            )
+            return self._flavor(
+                "ok",
+                f"CODESMITH job {tid} queued. I'll speak when the sandbox finishes.",
+            )
+
+        return None
+
+    def _start_research_job(self, topic: str) -> str:
+        topic = (topic or "").strip()
+        if len(topic) < 4:
+            return "What should I research?"
+        if not getattr(self, "tasks", None):
+            return "Task queue offline."
+
+        def _job() -> str:
+            try:
+                if getattr(self, "crew", None):
+                    out = self.crew.dispatch(f"research: {topic}")
+                elif getattr(self, "net", None):
+                    out = self.net.answer(topic)
+                else:
+                    out = "No research backend."
+            except Exception as e:
+                out = f"Research failed: {e}"
+            try:
+                self._emit("hud_alert", "RESEARCH DONE")
+                self._emit(
+                    "artifact",
+                    {"title": f"Research · {topic[:60]}", "body": str(out)[:4000]},
+                )
+            except Exception:
+                pass
+            try:
+                if getattr(self, "phone", None):
+                    self.phone.notify(
+                        f"Research done: {topic[:80]}",
+                        title="JARVIS · research",
+                        priority=4,
+                    )
+            except Exception:
+                pass
+            try:
+                if hasattr(self.voice, "say_protected"):
+                    self.voice.say_protected(
+                        f"Research finished on {topic[:60]}. "
+                        f"{str(out)[:280]}"
+                    )
+                else:
+                    self.say(f"Research finished. {str(out)[:200]}")
+            except Exception:
+                try:
+                    self.say(f"Research finished. {str(out)[:200]}")
+                except Exception:
+                    pass
+            return str(out)[:2000]
+
+        tid = self.tasks.submit(f"research:{topic[:40]}", _job)
+        return (
+            f"Background research job {tid} started on: {topic[:80]}. "
+            "I'll notify you when it's done."
+        )
 
     def _try_cloud_cmd(self, t: str) -> str | None:
         """Stripe / Notion / Buffer / Gmail voice intents."""
@@ -3948,6 +4702,32 @@ class Brain:
         phone_reply = self._try_phone_cmd(t)
         if phone_reply is not None:
             return phone_reply
+
+        try:
+            door_reply = self._try_doorbell_cmd(t)
+            if door_reply is not None:
+                return door_reply
+        except Exception as e:
+            print(f"[doorbell] route: {e}")
+
+        try:
+            auto_reply = self._try_autonomy_cmd(t)
+            if auto_reply is not None:
+                return auto_reply
+        except Exception as e:
+            print(f"[autonomy] route: {e}")
+
+        # Vague command → multi-choice HUD chips (non-blocking)
+        if bool(getattr(self.settings, "ambiguity_clarify", True)):
+            try:
+                clarified = self._maybe_clarify_ambiguous(t)
+                if clarified is not None:
+                    # "" = chips shown, waiting for click — do not speak "Cancelled"
+                    if clarified == "":
+                        return ""
+                    t = clarified
+            except Exception as e:
+                print(f"[ambiguity] {e}")
 
         # Cloud integrations (Stripe / Notion / Buffer / Gmail)
         try:

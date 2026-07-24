@@ -39,9 +39,11 @@ class CompanionServer:
         port: int = 8766,
         web_root: Path | None = None,
         on_status: Callable[[], dict] | None = None,
+        on_handoff: Callable[[dict], dict] | None = None,
     ) -> None:
         self.on_chat = on_chat
         self.on_status = on_status
+        self.on_handoff = on_handoff
         self.token = (token or "").strip()
         self.host = host
         self.port = int(port)
@@ -50,6 +52,7 @@ class CompanionServer:
         self._thread: threading.Thread | None = None
         self.last_reply: str = ""
         self.last_heard: str = ""
+        self.handoff_note: str = ""
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -148,7 +151,8 @@ class CompanionServer:
 
             def do_POST(self) -> None:  # noqa: N802
                 parsed = urlparse(self.path)
-                if parsed.path != "/api/chat":
+                path = parsed.path or "/"
+                if path not in ("/api/chat", "/api/handoff"):
                     self._json(404, {"ok": False, "error": "not found"})
                     return
                 if not self._auth_ok():
@@ -160,6 +164,20 @@ class CompanionServer:
                     data = json.loads(raw.decode("utf-8") or "{}")
                 except Exception:
                     data = {}
+
+                if path == "/api/handoff":
+                    try:
+                        payload = server.on_handoff(data) if server.on_handoff else {
+                            "ok": True,
+                            "note": "handoff accepted (no handler)",
+                        }
+                        if not isinstance(payload, dict):
+                            payload = {"ok": True, "reply": str(payload)}
+                        self._json(200, {"ok": True, **payload})
+                    except Exception as e:
+                        self._json(500, {"ok": False, "error": str(e)})
+                    return
+
                 text = str(
                     data.get("text") or data.get("cmd") or data.get("message") or ""
                 ).strip()

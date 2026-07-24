@@ -36,8 +36,9 @@ class ControlStrip(QFrame):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("GlassPanel")
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-        self.setMinimumHeight(220)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        self.setMinimumHeight(180)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self._force_dark(self)
 
         outer = QVBoxLayout(self)

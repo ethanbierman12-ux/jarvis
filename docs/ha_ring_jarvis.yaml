@@ -1,0 +1,34 @@
+# Home Assistant package — Ring → Jarvis
+# Copy into config/packages/ or merge into configuration.yaml, then reload.
+# Replace JARVIS_PC_IP and YOUR_SECRET. Fix entity_id to your Ring sensors.
+
+rest_command:
+  jarvis_doorbell:
+    url: "http://JARVIS_PC_IP:8765/macro?cmd=doorbell&token=YOUR_SECRET"
+    method: GET
+    timeout: 5
+  jarvis_doorbell_motion:
+    url: "http://JARVIS_PC_IP:8765/macro?cmd=doorbell_motion&token=YOUR_SECRET"
+    method: GET
+    timeout: 5
+
+automation:
+  - id: jarvis_ring_ding
+    alias: Ring ding → Jarvis
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.front_door_ding
+        to: "on"
+    action:
+      - service: rest_command.jarvis_doorbell
+
+  - id: jarvis_ring_motion
+    alias: Ring motion → Jarvis
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.front_door_motion
+        to: "on"
+    action:
+      - service: rest_command.jarvis_doorbell_motion

@@ -489,11 +489,33 @@ class SitePreview(QFrame):
         self.show()
         self.raise_()
         url = path.resolve().as_uri()
+        self._preview_url = url
         if self._web is not None:
             self._web.load(QUrl(url))
             self._fallback.hide()
         else:
             self._fallback.setText(f"Site ready at:\n{path}")
+            self._open_external()
+
+    def show_url(self, url: str, *, brand: str = "", prompt: str = "") -> None:
+        """Load an http(s) or file preview URL (Vite / static)."""
+        self._building = False
+        self._preview_url = (url or "").strip()
+        self._path = None
+        label = brand or "preview"
+        self.title.setText(f"PREVIEW · {label.upper()}")
+        hint = (prompt or self._preview_url)[:160]
+        self.status.setText(hint)
+        self._place()
+        self.show()
+        self.raise_()
+        if not self._preview_url:
+            return
+        if self._web is not None:
+            self._web.load(QUrl(self._preview_url))
+            self._fallback.hide()
+        else:
+            self._fallback.setText(f"Preview:\n{self._preview_url}")
             self._open_external()
 
     def _schedule_paint(self) -> None:
@@ -539,16 +561,22 @@ class SitePreview(QFrame):
         )
 
     def _open_external(self) -> None:
-        if not self._path:
+        url = getattr(self, "_preview_url", "") or ""
+        if not url and getattr(self, "_path", None):
+            try:
+                url = self._path.resolve().as_uri()
+            except Exception:
+                url = ""
+        if not url:
             return
         try:
             from jarvis.core.displays import displays
 
-            displays.open_url_on(self._path.resolve().as_uri(), "secondary")
+            displays.open_url_on(url, "secondary")
         except Exception:
             import webbrowser
 
-            webbrowser.open(self._path.resolve().as_uri())
+            webbrowser.open(url)
 
     def _close(self) -> None:
         self._building = False

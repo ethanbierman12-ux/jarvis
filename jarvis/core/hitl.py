@@ -279,6 +279,23 @@ class HumanInTheLoop:
         if not self.enabled:
             return HitlResult(decision=HitlDecision.SKIPPED, request_id="", note="hitl off")
 
+        # Never block the Qt GUI thread — that freezes the HUD ("Not Responding").
+        try:
+            from PyQt6.QtCore import QThread
+            from PyQt6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app is not None and QThread.currentThread() is app.thread():
+                print("[hitl] refused to block Qt GUI thread — skip gate")
+                return HitlResult(
+                    decision=HitlDecision.SKIPPED,
+                    request_id="",
+                    note="ui-thread",
+                    answer="",
+                )
+        except Exception:
+            pass
+
         req = HitlRequest(
             id=uuid.uuid4().hex[:12],
             kind=kind,

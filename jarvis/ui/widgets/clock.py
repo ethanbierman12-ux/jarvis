@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from PyQt6.QtCore import Qt, QTimer, QPointF, QRectF
 from PyQt6.QtGui import QPainter, QColor, QPen, QFont, QRadialGradient, QBrush
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel, QWidget, QHBoxLayout
+from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel, QWidget, QHBoxLayout, QSizePolicy
 
 from jarvis.ui.widgets.stat_gauge import StatGauge
 
@@ -23,7 +23,7 @@ def _local_now(tz_name: str = "America/New_York") -> datetime:
 class DateDial(QWidget):
     def __init__(self, parent=None, *, timezone: str = "America/New_York") -> None:
         super().__init__(parent)
-        self.setFixedSize(176, 176)
+        self.setFixedSize(148, 148)
         self.timezone = timezone or "America/New_York"
         self._now = _local_now(self.timezone)
         self._t = 0.0
@@ -50,7 +50,7 @@ class DateDial(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        cx, cy, r = self.width() / 2, self.height() / 2, 74
+        cx, cy, r = self.width() / 2, self.height() / 2, 62
         a = self._accent
 
         bloom = QRadialGradient(cx, cy, r * 1.35)
@@ -88,31 +88,31 @@ class DateDial(QWidget):
         rect = QRectF(cx - r + 5, cy - r + 5, (r - 5) * 2, (r - 5) * 2)
         p.drawArc(rect, 90 * 16, int(-sec / 60 * 360 * 16))
 
-        g = QRadialGradient(cx, cy, 48)
+        g = QRadialGradient(cx, cy, 40)
         g.setColorAt(0.0, QColor(a.red() // 4, a.green() // 3, a.blue() // 2, 180))
         g.setColorAt(1.0, QColor(0, 8, 16, 220))
         p.setPen(QPen(QColor(a.red(), a.green(), a.blue(), 60), 1))
         p.setBrush(QBrush(g))
-        p.drawEllipse(QPointF(cx, cy), 46, 46)
+        p.drawEllipse(QPointF(cx, cy), 38, 38)
 
         p.setPen(a)
-        font = QFont("Bahnschrift", 12, QFont.Weight.Bold)
+        font = QFont("Bahnschrift", 11, QFont.Weight.Bold)
         p.setFont(font)
         month = self._now.strftime("%B %d").upper()
         tw = p.fontMetrics().horizontalAdvance(month)
         p.drawText(int(cx - tw / 2), int(cy - 2), month)
 
         p.setPen(QColor(180, 220, 240, 200))
-        p.setFont(QFont("Cascadia Mono", 9))
+        p.setFont(QFont("Cascadia Mono", 8))
         day = self._now.strftime("%A").upper()
         tw = p.fontMetrics().horizontalAdvance(day)
-        p.drawText(int(cx - tw / 2), int(cy + 16), day)
+        p.drawText(int(cx - tw / 2), int(cy + 14), day)
 
         p.setPen(QColor(232, 244, 255))
-        p.setFont(QFont("Cascadia Mono", 11, QFont.Weight.Bold))
+        p.setFont(QFont("Cascadia Mono", 10, QFont.Weight.Bold))
         tstr = self._now.strftime("%I:%M:%S %p").lstrip("0")
         tw = p.fontMetrics().horizontalAdvance(tstr)
-        p.drawText(int(cx - tw / 2), 18, tstr)
+        p.drawText(int(cx - tw / 2), 16, tstr)
         p.end()
 
 
@@ -120,9 +120,11 @@ class ClockPanel(QFrame):
     def __init__(self, parent=None, *, timezone: str = "America/New_York") -> None:
         super().__init__(parent)
         self.setObjectName("GlassPanel")
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(10, 10, 10, 10)
-        lay.setSpacing(8)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(6)
 
         head = QLabel("TIME  ·  VITALS")
         head.setObjectName("SectionTitle")
