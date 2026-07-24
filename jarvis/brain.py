@@ -329,6 +329,22 @@ class Brain:
         self.sites = SiteBuilder(hitl=self.hitl)
         self.vibe = VibeCoder(hitl=self.hitl)
         self.net = InternetAgent()
+        # Agent crew — six-agent pipeline (supervisor/research/memory/tools/comms/critic)
+        self.crew = None
+        if bool(getattr(settings, "crew_enabled", True)):
+            try:
+                from jarvis.core.agent_crew import AgentCrew
+
+                self.crew = AgentCrew(
+                    settings,
+                    vstore=self.vstore,
+                    internet=self.net,
+                    phone=self.phone,
+                    n8n=self.n8n,
+                    computer_use=self.cu_agent,
+                )
+            except Exception as e:
+                print(f"[crew] init: {e}")
         self._ghost = False
         self._pending_shutdown = False
         self._absent_since: float | None = None
@@ -377,6 +393,9 @@ class Brain:
             allow_virtual_mic=not bool(
                 getattr(settings, "mic_reject_loopback", True)
             ),
+            deepgram_api_key=getattr(settings, "deepgram_api_key", "") or "",
+            deepgram_model=getattr(settings, "deepgram_model", "") or "nova-2",
+            duplex_enabled=bool(getattr(settings, "duplex_voice", True)),
         )
         self._scan_open_browser = False
         self.vision = VisionService(
@@ -518,6 +537,11 @@ class Brain:
                     "semantic_router",
                     version="1.0",
                     note="Local-first priority lanes → Hub only for complex",
+                )
+                self.registry.register(
+                    "agent_crew",
+                    version="1.0",
+                    note="6-agent crew: VECTOR route / SCHOLAR / ARCHIVE / FORGE / HERALD / SENTINEL",
                 )
                 self.registry.register(
                     "computer_use",
@@ -2928,6 +2952,59 @@ class Brain:
 
         return None
 
+    def _try_crew_cmd(self, t: str) -> str | None:
+        """Return a reply if this is an agent-crew intent, else None."""
+        if not t:
+            return None
+        crew = getattr(self, "crew", None)
+        if crew is None:
+            return None
+
+        if re.search(r"\b(crew|agent\s*crew)\s+status\b", t):
+            return self._flavor("ok", crew.status())
+
+        m = re.search(
+            r"^(?:ask\s+the\s+crew|ask\s+crew|crew)\s+(.+)$", t.strip(), re.I
+        )
+        if not m:
+            return None
+        request = m.group(1).strip(" .,!?")
+        if not request:
+            return self._flavor("clarify", "What shall the crew work on, sir?")
+
+        def _job(req: str = request) -> str:
+            try:
+                result = crew.dispatch(req)
+            except Exception as e:
+                result = f"Crew run failed: {e}"
+            routes = ", ".join((crew.last_run or {}).get("routes", []) or [])
+            self._emit(
+                "artifact",
+                {
+                    "title": f"AGENT CREW · {routes.upper() or 'RESULT'}",
+                    "text": result,
+                },
+            )
+            try:
+                if len(result) <= 320:
+                    spoken = result
+                else:
+                    head = result[:300]
+                    spoken = (
+                        head.rsplit(".", 1)[0] + ". The full report is on screen."
+                        if "." in head
+                        else head + "… full report on screen."
+                    )
+                self.voice.say(spoken)
+            except Exception:
+                pass
+            return result[:200]
+
+        self.tasks.submit(f"crew:{request[:24]}", _job)
+        return self._flavor(
+            "ok", "The crew is on it — VECTOR is routing your request now."
+        )
+
     def _try_manus_cmd(self, t: str) -> str | None:
         """Return a reply if this is a Manus AI intent, else None."""
         if not t:
@@ -3764,6 +3841,14 @@ class Brain:
                 return manus_reply
         except Exception:
             pass
+
+        # Agent crew — six-agent pipeline (before Hub)
+        try:
+            crew_reply = self._try_crew_cmd(t)
+            if crew_reply is not None:
+                return crew_reply
+        except Exception as e:
+            print(f"[crew] route: {e}")
 
         # Computer-use / browser agent (before Hub)
         try:

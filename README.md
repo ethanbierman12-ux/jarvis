@@ -18,7 +18,7 @@ Starts the **watchdog** (`runner.py`), which keeps Jarvis alive:
 
 Voice: **reload core** / **reboot jarvis** → reload · **go offline** / **power down** → stop · **Ctrl+Alt+K** → emergency kill (crash-recover).
 
-**F5** (global via `install_f5_wake.bat` / `run.bat wake`): launches Jarvis when closed; soft-reloads core when open. HUD-focused F5 does the same reload when the wake agent is not armed.
+**F3** (global via `install_f5_wake.bat` / `run.bat wake`): launches Jarvis when closed; soft-reloads core when open. HUD-focused F3 does the same reload when the wake agent is not armed.
 
 Boot shows **INITIATING SYSTEM 1…** with loading % → 100 and boot sound, then blooms into the main HUD.
 
@@ -51,6 +51,8 @@ Optional ElevenLabs: set `elevenlabs_api_key` in `config/settings.json` (mirrore
 ### Upgrade stack
 
 - **ChromaDB** vector memory → `jarvis/data/chroma`
+- **Duplex voice**: set `deepgram_api_key` in `config/settings.json` → streaming STT (<300ms finals) + talk-over-Jarvis barge-in; classic STT is the fallback
+- **Agent crew**: say `crew <request>` / `crew status` — six agents (VECTOR routes, SCHOLAR researches via Tavily/Serper/DDG, ARCHIVE remembers, FORGE runs tools, HERALD notifies, SENTINEL reviews); LLM via local Ollama or vaulted Anthropic/OpenAI keys
 - **Rotating logs** (5 MB × 3) → `jarvis/data/jarvis.log`
 - **Mic hot-plug recovery** in the voice loop
 - **Windows Startup**: `install_jarvis_startup.bat`

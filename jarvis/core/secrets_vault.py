@@ -17,6 +17,9 @@ VAULT_FILE = VAULT_DIR / "secrets.dpapi.json"
 # Keys that must never sit in settings.json in cleartext
 SECRET_KEYS = (
     "elevenlabs_api_key",
+    "deepgram_api_key",
+    "tavily_api_key",
+    "serper_api_key",
     "openweather_api_key",
     "ha_token",
     "n8n_api_key",

@@ -97,7 +97,7 @@ class MainWindow(QMainWindow):
         self.start_btn = CmdButton("START", "start", kind="start")
         self.start_btn.setMinimumWidth(108)
         self.start_btn.setToolTip(
-            "Engage systems (voice: start) — F5 reloads core / wake agent launches when closed"
+            "Engage systems (voice: start) — F3 reloads core / wake agent launches when closed"
         )
         self.start_btn.fired.connect(lambda _: self._on_start_clicked())
         header.addWidget(self.start_btn)
@@ -324,12 +324,12 @@ class MainWindow(QMainWindow):
 
         QTimer.singleShot(30, self.startup.start)
 
-        # F5 = reload core (exit 0). Must NOT trigger START (that caused spam).
-        # Global F5 is owned by wake_agent when armed; this shortcut covers HUD
+        # F3 = reload core (exit 0). Must NOT trigger START (that caused spam).
+        # Global F3 is owned by wake_agent when armed; this shortcut covers HUD
         # focus when the wake agent is not holding RegisterHotKey.
-        self._f5 = QShortcut(QKeySequence(Qt.Key.Key_F5), self)
-        self._f5.setContext(Qt.ShortcutContext.WindowShortcut)
-        self._f5.activated.connect(self._on_f5_reload)
+        self._wake_key = QShortcut(QKeySequence(Qt.Key.Key_F3), self)
+        self._wake_key.setContext(Qt.ShortcutContext.WindowShortcut)
+        self._wake_key.activated.connect(self._on_wake_reload)
 
         # Esc closes map if open.
         self._esc = QShortcut(QKeySequence("Escape"), self)
@@ -341,9 +341,9 @@ class MainWindow(QMainWindow):
         self._kill.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._kill.activated.connect(self._emergency_kill)
 
-        # Wake-agent / external F5 writes reload.request — poll lightly
+        # Wake-agent / external F3 writes reload.request — poll lightly
         self._reload_poll = QTimer(self)
-        self._reload_poll.setInterval(1000)  # was 400ms — F5 still instant via shortcut
+        self._reload_poll.setInterval(1000)  # was 400ms — F3 still instant via shortcut
         self._reload_poll.timeout.connect(self._poll_reload_request)
         self._reload_poll.start()
 
@@ -392,12 +392,12 @@ class MainWindow(QMainWindow):
         if getattr(self, "_center_stack", None) and self._center_stack.currentIndex() == 1:
             self._close_map_mode()
 
-    def _on_f5_reload(self) -> None:
-        """F5 → same path as voice 'reload core' (exit 0 for watchdog relaunch)."""
+    def _on_wake_reload(self) -> None:
+        """F3 → same path as voice 'reload core' (exit 0 for watchdog relaunch)."""
         if getattr(self, "_reload_armed", False):
             return
         self._reload_armed = True
-        self.append_log("CORE › F5 reload")
+        self.append_log("CORE › F3 reload")
         self._request_app_exit(0)
 
     def _poll_reload_request(self) -> None:

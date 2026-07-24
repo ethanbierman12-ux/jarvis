@@ -1,4 +1,4 @@
-"""Restart F5 wake agent with the latest wake_agent.py."""
+"""Restart the F3 wake agent with the latest wake_agent.py."""
 from __future__ import annotations
 
 import os

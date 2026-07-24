@@ -45,11 +45,13 @@ def run() -> int:
     from jarvis.ui.main_window import MainWindow
 
     log = setup_logging()
-    # Full stdout tee is expensive — opt in with JARVIS_TEE=1
-    if os.environ.get("JARVIS_TEE", "").strip() in ("1", "true", "yes"):
+    # Tee prints into the rotating log by default — otherwise [voice]/[duplex]
+    # diagnostics vanish when launched hidden (wake agent / Startup). The tee
+    # is re-entrancy-guarded (see PrintLogger); opt out with JARVIS_TEE=0.
+    if os.environ.get("JARVIS_TEE", "").strip() not in ("0", "false", "no"):
         tee_prints(log)
 
-    # Single instance — F5 should focus, not spawn a second HUD
+    # Single instance — F3 should focus, not spawn a second HUD
     if not claim_instance():
         focus_existing_window()
         print("[jarvis] already running — focused existing window")

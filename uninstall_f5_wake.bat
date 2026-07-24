@@ -1,5 +1,5 @@
 @echo off
-title Uninstall Jarvis F5 Wake
+title Uninstall Jarvis F3 Wake
 cd /d "%~dp0"
 
 set STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
@@ -24,5 +24,5 @@ echo Stopping any wake_agent.py processes...
 powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'wake_agent.py' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
 
 echo.
-echo F5 wake agent uninstalled.
+echo F3 wake agent uninstalled.
 pause

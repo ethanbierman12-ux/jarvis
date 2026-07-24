@@ -1,4 +1,4 @@
-"""Single-instance PID lock — instant F5 checks without scanning every process."""
+"""Single-instance PID lock — instant wake-key checks without scanning every process."""
 
 from __future__ import annotations
 

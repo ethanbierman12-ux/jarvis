@@ -1,4 +1,4 @@
-"""Hotkeys stub — global F5 is wake_agent; HUD F5 is MainWindow reload shortcut."""
+"""Hotkeys stub — global F3 is wake_agent; HUD F3 is MainWindow reload shortcut."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ class HotkeyService:
 
     def start(self) -> None:
         self._ok = False
-        print("[hotkeys] disabled (F5 = wake launch / HUD reload, not START)")
+        print("[hotkeys] disabled (F3 = wake launch / HUD reload, not START)")
 
     def stop(self) -> None:
         pass

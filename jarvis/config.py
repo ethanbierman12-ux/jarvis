@@ -109,6 +109,11 @@ class Settings:
     elevenlabs_voice_id: str = "pNInz6obpgDQ51uIfY1H"
     elevenlabs_model: str = "eleven_monolingual_v1"
     tts_prefer_elevenlabs: bool = False  # keep False for classic British Jarvis
+    # Duplex voice — Deepgram streaming STT (<300ms finals, transcript barge-in).
+    # Engaged only when a key is set; classic chunked STT remains the fallback.
+    duplex_voice: bool = True
+    deepgram_api_key: str = ""  # vaulted
+    deepgram_model: str = "nova-2"
     # After "update software" patch, reboot via watchdog (exit 0)
     reload_after_update: bool = True
     # Audio isolation — never STT from desktop loopback / Voicemeeter outs
@@ -137,6 +142,11 @@ class Settings:
     manus_code_assist: bool = True
     manus_code_assist_cooldown_sec: int = 720  # 12 min between offers
     manus_code_assist_debounce_sec: int = 45
+    # Agent crew — six-agent pipeline (supervisor / research / memory /
+    # operator / comms / critic). Say: "crew <request>" or "crew status".
+    crew_enabled: bool = True
+    tavily_api_key: str = ""  # vaulted — preferred research backend
+    serper_api_key: str = ""  # vaulted — secondary research backend
     # Computer-use / browser agent (screenshot → LLM → mouse/keyboard)
     computer_use_enabled: bool = True
     # auto|ollama|local|anthropic|openai|browser_use|desktop|gemini|skyvern|openinterpreter

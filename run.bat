@@ -24,7 +24,7 @@ if /I "%~1"=="deps" (
 
 if /I "%~1"=="wake" (
 
-  echo Installing F5 wake agent…
+  echo Installing F3 wake agent…
 
   call "%~dp0install_f5_wake.bat"
 

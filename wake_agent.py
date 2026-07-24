@@ -1,7 +1,7 @@
 """
-Always-on F5 wake agent.
+Always-on F3 wake agent — the global START button.
 
-Press F5 anywhere on Windows:
+Press F3 anywhere on Windows:
   - If Jarvis is not running → launch it
   - If Jarvis is already running → soft-reload core (exit 0) and ensure relaunch
 
@@ -25,7 +25,7 @@ RUNNER = ROOT / "runner.py"
 PY = Path(r"C:\Users\ethan\AppData\Local\Programs\Python\Python313\python.exe")
 PYW = Path(r"C:\Users\ethan\AppData\Local\Programs\Python\Python313\pythonw.exe")
 
-_last_f5 = 0.0
+_last_wake = 0.0
 HOTKEY_ID = 0x4A46  # "JF"
 
 
@@ -256,14 +256,14 @@ def _ensure_relaunch_after_exit(*, had_watchdog: bool) -> None:
     _launch_jarvis(prefer_watchdog=not had_watchdog)
 
 
-def _on_f5() -> None:
-    global _last_f5
+def _on_wake() -> None:
+    global _last_wake
     try:
         now = time.time()
-        if now - _last_f5 < 0.7:
+        if now - _last_wake < 0.7:
             return
-        _last_f5 = now
-        _log("F5 pressed")
+        _last_wake = now
+        _log("F3 pressed")
 
         if _jarvis_running():
             had_watchdog = _watchdog_running()
@@ -280,12 +280,12 @@ def _on_f5() -> None:
             if not _jarvis_running():
                 _ensure_relaunch_after_exit(had_watchdog=had_watchdog)
             else:
-                _log("Jarvis still running after F5 — focused only")
+                _log("Jarvis still running after F3 — focused only")
             return
 
         _launch_jarvis(prefer_watchdog=True)
     except Exception as e:
-        _log(f"F5 failed: {e}")
+        _log(f"F3 failed: {e}")
 
 
 def _already_locked() -> bool:
@@ -312,7 +312,7 @@ def _already_locked() -> bool:
 
 
 def _run_win32_hotkey() -> None:
-    """Reliable global F5 via RegisterHotKey (no admin required)."""
+    """Reliable global F3 via RegisterHotKey (no admin required)."""
     import ctypes
     from ctypes import wintypes
 
@@ -320,14 +320,14 @@ def _run_win32_hotkey() -> None:
     kernel32 = ctypes.windll.kernel32
 
     MOD_NOREPEAT = 0x4000
-    VK_F5 = 0x74
+    VK_F3 = 0x72
     WM_HOTKEY = 0x0312
 
-    if not user32.RegisterHotKey(None, HOTKEY_ID, MOD_NOREPEAT, VK_F5):
+    if not user32.RegisterHotKey(None, HOTKEY_ID, MOD_NOREPEAT, VK_F3):
         err = kernel32.GetLastError()
-        raise OSError(f"RegisterHotKey(F5) failed error={err}")
+        raise OSError(f"RegisterHotKey(F3) failed error={err}")
 
-    _log("Win32 F5 hotkey registered")
+    _log("Win32 F3 hotkey registered")
     try:
         msg = wintypes.MSG()
         while True:
@@ -335,7 +335,7 @@ def _run_win32_hotkey() -> None:
             if ret == 0 or ret == -1:
                 break
             if msg.message == WM_HOTKEY and msg.wParam == HOTKEY_ID:
-                _on_f5()
+                _on_wake()
             else:
                 user32.TranslateMessage(ctypes.byref(msg))
                 user32.DispatchMessageW(ctypes.byref(msg))
@@ -346,8 +346,8 @@ def _run_win32_hotkey() -> None:
 def _run_keyboard_fallback() -> None:
     import keyboard
 
-    keyboard.add_hotkey("f5", _on_f5, suppress=False)
-    _log("keyboard-lib F5 hotkey registered (fallback)")
+    keyboard.add_hotkey("f3", _on_wake, suppress=False)
+    _log("keyboard-lib F3 hotkey registered (fallback)")
     keyboard.wait()
 
 

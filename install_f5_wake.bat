@@ -1,6 +1,6 @@
 @echo off
 
-title Install Jarvis F5 Wake
+title Install Jarvis F3 Wake
 
 cd /d "%~dp0"
 
@@ -60,7 +60,7 @@ echo.
 
 echo ========================================
 
-echo  F5 is now fast + global.
+echo  F3 is now fast + global.
 
 echo  - Closed Jarvis  → launches (via runner watchdog)
 

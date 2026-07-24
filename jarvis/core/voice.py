@@ -53,6 +53,9 @@ class VoiceEngine:
         elevenlabs_model: str = "eleven_monolingual_v1",
         allow_virtual_mic: bool = False,
         prefer_elevenlabs: bool = False,
+        deepgram_api_key: str = "",
+        deepgram_model: str = "nova-2",
+        duplex_enabled: bool = True,
     ) -> None:
         self.on_heard = on_heard
         self.on_level = on_level
@@ -75,6 +78,11 @@ class VoiceEngine:
         self.elevenlabs_model = elevenlabs_model or "eleven_monolingual_v1"
         # Default off — Adam/US ElevenLabs breaks the Jarvis British feel
         self.prefer_elevenlabs = bool(prefer_elevenlabs)
+        # Duplex streaming STT (Deepgram) — sub-300ms finals + real barge-in
+        self.deepgram_api_key = (deepgram_api_key or "").strip()
+        self.deepgram_model = deepgram_model or "nova-2"
+        self.duplex_enabled = bool(duplex_enabled)
+        self._duplex = None
         self.stream = ThoughtStream(5.0)
         self._running = False
         self._mute = False
@@ -486,6 +494,17 @@ class VoiceEngine:
         return False
 
     def _listen_loop(self) -> None:
+        # Prefer the duplex Deepgram stream when configured; classic chunked
+        # recognition remains the fallback (and the recovery path).
+        if self._duplex_available():
+            try:
+                self._listen_duplex()
+            except Exception as e:
+                print(f"[voice] duplex failed — falling back to classic STT: {e}")
+            if not self._running:
+                return
+            print("[voice] duplex offline — classic STT engaged")
+
         try:
             import speech_recognition as sr
         except Exception as e:
@@ -625,6 +644,133 @@ class VoiceEngine:
                     time.sleep(0.8)
                     continue
                 continue
+
+    # ------------------------------------------------------------ duplex STT
+
+    def _duplex_available(self) -> bool:
+        if not (self.duplex_enabled and self.deepgram_api_key):
+            return False
+        from jarvis.core.duplex_voice import duplex_deps_ok
+
+        ok, reason = duplex_deps_ok()
+        if not ok:
+            print(f"[voice] duplex unavailable — {reason}")
+        return ok
+
+    def _listen_duplex(self) -> None:
+        """Full-duplex session: continuous stream, transcript barge-in."""
+        from jarvis.core.duplex_voice import DeepgramDuplex
+
+        def _should_send() -> bool:
+            # Keep streaming while Jarvis talks (barge-in); stop only on
+            # explicit mic mute or engine shutdown.
+            if not self._running:
+                return False
+            if self._mute and not self._speaking:
+                return False
+            return True
+
+        duplex = DeepgramDuplex(
+            self.deepgram_api_key,
+            model=self.deepgram_model,
+            mic_prefer=self.mic_prefer or "",
+            allow_virtual_mic=bool(self.allow_virtual_mic),
+            on_final=self._on_duplex_final,
+            on_interim=self._on_duplex_interim,
+            on_level=self._on_duplex_level,
+            should_send=_should_send,
+        )
+        self._duplex = duplex
+        duplex.start()
+        print("[voice] duplex STT online (deepgram)")
+        busy_since = 0.0
+        try:
+            while self._running and duplex.is_alive():
+                # Stuck-busy watchdog — mirrors the classic loop's protection
+                if self._busy and not self._speaking:
+                    if busy_since <= 0:
+                        busy_since = time.time()
+                    elif time.time() - busy_since > 12.0:
+                        print("[voice] busy watchdog — clearing stuck busy flag")
+                        self._busy = False
+                        busy_since = 0.0
+                else:
+                    busy_since = 0.0
+                time.sleep(0.1)
+        finally:
+            duplex.stop()
+            self._duplex = None
+        if duplex.fatal_error:
+            print(f"[voice] duplex fatal: {duplex.fatal_error}")
+
+    def _on_duplex_level(self, level: float) -> None:
+        if not self._speaking:
+            self._emit_level(level)
+        else:
+            self._level = max(0.0, min(1.0, float(level)))
+
+    def _on_duplex_final(self, text: str) -> None:
+        text = re.sub(r"\s+", " ", (text or "").lower().strip())
+        if not text:
+            return
+        if self._speaking:
+            # Talking over Jarvis with a real (non-echo) utterance: interrupt
+            # AND act on it — that is the whole point of duplex.
+            if self._sounds_like_echo(text) or time.time() < self._barge_after:
+                return
+            self.barge_in()
+        elif self._mute or self._busy:
+            return
+        elif time.time() < self._speak_until and self._sounds_like_echo(text):
+            return
+        if self._should_ignore(text):
+            print(f"[voice] ignored echo/dup: {text[:60]}")
+            return
+        self._last_heard = text
+        self._last_heard_at = time.time()
+        self.stream.push(text)
+        print(f"[voice] heard: {text}")
+        try:
+            self.on_heard(text)
+        except Exception as e:
+            print(f"[voice] on_heard: {e}")
+
+    def _on_duplex_interim(self, text: str) -> None:
+        # Barge-in on interim transcripts — fires mid-sentence, no level gate
+        if not self._speaking or not self._barge_armed:
+            return
+        if time.time() < float(getattr(self, "_barge_after", 0) or 0):
+            return
+        t = (text or "").lower().strip()
+        if len(t.split()) < 2:
+            return  # single-word blips are usually speaker bleed
+        if self._sounds_like_echo(t):
+            return
+        print(f"[voice] barge-in via transcript: {t[:50]}")
+        self.barge_in()
+
+    def _sounds_like_echo(self, text: str) -> bool:
+        """Does this transcript look like the mic hearing Jarvis's own TTS?"""
+        if not self._last_spoken:
+            return False
+        if time.time() - self._last_spoken_at > 25.0:
+            return False
+        spoken = self._last_spoken.lower()
+        t = (text or "").lower().strip()
+        if not t:
+            return True
+        if len(t) >= 8 and t in spoken:
+            return True
+        ratio = difflib.SequenceMatcher(None, t, spoken).ratio()
+        if ratio >= 0.5:
+            return True
+        # Fragment echo — most words of the heard text appear in the reply
+        words = [w for w in t.split() if len(w) > 2]
+        if words:
+            hits = sum(1 for w in words if w in spoken)
+            if hits / len(words) >= 0.7:
+                return True
+        return False
 
     def _emit_level(self, level: float) -> None:
         self._level = max(0.0, min(1.0, float(level)))

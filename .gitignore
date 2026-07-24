@@ -12,6 +12,26 @@ jarvis/data/chroma/
 jarvis/data/images/
 *.mp3
 
+# Jarvis runtime / personal artifacts — never commit
+jarvis/data/.diary_key
+jarvis/data/diary.enc.json
+jarvis/data/security/
+jarvis/data/exports/
+jarvis/data/sites/
+jarvis/data/self_audit/
+jarvis/data/away_notes/
+jarvis/data/autobug/
+jarvis/data/*.jsonl
+jarvis/data/*.lock
+jarvis/data/*.pid
+jarvis/data/*.jpg
+jarvis/data/*.html
+jarvis/data/*.txt
+jarvis/data/*.log.*
+jarvis/data/tts/
+config/settings.json
+.cursor/settings.json
+
 # Secrets / local
 config/secrets.json
 config/config.json
