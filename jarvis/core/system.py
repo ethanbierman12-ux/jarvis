@@ -56,6 +56,12 @@ class SystemControl:
         ctypes.windll.user32.LockWorkStation()
         return "Workstation locked."
 
+    def unlock(self) -> str:
+        """Best-effort unlock using vault PIN (see pc_unlock)."""
+        from jarvis.core.pc_unlock import unlock_with_stored_pin
+
+        return unlock_with_stored_pin()
+
     def shutdown(self, confirm: bool = False) -> str:
         if not confirm:
             return "Say 'confirm shutdown' to power off."

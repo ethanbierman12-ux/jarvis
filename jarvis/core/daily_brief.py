@@ -60,12 +60,15 @@ class DailyBrief:
     def __init__(self) -> None:
         _ensure_defaults()
 
-    def summarize(self, *, open_inbox: bool = True) -> str:
+    def summarize(self, *, open_inbox: bool = True, weather_line: str = "") -> str:
         """Build a spoken daily brief from Outlook (if any) + local schedule/tasks."""
         now = datetime.now()
         parts: list[str] = [
             f"Daily brief for {now.strftime('%A, %B %d')}."
         ]
+
+        if weather_line:
+            parts.append(weather_line)
 
         outlook = self._outlook_today()
         if outlook:
@@ -89,6 +92,21 @@ class DailyBrief:
             self._open_mail_surface()
 
         return " ".join(parts)
+
+    def morning_standup(
+        self,
+        *,
+        weather_line: str = "",
+        extra: list[str] | None = None,
+        open_inbox: bool = False,
+    ) -> str:
+        """Structured 6AM-style briefing for 'good morning'."""
+        base = self.summarize(open_inbox=open_inbox, weather_line=weather_line)
+        bits = [base]
+        if extra:
+            bits.extend(extra)
+        bits.append("Say 'start work' when you are ready to engage.")
+        return " ".join(bits)
 
     def schedule_only(self) -> str:
         outlook = self._outlook_today()

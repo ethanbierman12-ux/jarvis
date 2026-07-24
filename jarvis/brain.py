@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+import webbrowser
 from datetime import datetime
 from typing import Any, Callable
 
@@ -29,8 +30,30 @@ from jarvis.core.work_mode import WorkMode
 from jarvis.core.habits import HabitEngine
 from jarvis.core.personality import Personality
 from jarvis.core.lighting import SmartLighting
+from jarvis.core.alexa_lamp import AlexaLamp
+from jarvis.core.phone_bridge import PhoneBridge
+from jarvis.core.rlhf import RLHFEngine
 from jarvis.core.soundscape import Soundscape
 from jarvis.core.diary import Diary, VisualMemory
+from jarvis.core.memory import VectorMemory
+from jarvis.core.audio_devices import AudioRouter
+from jarvis.core.home_assistant import HomeAssistant
+from jarvis.core.macro_gateway import MacroGateway
+from jarvis.core.companion_server import CompanionServer, make_token
+from jarvis.core.companion_pack import build_companion_setup_zip, companion_url
+from jarvis.core.task_queue import TaskQueue
+from jarvis.core.folder_watch import FolderWatch, is_watch_noise
+from jarvis.core.n8n_bridge import N8nBridge
+from jarvis.core.manus_bridge import ManusBridge
+from jarvis.core.cloud_integrations import CloudIntegrations
+from jarvis.core.manus_code_assist import (
+    CODE_EXTS,
+    ManusCodeAssistOffer,
+    build_review_prompt,
+    build_snapshot,
+    is_code_path,
+)
+from jarvis.core.edge_router import route_complexity
 from jarvis.core.proactive import ReturnBrief, WeatherGuard, SequenceLearner
 from jarvis.core.suggestions import SuggestionEngine
 from jarvis.core.system_extras import (
@@ -53,12 +76,32 @@ from jarvis.core.vibe_coder import VibeCoder
 from jarvis.core.internet import InternetAgent
 from jarvis.core.hitl import HumanInTheLoop, HitlRequest
 from jarvis.core.computer_use import ComputerUse
+from jarvis.core.computer_use_agent import ComputerUseAgent, looks_like_computer_use_goal
 from jarvis.core.instructions import CustomInstructions
 from jarvis.core.screen_context import ScreenContext
 from jarvis.core.hub_client import HubClient
-from jarvis.core.commands import normalize_command
+from jarvis.core.commands import normalize_command, is_fast_local_command
 from jarvis.core.intent_router import maybe_rewrite
 from jarvis.core.zero_env import ensure_agent_dirs, log_hitl
+from jarvis.core.travis import TravisController, parse_mode_command
+from jarvis.core.feature_registry import FeatureRegistry
+from jarvis.core.workflows import WorkflowEngine
+from jarvis.core.live_context import LiveContext
+from jarvis.core.mood_engine import MoodEngine
+from jarvis.core.proactive_agent import ProactiveAgent
+from jarvis.core.github_autocommit import GitHubAutoCommitter
+from jarvis.core.smart_calendar import SmartCalendar
+from jarvis.core.topic_monitor import TopicMonitor
+from jarvis.core.price_monitor import PriceMonitor
+from jarvis.core.media_presence import MediaPresenceController
+from jarvis.core.voice_to_code import VoiceToCode
+from jarvis.core.security_gate import SecurityGate
+from jarvis.core.voice_hotkeys import VoiceHotkeys
+from jarvis.core.gesture_commander import GestureCommander
+from jarvis.core.autobug import AutoBug
+from jarvis.core.self_audit import SelfAudit
+from jarvis.core.semantic_router import SemanticRouter, Lane
+from jarvis.config import DATA_DIR, ROOT
 import urllib.parse
 import os
 import subprocess
@@ -68,6 +111,28 @@ try:
     import pyperclip
 except Exception:  # optional
     pyperclip = None  # type: ignore
+
+
+def _now_in_timezone(tz_name: str | None = None) -> datetime:
+    """Wall-clock in settings timezone (default America/New_York); safe fallback."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo((tz_name or "America/New_York").strip() or "America/New_York"))
+    except Exception:
+        return datetime.now()
+
+
+def is_night_hour_window(hour: int, start: int, end: int) -> bool:
+    """Overnight-aware hour window. E.g. 19→6: night if hour>=19 or hour<6."""
+    hour = int(hour) % 24
+    start = int(start) % 24
+    end = int(end) % 24
+    if start == end:
+        return False
+    if start > end:
+        return hour >= start or hour < end
+    return start <= hour < end
 
 
 class Brain:
@@ -88,6 +153,13 @@ class Brain:
             or "http://127.0.0.1:8888/callback",
         )
         self.computer = ComputerUse()
+        try:
+            self.cu_agent = ComputerUseAgent()
+            self.cu_agent.configure_from_settings(settings)
+            self.cu_agent.on_status = self._on_computer_use_status
+        except Exception as e:
+            print(f"[computer-use] agent init: {e}")
+            self.cu_agent = None
         self.screen = ScreenContext()
         self.hub = HubClient(
             base_url=getattr(settings, "hub_url", "") or "http://127.0.0.1:8787",
@@ -96,8 +168,18 @@ class Brain:
             on_log=lambda m: self._emit("heard", f"[hub] {m}"),
         )
         self.instructions = CustomInstructions()
-        self.weather = Weather(settings.city, settings.openweather_api_key)
-        self.governor = SystemGovernor()
+        self.weather = Weather(
+            settings.city,
+            settings.openweather_api_key,
+            units=getattr(settings, "weather_units", "f") or "f",
+            timezone=getattr(settings, "timezone", "America/New_York")
+            or "America/New_York",
+        )
+        self.governor = SystemGovernor(
+            max_vision_fps=int(getattr(settings, "presence_check_fps", 3) or 3),
+            performance_mode=bool(getattr(settings, "performance_mode", False)),
+        )
+        self._gov_vision_fps = -1
         self.resources = ResourceManager()
         self.states = StateMachine()
         self.updater = SandboxCompiler()
@@ -121,7 +203,82 @@ class Brain:
         self.soundscape = Soundscape()
         self.diary = Diary()
         self.vmemory = VisualMemory()
-        self.theme_sync = ThemeSync()
+        self.vstore = VectorMemory()
+        self.audio = AudioRouter()
+        self.tasks = TaskQueue(workers=2)
+        self.ha = HomeAssistant(
+            url=getattr(settings, "ha_url", "") or "",
+            token=getattr(settings, "ha_token", "") or "",
+            enabled=bool(getattr(settings, "ha_enabled", False)),
+        )
+        self.lamp = AlexaLamp(
+            device_name=getattr(settings, "alexa_lamp_name", "Lamp") or "Lamp",
+            ha=self.ha,
+            ha_entity=getattr(settings, "alexa_lamp_entity", "light.lamp")
+            or "light.lamp",
+            ifttt_key=getattr(settings, "alexa_ifttt_key", "") or "",
+            ifttt_on_event=getattr(settings, "alexa_ifttt_on_event", "jarvis_lamp_on")
+            or "jarvis_lamp_on",
+            ifttt_off_event=getattr(settings, "alexa_ifttt_off_event", "jarvis_lamp_off")
+            or "jarvis_lamp_off",
+            on_webhook=getattr(settings, "alexa_lamp_on_webhook", "") or "",
+            off_webhook=getattr(settings, "alexa_lamp_off_webhook", "") or "",
+            voice_relay=bool(getattr(settings, "alexa_voice_relay", True)),
+            audio=self.audio,
+            say_wait=lambda phrase: self.voice.say_wait(phrase, polish=False),
+            restore_output=getattr(settings, "alexa_restore_output", "WG1") or "WG1",
+        )
+        topic = (getattr(settings, "phone_ntfy_topic", "") or "").strip()
+        self.phone = PhoneBridge(
+            topic=topic,
+            server=getattr(settings, "phone_ntfy_server", "") or "https://ntfy.sh",
+            shortcuts_webhook=getattr(settings, "phone_shortcuts_webhook", "") or "",
+            enabled=bool(getattr(settings, "phone_enabled", True)),
+        )
+        self.rlhf = RLHFEngine()
+        self.n8n = N8nBridge(
+            base_url=getattr(settings, "n8n_url", "") or "",
+            api_key=getattr(settings, "n8n_api_key", "") or "",
+        )
+        try:
+            self.cloud = CloudIntegrations(
+                stripe_secret_key=getattr(settings, "stripe_secret_key", "") or "",
+                notion_token=getattr(settings, "notion_token", "") or "",
+                buffer_access_token=getattr(settings, "buffer_access_token", "") or "",
+                gmail_access_token=getattr(settings, "gmail_access_token", "") or "",
+            )
+        except Exception:
+            self.cloud = CloudIntegrations()
+        try:
+            self.manus = ManusBridge(
+                api_key=getattr(settings, "manus_api_key", "") or "",
+                enabled=bool(getattr(settings, "manus_enabled", True)),
+                agent_profile=getattr(settings, "manus_agent_profile", "") or "manus-1.6",
+                base_url=getattr(settings, "manus_base_url", "") or "",
+            )
+        except Exception:
+            self.manus = ManusBridge()
+        self._manus_code_offer: ManusCodeAssistOffer | None = None
+        self.code_watch: FolderWatch | None = None
+        try:
+            debounce = float(
+                getattr(settings, "manus_code_assist_debounce_sec", 45) or 45
+            )
+            cooldown = float(
+                getattr(settings, "manus_code_assist_cooldown_sec", 720) or 720
+            )
+            self._manus_code_offer = ManusCodeAssistOffer(
+                debounce_sec=debounce,
+                cooldown_sec=cooldown,
+                on_offer=self._offer_manus_code_assist,
+            )
+        except Exception:
+            self._manus_code_offer = None
+        self.macro: MacroGateway | None = None
+        self.watch: FolderWatch | None = None
+        self.theme_sync = ThemeSync(
+            windows_enabled=bool(getattr(settings, "theme_sync_windows", False))
+        )
         self.boost = PerformanceBoost()
         self.panic = PanicSwitch()
         self.emotion = EmotionMirror()
@@ -180,27 +337,48 @@ class Brain:
         self._scanning = False
         self._night_vision = False
         self._night_vision_auto_on = False
+        self._nv_user_off = False  # manual off — blocks auto re-enable until dawn or "on"
+        self._nv_user_on = False  # manual on — survives day auto-disable
         self._lock = threading.Lock()
         self._last_frame = None
         self._start_cooldown = 0.0
         self._handling = False
         self._note_mode = False
+        self._note_mode_at = 0.0
+        self._armed_until = 0.0
+        self._memory_hint = ""
         self._note_buffer: list[str] = []
         self._persona_support = False
         self._last_reply = ""
         self._last_reply_at = 0.0
         self._panic_active = False
+        self._quiet_mode = False
+        self._quiet_saved_intruder: bool | None = None
+        self._skip_suggestion_followups = False
         mic_pref = getattr(settings, "mic_prefer", "") or ""
         self.voice = VoiceEngine(
-            on_heard=self.handle_utterance,
+            on_heard=lambda t: self.handle_utterance(t, from_voice=True),
             voice=settings.tts_voice,
             rate=settings.tts_rate,
             pitch=getattr(settings, "tts_pitch", "-4Hz"),
             volume=getattr(settings, "tts_volume", "+0%"),
             noise_reduce=settings.noise_reduce,
-            mic_prefer=mic_pref,  # empty = system default mic
+            mic_prefer=mic_pref,
             on_level=lambda lvl: self._emit("mic_level", lvl),
+            on_speaking=lambda on: self._emit("speaking", bool(on)),
+            elevenlabs_api_key=getattr(settings, "elevenlabs_api_key", "") or "",
+            elevenlabs_voice_id=getattr(settings, "elevenlabs_voice_id", "")
+            or "pNInz6obpgDQ51uIfY1H",
+            elevenlabs_model=getattr(settings, "elevenlabs_model", "")
+            or "eleven_monolingual_v1",
+            prefer_elevenlabs=bool(
+                getattr(settings, "tts_prefer_elevenlabs", False)
+            ),
+            allow_virtual_mic=not bool(
+                getattr(settings, "mic_reject_loopback", True)
+            ),
         )
+        self._scan_open_browser = False
         self.vision = VisionService(
             camera_index=settings.camera_index,
             prefer=settings.camera_prefer,
@@ -209,6 +387,147 @@ class Brain:
         )
         self.bedtime = BedtimeMode(self.system, ui=lambda d: self._emit("bedtime", d))
         self.persona = Personality(settings.user_name)
+        self.travis = TravisController(
+            getattr(settings, "travis_mode", "off") or "off"
+        )
+        self.persona.bind_travis(self.travis)
+        try:
+            self.router = SemanticRouter()
+        except Exception:
+            self.router = SemanticRouter()
+        try:
+            self.registry = FeatureRegistry()
+        except Exception:
+            self.registry = FeatureRegistry()  # infallible ctor
+        try:
+            self.workflows = WorkflowEngine(
+                run_cmd=lambda c: self._route_workflow_step(c)
+            )
+        except Exception as e:
+            print(f"[workflows] init: {e}")
+            self.workflows = None  # type: ignore
+        try:
+            self.live = None
+            self.mood = None
+            self.gitbot = None
+            self.calendar = None
+            self.topics = None
+            self.prices = None
+            self.voice_code = None
+            self.media_presence = None
+            self.security = None
+            self.hotkeys = None
+            self.gestures = None
+            self.autobug = None
+            self.self_audit = None
+            self.proactive = None
+            # Per-module init — one failure must not wipe the rest
+            try:
+                self.live = LiveContext(
+                    self.weather,
+                    timezone=getattr(settings, "timezone", "America/New_York")
+                    or "America/New_York",
+                )
+            except Exception as e:
+                print(f"[live] init: {e}")
+            try:
+                self.mood = MoodEngine()
+            except Exception as e:
+                print(f"[mood] init: {e}")
+            try:
+                self.gitbot = GitHubAutoCommitter(
+                    getattr(settings, "work_project_path", "") or ROOT,
+                    auto_push=bool(getattr(settings, "github_auto_push", False)),
+                )
+            except Exception as e:
+                print(f"[gitbot] init: {e}")
+            try:
+                self.calendar = SmartCalendar(DATA_DIR)
+            except Exception as e:
+                print(f"[calendar] init: {e}")
+            try:
+                self.topics = TopicMonitor()
+                self.prices = PriceMonitor(DATA_DIR)
+            except Exception as e:
+                print(f"[topics/prices] init: {e}")
+            try:
+                self.voice_code = VoiceToCode()
+            except Exception as e:
+                print(f"[voice_code] init: {e}")
+            try:
+                self.media_presence = MediaPresenceController(
+                    enabled=bool(getattr(settings, "media_pause_on_stand", True))
+                )
+            except Exception as e:
+                print(f"[media_presence] init: {e}")
+            try:
+                self.security = SecurityGate(DATA_DIR, user_name=settings.user_name)
+                self.security.enabled = bool(getattr(settings, "security_enabled", True))
+                self.security.intruder_alert = bool(
+                    getattr(settings, "intruder_alert", True)
+                )
+                try:
+                    self.security.intruder_cooldown_sec = float(
+                        getattr(settings, "intruder_alert_cooldown_sec", 720) or 720
+                    )
+                except Exception:
+                    self.security.intruder_cooldown_sec = 720.0
+                # Never auto OS-lock from camera unless lock_on_absence is on
+                self.security.lock_on_leave = bool(
+                    getattr(settings, "lock_on_absence", False)
+                )
+                self.security._save_meta()
+            except Exception as e:
+                print(f"[security] init: {e}")
+            try:
+                self.hotkeys = VoiceHotkeys(lock_fn=lambda: self.system.lock())
+            except Exception as e:
+                print(f"[hotkeys] init: {e}")
+            try:
+                self.gestures = GestureCommander(
+                    run=lambda c: self._run_gesture_cmd(c)
+                )
+            except Exception as e:
+                print(f"[gestures] init: {e}")
+            try:
+                self.autobug = AutoBug(DATA_DIR)
+                self.self_audit = SelfAudit(DATA_DIR, ROOT)
+            except Exception as e:
+                print(f"[autobug/audit] init: {e}")
+            try:
+                self.proactive = ProactiveAgent(
+                    telemetry_fn=lambda: self.system.telemetry(),
+                    on_say=lambda t: self.say(t),
+                    on_alert=lambda t: self._emit("hud_alert", t),
+                    mood=self.mood,
+                )
+                self.proactive.set_enabled(
+                    bool(getattr(settings, "proactive_enabled", True))
+                )
+            except Exception as e:
+                print(f"[proactive] init: {e}")
+            try:
+                self.registry.register("live_context", version="1.0", note="Date/weather ground truth")
+                self.registry.register("proactive", version="1.0", note="CPU/late/idle nudges")
+                self.registry.register("github_autocommit", version="1.0", note="AI-ish commit+push")
+                self.registry.register("smart_calendar", version="1.0", note="Spoken schedule → ICS")
+                self.registry.register("security_gate", version="1.0", note="Face greet + intruder")
+                self.registry.register("autobug", version="1.0", note="Error log triage")
+                self.registry.register("self_audit", version="1.0", note="Nightly HITL proposals")
+                self.registry.register(
+                    "semantic_router",
+                    version="1.0",
+                    note="Local-first priority lanes → Hub only for complex",
+                )
+                self.registry.register(
+                    "computer_use",
+                    version="1.0",
+                    note="Browser/desktop agent (Anthropic / OpenAI / browser-use)",
+                )
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[productivity] init: {e}")
 
         self.governor.on_change(self._on_governor)
         self.states.on_change(self._on_state)
@@ -220,16 +539,58 @@ class Brain:
         self.voice.start()
         self.context.start()
         self.game_focus.start()
+        self.tasks.start()
         # Prefetcher used to silently open Chrome/Code on a schedule — off by default
         # self.prefetcher.start()
-        # One spoken line after boot — avoid greet + brief double-TTS (felt slow after F5)
-        greet = self.persona.greet()
-        self._emit("speak_ui", greet)
-        self._emit("hud_alert", greet)
+        # Boot: clean welcome only (loading was already spoken during overlay)
+        welcome = "Welcome, Sir."
+        try:
+            welcome = self.persona.boot_welcome()
+        except Exception:
+            pass
+        self._emit("speak_ui", welcome)
+        self._emit("hud_alert", welcome)
+        # Short delay so loading TTS + boot SFX can finish cleanly
+        threading.Timer(0.55, lambda w=welcome: self.say(w)).start()
         self._emit("listening", False)
+        # Discoverability — soft tip so the travel companion isn't a 80% secret
+        threading.Timer(5.2, self._maybe_announce_companion).start()
+        # Kill any leftover lock countdown from prior session
+        try:
+            self._countdown_active = False
+            self._absent_since = None
+            self._emit("countdown_cancel", True)
+        except Exception:
+            pass
+        # Restore Travis visual if a mode was persisted
+        if self.travis.active:
+            self._emit("travis_ui", self.travis.mode.value)
+        # Persist smooth / eco HUD if last session left it on
+        try:
+            if bool(getattr(self.settings, "performance_mode", False)):
+                threading.Timer(
+                    0.9, lambda: self._set_performance_mode(True)
+                ).start()
+        except Exception:
+            pass
         threading.Timer(0.4, self._wake_command_center).start()
         threading.Timer(3.2, self._morning_weather_nudge).start()
-        threading.Timer(1.4, lambda: self.theme_sync.apply_for_hour()).start()
+        # Do NOT auto-apply Windows theme (was turning the taskbar white in daytime).
+        # Optional one-shot repair if a prior build forced light system theme.
+        try:
+            if bool(getattr(self.settings, "theme_repair_dark_once", True)):
+                def _repair_theme() -> None:
+                    try:
+                        msg = self.theme_sync.restore_dark_taskbar()
+                        print(f"[theme] repair: {msg}")
+                        self.settings.theme_repair_dark_once = False
+                        self.settings.save()
+                    except Exception as e:
+                        print(f"[theme] repair skip: {e}")
+
+                threading.Timer(1.6, _repair_theme).start()
+        except Exception:
+            pass
         # Night vision watch (engages after dusk)
         threading.Timer(2.5, self._night_vision_loop).start()
         # First proactive suggestion shortly after boot
@@ -238,6 +599,42 @@ class Brain:
         self._suggest_timer_start()
         # Refresh command deck periodically
         threading.Timer(8.0, self._stats_pulse_loop).start()
+        # Proactive agent — CPU / late night / long session
+        try:
+            threading.Timer(45.0, self._proactive_loop).start()
+        except Exception:
+            pass
+        # Silent Stream Deck / macro pad
+        if getattr(self.settings, "macro_gateway_enabled", True):
+            try:
+                self.macro = MacroGateway(
+                    self.handle_macro,
+                    port=int(getattr(self.settings, "macro_gateway_port", 8765) or 8765),
+                )
+                self.macro.start()
+            except Exception as e:
+                print(f"[macro] {e}")
+        # iPhone companion PWA (Tailscale)
+        if getattr(self.settings, "companion_enabled", True):
+            try:
+                self._boot_companion()
+            except Exception as e:
+                print(f"[companion] {e}")
+        # Downloads / workspace watcher
+        if getattr(self.settings, "watch_enabled", True):
+            paths = list(getattr(self.settings, "watch_paths", None) or [])
+            if not paths:
+                paths = [str(Path.home() / "Downloads")]
+            try:
+                self.watch = FolderWatch(paths, self._on_new_file, enabled=True)
+                self.watch.start()
+            except Exception as e:
+                print(f"[watch] {e}")
+        # Manus code-assist: recursive watch on work project / jarvis (opt-in)
+        try:
+            self._boot_manus_code_watch()
+        except Exception as e:
+            print(f"[manus-code] watch: {e}")
         # Bring Hub & Spoke online in the background
         if getattr(self.settings, "hub_enabled", True):
             threading.Thread(
@@ -313,6 +710,10 @@ class Brain:
             self._emit("reactor_activity", mode)
         except Exception:
             pass
+        try:
+            self._reactor_ha(mode)
+        except Exception:
+            pass
 
     def _stats_pulse_loop(self) -> None:
         if getattr(self, "_stopped", False):
@@ -324,17 +725,47 @@ class Brain:
         threading.Timer(25.0, self._stats_pulse_loop).start()
 
     def _is_night_hours(self) -> bool:
-        from datetime import datetime
-
-        hour = datetime.now().hour
-        start = int(getattr(self.settings, "night_vision_start_hour", 19) or 19)
-        end = int(getattr(self.settings, "night_vision_end_hour", 6) or 6)
-        if start == end:
+        """Night window in settings.timezone (not PC local clock)."""
+        try:
+            tz = getattr(self.settings, "timezone", None) or "America/New_York"
+            hour = _now_in_timezone(tz).hour
+            start = int(getattr(self.settings, "night_vision_start_hour", 19) or 19)
+            end = int(getattr(self.settings, "night_vision_end_hour", 6) or 6)
+            return is_night_hour_window(hour, start, end)
+        except Exception:
             return False
-        if start > end:
-            # e.g. 19 → 6 spans midnight
-            return hour >= start or hour < end
-        return start <= hour < end
+
+    def _frame_mean_luminance(self) -> float | None:
+        """0..1 mean luminance from last camera frame; None if unavailable."""
+        try:
+            frame = getattr(self, "_last_frame", None)
+            if frame is None:
+                return None
+            import numpy as np
+
+            arr = np.asarray(frame)
+            if arr.ndim == 3 and arr.shape[2] >= 3:
+                # BGR → approximate luma
+                gray = (
+                    0.114 * arr[..., 0].astype(np.float32)
+                    + 0.587 * arr[..., 1].astype(np.float32)
+                    + 0.299 * arr[..., 2].astype(np.float32)
+                )
+            else:
+                gray = arr.astype(np.float32)
+            return float(np.mean(gray)) / 255.0
+        except Exception:
+            return None
+
+    def _ambient_too_bright_for_nv(self) -> bool:
+        """Skip auto-NV when the camera clearly sees daytime brightness."""
+        try:
+            lum = self._frame_mean_luminance()
+            if lum is None:
+                return False
+            return lum >= 0.42
+        except Exception:
+            return False
 
     def _night_vision_loop(self) -> None:
         if getattr(self, "_stopped", False):
@@ -343,22 +774,50 @@ class Brain:
             auto = bool(getattr(self.settings, "night_vision_auto", True))
             if auto:
                 want = self._is_night_hours()
-                if want and not self._night_vision:
+                # Clear manual-off latch once day window begins (ready for next dusk)
+                if not want and getattr(self, "_nv_user_off", False):
+                    self._nv_user_off = False
+                # Never auto-enable during day; brightness gate blocks false dusk
+                if (
+                    want
+                    and not self._night_vision
+                    and not getattr(self, "_nv_user_off", False)
+                    and not self._ambient_too_bright_for_nv()
+                ):
                     self.set_night_vision(True, announce=True, auto=True)
-                elif not want and self._night_vision and self._night_vision_auto_on:
+                elif (
+                    not want
+                    and self._night_vision
+                    and self._night_vision_auto_on
+                    and not getattr(self, "_nv_user_on", False)
+                ):
+                    # Day began — drop auto NV; leave user-forced NV alone
                     self.set_night_vision(False, announce=False, auto=True)
         except Exception:
             pass
         threading.Timer(45.0, self._night_vision_loop).start()
 
-    def set_night_vision(self, on: bool, announce: bool = True, auto: bool = False) -> str:
+    def set_night_vision(self, on: bool, announce: bool = False, auto: bool = False) -> str:
+        """Toggle NV. announce=True only for autonomous path (speaks itself).
+        Voice/button routes leave announce=False — handle_utterance speaks once.
+        """
         on = bool(on)
         was = self._night_vision
         self._night_vision = on
         if on:
             self._night_vision_auto_on = bool(auto)
+            self._nv_user_off = False
+            # Manual on survives day auto-disable; auto on does not set user latch
+            if not auto:
+                self._nv_user_on = True
+            else:
+                self._nv_user_on = False
         else:
             self._night_vision_auto_on = False
+            self._nv_user_on = False
+            # Voice / manual off: don't let the nightly auto loop flip it back on
+            if not auto:
+                self._nv_user_off = True
         self._emit("night_vision", on)
         if on and not was:
             msg = "Turning on night vision."
@@ -372,10 +831,201 @@ class Brain:
             msg = "Night vision offline."
             self._emit("speak_ui", msg)
             self._emit("hud_alert", "NIGHT VISION OFF")
+            self._emit("heard", "[optics] night vision offline")
             if announce:
                 self.say(msg)
             return msg
         return "Night vision already on." if on else "Night vision already off."
+
+    def _grab_fresh_enroll_frame(self):
+        """Best-effort BGR frames already in memory / on disk (no second camera)."""
+        frames: list = []
+        try:
+            box = getattr(self, "_enroll_grab_box", None)
+            if box:
+                frames.extend([f for f in box if f is not None])
+        except Exception:
+            pass
+        try:
+            if self._last_frame is not None:
+                frames.append(self._last_frame.copy())
+        except Exception:
+            pass
+        try:
+            import cv2
+
+            snap = DATA_DIR / "last_vision.jpg"
+            if snap.exists():
+                img = cv2.imread(str(snap))
+                if img is not None:
+                    frames.append(img)
+        except Exception:
+            pass
+        return frames
+
+    def _enroll_face_now(self) -> str:
+        """Always take a fresh theater frame — you're at the camera when you say this."""
+        if not getattr(self, "security", None):
+            return "Security module offline."
+        self._enroll_pending_speak = True
+        self._enroll_grab_box = []
+        try:
+            self._emit("hud_alert", "ENROLLING — hold still")
+            self._emit("enroll_grab", True)
+        except Exception as e:
+            print(f"[enroll] emit: {e}")
+        # If UI never delivers a frame (cam race), fall back after a few seconds
+        try:
+            threading.Timer(3.5, self._enroll_timeout_fallback).start()
+        except Exception:
+            pass
+        return ""  # accept_enroll_frame / fallback speaks the real result once
+
+    def _enroll_timeout_fallback(self) -> None:
+        if not getattr(self, "_enroll_pending_speak", False):
+            return
+        self._enroll_pending_speak = False
+        try:
+            frames = self._grab_fresh_enroll_frame()
+            msg = self.security.enroll_from_candidates(
+                frames, [DATA_DIR / "last_vision.jpg"]
+            )
+            self._emit(
+                "hud_alert",
+                "FACE ENROLLED" if "enrolled" in msg.lower() else "ENROLL FAILED",
+            )
+            self._emit("heard", f"[security] {msg}")
+            self.say(msg)
+        except Exception as e:
+            self.say(f"Enroll failed: {e}")
+
+    def accept_enroll_frame(self, frame) -> None:
+        """Called from UI with a live BGR frame; completes an in-flight enroll."""
+        if not getattr(self, "_enroll_pending_speak", False):
+            return
+        try:
+            if frame is not None:
+                self._last_frame = frame
+                box = getattr(self, "_enroll_grab_box", None)
+                if isinstance(box, list):
+                    box.append(frame.copy() if hasattr(frame, "copy") else frame)
+        except Exception:
+            pass
+        if not getattr(self, "security", None):
+            self._enroll_pending_speak = False
+            self.say("Security module offline.")
+            return
+        if frame is None:
+            # Keep pending — timeout fallback will try disk/last frame
+            return
+        self._enroll_pending_speak = False
+        try:
+            msg = self.security.enroll_from_bgr(frame, allow_fallback=False)
+            if "no face" in msg.lower():
+                # Close-up desk cam: allow center crop once on live frame
+                msg = self.security.enroll_from_bgr(frame, allow_fallback=True)
+            self._emit(
+                "hud_alert",
+                "FACE ENROLLED" if "enrolled" in msg.lower() else "ENROLL FAILED",
+            )
+            self._emit("heard", f"[security] {msg}")
+            self.say(msg)
+        except Exception as e:
+            self.say(f"Enroll failed: {e}")
+
+    def _proactive_loop(self) -> None:
+        try:
+            if getattr(self, "proactive", None):
+                self.proactive.tick()
+        except Exception as e:
+            print(f"[proactive] {e}")
+        try:
+            if getattr(self, "self_audit", None):
+                msg = self.self_audit.maybe_nightly()
+                if msg:
+                    self._emit("hud_alert", "Self-audit ready")
+                    self._emit("heard", f"[audit] {msg}")
+                    self.say(msg)
+        except Exception:
+            pass
+        try:
+            threading.Timer(60.0, self._proactive_loop).start()
+        except Exception:
+            pass
+
+    def _handle_security_event(self, ev) -> None:
+        kind = getattr(ev, "kind", "")
+        msg = getattr(ev, "message", "")
+        snap = getattr(ev, "snapshot", "") or ""
+        self._emit("heard", f"[security] {kind}: {msg}")
+        if kind == "intruder":
+            self._emit("hud_alert", "INTRUDER ALERT")
+            self._emit("panic_ui", True)
+            try:
+                if snap:
+                    self._emit("artifact", snap)
+            except Exception:
+                pass
+            try:
+                self.phone.ping("Intruder alert at your desk")
+            except Exception:
+                pass
+            self.say(msg)
+            return
+        if kind == "nudge":
+            # Soft biometrics tip — HUD + one speak (say() dedupes repeats)
+            self._emit("hud_alert", "BIOMETRICS UNSURE")
+            self.say(msg)
+            return
+        if kind == "greet":
+            self._emit("hud_alert", f"Welcome · {self.settings.user_name}")
+            self._emit("panic_ui", False)
+            # Light workspace unlock — restore listening / cancel lock countdown
+            try:
+                self.pause_presence_lock(False)
+                if self._countdown_active:
+                    self._countdown_active = False
+                    self._emit("countdown_cancel", True)
+            except Exception:
+                pass
+            self.say(msg)
+            return
+        if kind == "lock":
+            # Step-away: HUD only unless lock_on_absence is on
+            self._emit("hud_alert", "AWAY")
+            self._emit("heard", "[security] stepped away (auto-lock off)")
+            try:
+                if self.settings.lock_on_absence and not self._countdown_active:
+                    secs = int(getattr(self.settings, "presence_timeout_sec", 35) or 35)
+                    self._countdown_active = True
+                    self._emit("countdown_start", secs)
+                    self._emit("heard", f"[security] stepped away — {secs}s to lock")
+            except Exception:
+                pass
+            return
+
+    def handle_gesture(self, label: str = "", swipe: str = "") -> None:
+        """Called from camera theater / news gesture path."""
+        try:
+            if getattr(self, "gestures", None):
+                cmd = self.gestures.on_gesture(label=label or "", swipe=swipe or "")
+                if cmd:
+                    self._emit("hud_alert", f"Gesture · {cmd}")
+                    self._emit("command_ui", {"kind": "route", "text": f"gesture:{cmd}"})
+        except Exception as e:
+            print(f"[gesture] {e}")
+
+    def _run_gesture_cmd(self, cmd: str) -> None:
+        """Execute gesture-mapped utterance without the _handling lock drop."""
+        try:
+            if getattr(self, "registry", None) and not self.registry.allows(cmd):
+                self._emit("hud_alert", "Registry frozen")
+                return
+            reply = self._route((cmd or "").lower().strip())
+            if reply:
+                self.say(reply)
+        except Exception as e:
+            print(f"[gesture] cmd: {e}")
 
     def _wake_command_center(self) -> None:
         """On wake: drain offline steward work, speak spend/stats, fill data feed."""
@@ -420,19 +1070,38 @@ class Brain:
         threading.Timer(180.0, _tick).start()
 
     def _offer_suggestion(self, speak: bool = True, force: bool = False) -> None:
+        try:
+            if not getattr(self.suggestions, "enabled", True):
+                return
+            if self.suggestions.suppressed() and not force:
+                return
+        except Exception:
+            pass
         tip = self.suggestions.now_suggestion(force=force)
         if not tip:
             return
         self._emit("quick_action", tip["title"])
         self._emit("hud_alert", tip["detail"])
         self._emit("suggestion", tip)
+        # Spoken ambient tips only when speak_ok (long gap) — never stack "Suggestion:"
         if speak and self.suggestions.speak_ok():
-            self.say(f"Suggestion: {tip['detail']}")
+            self.say(tip["detail"] + " Say yes if you want that.")
 
     def accept_suggestion(self) -> str:
-        cmd = self.suggestions.pending_cmd or "set up my morning workspace"
+        """HUD chip accept — one command, then suppress follow-up cascade."""
+        try:
+            cmd = self.suggestions.accept()
+        except Exception:
+            cmd = self.suggestions.pending_cmd or ""
+            self.suggestions.clear_pending()
+        if not cmd:
+            return "Nothing pending."
         self._emit("heard", f"[suggestion] {cmd}")
-        return self._route(cmd.lower())
+        self._skip_suggestion_followups = True
+        try:
+            return self._route(cmd.lower())
+        finally:
+            self._skip_suggestion_followups = False
 
     def _run_site_build(self, brief: str = "", index: int | None = None) -> str:
         """Kick off a fully autonomous site build; preview appears when ready."""
@@ -623,6 +1292,124 @@ class Brain:
             "Options will appear on the left when locked."
         )
 
+    def _extract_map_zoom_place(self, t: str) -> str | None:
+        """Parse 'zoom in to Paris' / 'fly map to Japan' / 'go to Japan' style commands."""
+        patterns = (
+            r"\bzoom\s+(?:in\s+)?(?:in\s+to|into|to|on)\s+(.+)$",
+            r"\bfly\s+(?:the\s+)?(?:map\s+)?(?:to|into)\s+(.+)$",
+            r"\bmap\s+(?:zoom\s+(?:in\s+)?(?:to|on)|focus\s+on|to)\s+(.+)$",
+            r"\brecenter\s+(?:the\s+)?map\s+(?:on\s+)?(.+)$",
+            r"\b(?:go|take\s+me)\s+to\s+(.+?)\s+on\s+(?:the\s+)?map\b",
+            r"\b(?:show|focus)\s+(?:me\s+)?(.+?)\s+on\s+(?:the\s+)?map\b",
+            r"\bfocus\s+(?:the\s+)?map\s+on\s+(.+)$",
+            r"\b(?:show|open)\s+(?:me\s+)?(?:the\s+)?map\s+(?:of|for|to)\s+(.+)$",
+            # Bare go-to / take-me (filtered against non-geo phrases below)
+            r"\b(?:go|take\s+me)\s+to\s+(.+)$",
+            r"\b(?:fly|jump)\s+to\s+(.+)$",
+        )
+        _non_geo = {
+            "map",
+            "the map",
+            "in",
+            "out",
+            "closer",
+            "there",
+            "here",
+            "sleep",
+            "bed",
+            "work",
+            "bedtime",
+            "settings",
+            "the bathroom",
+            "the store",
+            "the office",
+            "school",
+            "home",  # ambiguous; use city via open map
+            "hell",
+            "town",
+            "the gym",
+            "lunch",
+            "dinner",
+            "meeting",
+            "a meeting",
+        }
+        for pat in patterns:
+            m = re.search(pat, t, flags=re.I)
+            if not m:
+                continue
+            dest = (m.group(1) or "").strip(" .,!?")
+            dest = re.sub(
+                r"\b(on the map|in the map|please|for me|view|mode|3d|the map)\b",
+                "",
+                dest,
+                flags=re.I,
+            ).strip(" .,!?")
+            low = dest.lower()
+            if not dest or low in _non_geo:
+                continue
+            # Skip obvious non-places: "go to sleep early", "go to the next track"
+            if re.match(
+                r"^(the\s+)?(next|previous|last|first|my|your)\b",
+                low,
+            ):
+                continue
+            if re.search(
+                r"\b(sleep|bed|settings|meeting|playlist|email|camera|news)\b",
+                low,
+            ):
+                continue
+            return dest
+        return None
+
+    def _map_zoom_to(self, place: str) -> str:
+        """Geocode place, fly 3D map, speak a short location brief."""
+        from jarvis.ui.widgets.map_view import _brief_for, _geocode_detail
+
+        hit = _geocode_detail(place)
+        if not hit:
+            return self._flavor(
+                "ok",
+                f"I couldn't locate {place} on the tactical map.",
+            )
+        brief = _brief_for(hit)
+        label = str(hit.get("name") or place)
+        self.habits.log("map_zoom", label[:40])
+        self._emit(
+            "map_ui",
+            {
+                "place": label,
+                "lat": hit["lat"],
+                "lon": hit["lon"],
+                "zoom": hit.get("zoom"),
+                "label": label,
+                "brief": brief,
+                "markers": [],
+                "scanning": False,
+                "animate": True,
+            },
+        )
+        self._emit("hud_alert", f"Map · {label}")
+        return self._flavor("ok", f"Zooming to {label}. {brief}")
+
+    def _map_zoom_delta(self, delta: float) -> str:
+        """Relative zoom in/out; opens map with intro if closed."""
+        try:
+            self.habits.log("map_zoom", "in" if delta >= 0 else "out")
+        except Exception:
+            pass
+        self._emit(
+            "map_ui",
+            {
+                "zoom_delta": float(delta),
+                "markers": [],
+                "scanning": False,
+                "animate": True,
+            },
+        )
+        if delta >= 0:
+            return self._flavor("ok", "Zooming in on the tactical map.")
+        return self._flavor("ok", "Pulling back on the tactical map.")
+
     def _run_away_agent(self, *, mail_mode: str = "ack") -> str:
         """Visible away ritual: apps, writing, talking, diagnostics + steward queue."""
         self.return_brief.mark_away()
@@ -687,22 +1474,443 @@ class Brain:
         self.context.stop()
         self.game_focus.stop()
         self.prefetcher.stop()
+        try:
+            if self.macro:
+                self.macro.stop()
+        except Exception:
+            pass
+        try:
+            if self.watch:
+                self.watch.stop()
+        except Exception:
+            pass
+
+    def handle_macro(self, cmd: str) -> str:
+        """Silent Stream Deck / HTTP macros — no TTS required for stop."""
+        c = (cmd or "").strip().lower()
+        aliases = {
+            "stop": "panic off",
+            "halt": "panic off",
+            "kill": "go offline",
+            "offline": "go offline",
+            "cam": "open camera",
+            "camera": "open camera",
+            "mute": "mute",
+            "lock": "lock",
+            "brief": "good morning",
+            "standup": "good morning",
+            "lamp": "turn on the lamp",
+            "lamp on": "turn on the lamp",
+            "lamp off": "turn off the lamp",
+            "light on": "turn on the lamp",
+            "light off": "turn off the lamp",
+        }
+        utterance = aliases.get(c, c)
+        if c in ("stop", "halt", "barge"):
+            try:
+                self.voice.barge_in()
+                self.voice.set_busy(False)
+                self._handling = False
+            except Exception:
+                pass
+            self._emit("hud_alert", "Macro STOP")
+            return "Stopped speech / cleared busy."
+        # Run through normal router on UI-safe thread
+        try:
+            self.handle_utterance(utterance)
+            return f"Macro ran: {utterance}"
+        except Exception as e:
+            return f"Macro error: {e}"
+
+    def handle_companion(self, text: str) -> str:
+        """iPhone PWA chat — same brain router, return spoken reply for the phone UI."""
+        msg = (text or "").strip()
+        if not msg:
+            return "Send a command when you're ready."
+        if self._handling:
+            return "I'm mid-command — try again in a moment."
+        self._last_spoken_shaped = ""
+        try:
+            self._emit("heard", f"[iPhone] {msg}")
+            self._emit("hud_alert", f"iPhone › {msg[:80]}")
+        except Exception:
+            pass
+        try:
+            self.handle_utterance(msg)
+        except Exception as e:
+            return f"Error: {e}"
+        out = (getattr(self, "_last_spoken_shaped", "") or "").strip()
+        return out or "Done."
+
+    def _ensure_companion_token(self) -> str:
+        tok = (getattr(self.settings, "companion_token", "") or "").strip()
+        if tok:
+            return tok
+        tok = make_token()
+        self.settings.companion_token = tok
+        self.settings.companion_enabled = True
+        try:
+            self.settings.save()
+        except Exception:
+            pass
+        return tok
+
+    def _boot_companion(self) -> None:
+        token = self._ensure_companion_token()
+        host = (getattr(self.settings, "companion_host", "") or "0.0.0.0").strip()
+        port = int(getattr(self.settings, "companion_port", 8766) or 8766)
+
+        def _status() -> dict:
+            return {
+                "user": self.settings.user_name,
+                "listening": not bool(getattr(self, "_handling", False)),
+                "port": port,
+            }
+
+        self.companion = CompanionServer(
+            self.handle_companion,
+            token=token,
+            host=host,
+            port=port,
+            on_status=_status,
+        )
+        self.companion.start()
+
+    def companion_status_line(self) -> str:
+        if not getattr(self.settings, "companion_enabled", True):
+            return "Phone companion is disabled in settings."
+        port = int(getattr(self.settings, "companion_port", 8766) or 8766)
+        live = getattr(self, "companion", None) is not None
+        tok = self._ensure_companion_token()
+        short = tok[:6] + "…" if len(tok) > 8 else tok
+        state = "online" if live else "configured but not running"
+        return (
+            f"iPhone companion {state} on port {port}. "
+            f"Token starts {short}. Say open phone companion for the Tailscale link."
+        )
+
+    def companion_link_message(self) -> str:
+        token = self._ensure_companion_token()
+        port = int(getattr(self.settings, "companion_port", 8766) or 8766)
+        url, host = companion_url(token=token, port=port)
+        self._emit(
+            "artifact",
+            {
+                "title": "IPHONE COMPANION · Tailscale + zip",
+                "text": (
+                    "You already have a travel companion built in.\n\n"
+                    "Fast path: say **companion zip** — Jarvis builds a setup zip "
+                    "(Desktop + exports). AirDrop it to the iPhone, open "
+                    "OPEN_IN_SAFARI.html in Safari.\n\n"
+                    "1) Install **Tailscale** on this PC and your iPhone 14 — same account.\n"
+                    "2) On iPhone: keep Tailscale Connected.\n"
+                    f"3) Safari open:\n   {url}\n"
+                    "4) Share → **Add to Home Screen** → Jarvis.\n"
+                    f"\nHost: `{host}`  Token: `{token}`\n"
+                    "\nDoc: docs/HANDOVER_COMPANION.md"
+                ),
+            },
+        )
+        try:
+            if getattr(self, "phone", None):
+                self.phone.notify(
+                    f"Companion ready. Or say companion zip on the desk.",
+                    title="JARVIS · phone companion",
+                )
+        except Exception:
+            pass
+        if host.startswith("100."):
+            return (
+                "You already have a travel companion. Open the Tailscale link in Safari on "
+                "your iPhone, or say companion zip for a setup pack you can AirDrop."
+            )
+        return (
+            "You already have a travel companion. Say companion zip for a Safari setup pack "
+            "on your Desktop — install Tailscale on PC and iPhone first."
+        )
+
+    def companion_zip_message(self) -> str:
+        """Build the iPhone Safari setup zip and point the user at it."""
+        token = self._ensure_companion_token()
+        port = int(getattr(self.settings, "companion_port", 8766) or 8766)
+        try:
+            info = build_companion_setup_zip(
+                token=token,
+                port=port,
+                user_name=self.settings.user_name or "Sir",
+            )
+        except Exception as e:
+            return f"Could not build the companion zip: {e}"
+
+        zip_path = info.get("desktop") or info.get("zip") or ""
+        url = info.get("url") or ""
+        self._emit(
+            "artifact",
+            {
+                "title": "IPHONE COMPANION · setup zip",
+                "text": (
+                    f"Zip ready:\n  {zip_path}\n\n"
+                    "On iPhone:\n"
+                    "1) Tailscale Connected (same account)\n"
+                    "2) AirDrop / iCloud the zip → Files → unzip\n"
+                    "3) Open OPEN_IN_SAFARI.html → Open Jarvis in Safari\n"
+                    "4) Share → Add to Home Screen\n\n"
+                    f"URL inside the pack:\n  {url}\n"
+                ),
+            },
+        )
+        try:
+            import os
+
+            folder = str(Path(zip_path).parent) if zip_path else ""
+            if folder:
+                os.startfile(folder)  # noqa: S606 — Windows Explorer
+        except Exception:
+            pass
+        try:
+            if getattr(self, "phone", None):
+                self.phone.notify(
+                    "Companion setup zip is on your PC Desktop. AirDrop it, open in Safari.",
+                    title="JARVIS · companion zip",
+                )
+        except Exception:
+            pass
+        where = "Desktop" if info.get("desktop") else "exports folder"
+        return (
+            f"Companion setup zip is on your {where}. AirDrop it to the iPhone, "
+            "open OPEN_IN_SAFARI.html in Safari, then Add to Home Screen."
+        )
+
+    def _maybe_announce_companion(self) -> None:
+        """Once a day: surface that the iPhone companion exists (discoverability)."""
+        if not getattr(self.settings, "companion_enabled", True):
+            return
+        if getattr(self, "_companion_announced", False):
+            return
+        today = datetime.now().strftime("%Y-%m-%d")
+        if (getattr(self.settings, "companion_intro_day", "") or "") == today:
+            return
+        self._companion_announced = True
+        self.settings.companion_intro_day = today
+        try:
+            self.settings.save()
+        except Exception:
+            pass
+        tip = (
+            f"By the way, {self.settings.user_name} — you already have a travel companion. "
+            "Say companion zip for a Safari setup pack, or open phone companion."
+        )
+        try:
+            self._emit("hud_alert", "iPhone companion ready")
+            self._emit("quick_action", "Open phone companion?")
+            if getattr(self, "suggestions", None):
+                self.suggestions.pending_cmd = "open phone companion"
+                self.suggestions._pending_at = time.time()
+        except Exception:
+            pass
+        try:
+            self.say(tip)
+        except Exception:
+            pass
+
+    def _boot_manus_code_watch(self) -> None:
+        """Recursive code-folder watch for Manus improve offers (never auto-tasks)."""
+        if not bool(getattr(self.settings, "manus_code_assist", True)):
+            return
+        manus = getattr(self, "manus", None)
+        if manus is None or not getattr(manus, "linked", False):
+            return
+        project = Path(
+            getattr(self.settings, "work_project_path", "") or ROOT
+        ).expanduser()
+        roots: list[str] = []
+        try:
+            proj_res = project.resolve()
+            root_res = ROOT.resolve()
+        except Exception:
+            proj_res = project
+            root_res = ROOT
+
+        # Prefer narrow source trees — never the whole jarvis/ package (data/ TTS spam).
+        try:
+            if str(proj_res) == str(root_res):
+                jarvis_pkg = ROOT / "jarvis"
+                for sub in ("core", "ui", "web"):
+                    p = jarvis_pkg / sub
+                    try:
+                        if p.is_dir():
+                            roots.append(str(p))
+                    except Exception:
+                        pass
+                hub_src = ROOT / "hub" / "src"
+                try:
+                    if hub_src.is_dir():
+                        roots.append(str(hub_src))
+                except Exception:
+                    pass
+            elif project.is_dir():
+                # External work project: watch it, but FolderWatch + is_code_path filter noise
+                roots.append(str(project))
+        except Exception:
+            pass
+        if not roots:
+            return
+        self.code_watch = FolderWatch(
+            roots,
+            self._on_new_file,
+            enabled=True,
+            settle_sec=2.0,
+            recursive=True,
+            also_modified=True,
+            allow_suffixes=CODE_EXTS,
+        )
+        self.code_watch.start()
+
+    def _offer_manus_code_assist(self) -> None:
+        """HUD quick_action only — user must say yes / click (no auto Manus task)."""
+        try:
+            if not bool(getattr(self.settings, "manus_code_assist", True)):
+                return
+            manus = getattr(self, "manus", None)
+            if manus is None or not getattr(manus, "linked", False):
+                return
+            if getattr(self, "suggestions", None):
+                self.suggestions.pending_cmd = "manus review"
+                self.suggestions._pending_at = time.time()
+            self._emit("quick_action", "Ask Manus to improve recent code?")
+            self._emit("hud_alert", "Manus code assist — say yes or manus review")
+        except Exception as e:
+            print(f"[manus-code] offer: {e}")
+
+    def _run_manus_code_review(self, file_path: str = "") -> str:
+        """Collect coding snapshot → Manus create_task → open URL + HUD artifact."""
+        manus = getattr(self, "manus", None)
+        if manus is None:
+            return "Manus bridge unavailable."
+        if not getattr(manus, "linked", False):
+            return (
+                "Manus not linked. Say set manus key to YOUR_KEY "
+                "(from manus.im → API Integration)."
+            )
+        project = getattr(self.settings, "work_project_path", "") or str(ROOT)
+        try:
+            snap = build_snapshot(project_path=project, file_path=file_path or "")
+            prompt = build_review_prompt(snapshot=snap)
+        except Exception as e:
+            return f"Could not build code snapshot: {e}"
+        title = "Jarvis code review"
+        if file_path:
+            title = f"Review {Path(file_path).name}"
+        reply = manus.create_task(prompt, title=title)
+        url = getattr(manus, "last_task_url", "") or ""
+        if url:
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+        self._emit(
+            "artifact",
+            {
+                "title": "MANUS CODE REVIEW",
+                "text": (
+                    f"{getattr(manus, 'last_title', '') or title}\n"
+                    f"id: {getattr(manus, 'last_task_id', '') or '—'}\n"
+                    f"{url or '—'}\n\n"
+                    f"Snapshot ~{len(snap)} chars sent.\n{reply}"
+                ),
+            },
+        )
+        try:
+            if getattr(self, "_manus_code_offer", None):
+                self._manus_code_offer.mark_offered()
+        except Exception:
+            pass
+        return reply
+
+    def _on_new_file(self, path: str) -> None:
+        # Drop runtime churn early (data_feed, TTS mp3s, locks, logs, …)
+        try:
+            if is_watch_noise(path):
+                return
+        except Exception:
+            return
+
+        name = Path(path).name
+
+        def _under_code_watch(p: str) -> bool:
+            try:
+                cw = getattr(self, "code_watch", None)
+                if not cw:
+                    return False
+                roots = [str(r.resolve()) for r in (cw.paths or [])]
+                try:
+                    resolved = str(Path(p).resolve())
+                except Exception:
+                    resolved = p
+                return any(
+                    resolved == r
+                    or resolved.startswith(r.rstrip("\\/") + "\\")
+                    or resolved.startswith(r.rstrip("\\/") + "/")
+                    for r in roots
+                )
+            except Exception:
+                return False
+
+        under_code = _under_code_watch(path)
+
+        # Manus code-assist hook (additive; never auto-create tasks)
+        try:
+            if (
+                bool(getattr(self.settings, "manus_code_assist", True))
+                and getattr(self, "manus", None) is not None
+                and getattr(self.manus, "linked", False)
+                and is_code_path(path)
+                and getattr(self, "_manus_code_offer", None) is not None
+            ):
+                self._manus_code_offer.note_change(path)
+        except Exception as e:
+            print(f"[manus-code] note: {e}")
+
+        # Quiet path for recursive code_watch (avoid Downloads-style spam)
+        if under_code:
+            try:
+                if is_code_path(path):
+                    self._emit("heard", f"[code-watch] {name}")
+                # Non-code under code roots: silent drop (no HUD / no task queue)
+            except Exception:
+                pass
+            return
+
+        msg = f"New file in watch folder: {name}"
+        self._emit("hud_alert", msg)
+        self.feed.push("watch", msg)
+        self._emit("heard", f"[watch] {path}")
+        # Light-weight analyze for media/csv — queued so voice stays free
+        low = path.lower()
+
+        def _job() -> str:
+            if low.endswith((".csv", ".json", ".xlsx", ".parquet")):
+                return f"Dataset detected ({name}). Say 'analyze downloads' when ready."
+            if low.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+                return f"Image landed ({name}). Say 'scan this' to identify."
+            return f"Noted {name}."
+
+        tid = self.tasks.submit(f"watch:{name[:24]}", _job)
+        print(f"[watch] queued {tid} for {name}")
+
+    def _reactor_ha(self, mode: str) -> None:
+        try:
+            self.ha.on_jarvis_state(mode)
+        except Exception:
+            pass
 
     def _on_game_focus(self, name: str) -> None:
+        """Mute listen path while a real game is up — never open Windows settings."""
         try:
             self.voice.mute_mic(True)
-            self.music.media_key("mute")
         except Exception:
             pass
-        try:
-            subprocess.Popen(
-                ["powershell", "-NoProfile", "-Command", "Start-Process ms-settings:quiethours"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except Exception:
-            pass
-        self._emit("hud_alert", f"Focus mode — {name} detected, mic muted.")
+        self._emit("hud_alert", f"Game focus — {name} (mic paused).")
 
     def _on_game_unfocus(self) -> None:
         try:
@@ -822,10 +2030,72 @@ class Brain:
         threading.Thread(target=_do, daemon=True, name="jarvis-start").start()
 
     def say(self, text: str) -> None:
-        # HUD gets full text; voice stays punchy (≤20 words)
-        self._emit("speak", text)
-        spoken = self.persona.speakable(text, max_words=20)
+        # HUD gets full text; voice speaks complete sentences (not a 20-word chop)
+        shaped = text
+        try:
+            shaped = self.travis.shape_reply(text)
+        except Exception:
+            shaped = text
+        budget = 60
+        try:
+            budget = self.travis.speakable_budget(60)
+        except Exception:
+            pass
+        spoken = self.persona.speakable(shaped, max_words=budget)
+        if not spoken:
+            return
+        # Brain-level dedupe — stops NV/route double-speak and stacked acks
+        import time as _t
+        import difflib
+
+        now = _t.time()
+        norm = " ".join(spoken.lower().split())
+        last = getattr(self, "_last_brain_say", "") or ""
+        last_at = float(getattr(self, "_last_brain_say_at", 0) or 0)
+        if last and now - last_at < 12.0:
+            if norm == last:
+                self._emit("speak_ui", shaped)  # log only
+                return
+            if difflib.SequenceMatcher(None, norm, last).ratio() >= 0.82:
+                self._emit("speak_ui", shaped)
+                return
+            # Same leading phrase ("Turning on night vision…")
+            if len(norm) > 18 and len(last) > 18 and (
+                norm[:24] == last[:24] or last.startswith(norm[:20]) or norm.startswith(last[:20])
+            ):
+                self._emit("speak_ui", shaped)
+                return
+        self._last_brain_say = norm
+        self._last_brain_say_at = now
+        self._last_spoken_shaped = shaped
+        self._emit("speak", shaped)
         self.voice.say(spoken)
+
+    def _apply_travis_mode(self, mode: str) -> str:
+        """Enter / exit Travis mode and sync HUD + settings."""
+        if mode == "status":
+            return self._flavor("ok", self.travis.status())
+        prev = self.travis.mode.value
+        profile = self.travis.set_mode(mode)
+        # Persist
+        try:
+            self.settings.travis_mode = self.travis.mode.value
+            self.settings.save()
+        except Exception:
+            pass
+        # Visual sync
+        mid = self.travis.mode.value if self.travis.active else "off"
+        self._emit("travis_ui", mid)
+        if profile:
+            self._reactor_safe(profile.activity)
+            self._emit("hud_alert", f"Travis · {profile.label}")
+            return self._flavor("ok", profile.enter_line)
+        self._reactor_safe("idle")
+        self._emit("hud_alert", "Travis · off")
+        line = "Travis modes cleared. Standard Jarvis protocol."
+        if prev != "off":
+            return self._flavor("ok", line)
+        return self._flavor("ok", line)
 
     def _emit(self, key: str, payload: Any) -> None:
         cb = self.ui.get(key)
@@ -889,7 +2159,10 @@ class Brain:
 
     # ── governor / vision ───────────────────────────────────────
     def _on_governor(self, snap) -> None:
-        self.vision.set_fps(snap.vision_fps)
+        # Only push FPS when it actually changes (avoids queue spam every 2s)
+        if snap.vision_fps != getattr(self, "_gov_vision_fps", -1):
+            self._gov_vision_fps = snap.vision_fps
+            self.vision.set_fps(snap.vision_fps)
         self._emit("telemetry", snap)
         if snap.eco:
             self._emit("bond", {"dim": True, "ambient": "conserve", "fps": snap.ui_fps})
@@ -897,16 +2170,76 @@ class Brain:
     def tick_governor(self):
         return self.governor.tick()
 
+    def _set_performance_mode(self, on: bool) -> str:
+        """Throttle HUD paint / vision for snappier voice (persisted)."""
+        on = bool(on)
+        try:
+            self.settings.performance_mode = on
+            self.settings.save()
+        except Exception:
+            pass
+        try:
+            self.governor.set_performance_mode(on)
+            self.governor.tick()
+        except Exception:
+            pass
+        try:
+            self._emit("performance_ui", on)
+            if on:
+                self._emit(
+                    "bond",
+                    {"dim": True, "ambient": "conserve", "fps": 10},
+                )
+            else:
+                self._emit("bond", {"fps": 15, "ambient": "normal"})
+        except Exception:
+            pass
+        if on:
+            return self._flavor(
+                "ok",
+                "Smooth mode on — HUD throttled so voice stays snappy.",
+            )
+        return self._flavor("ok", "Full fidelity HUD restored.")
+
     def _on_vision(self, ev: VisionEvent) -> None:
         import time
 
         self._emit("presence", ev.present)
         self._emit("parallax", {"x": ev.face_x, "y": ev.face_y})
+        # Smart media: pause Netflix/YouTube when you stand up
+        try:
+            if getattr(self, "media_presence", None) and not self._presence_paused:
+                note = self.media_presence.on_presence(bool(ev.present))
+                if note:
+                    self._emit("hud_alert", note)
+                    self._emit("heard", f"[media] {note}")
+        except Exception:
+            pass
+        # Biometric greet / intruder / step-away secure
+        try:
+            if getattr(self, "security", None) and not self._presence_paused:
+                ev_sec = self.security.on_presence(
+                    bool(ev.present),
+                    snapshot_path=str(getattr(ev, "snapshot_path", "") or ""),
+                    motion=float(getattr(ev, "motion", 0) or 0),
+                )
+                if ev_sec:
+                    self._handle_security_event(ev_sec)
+        except Exception as e:
+            print(f"[security] {e}")
         if self.settings.camera_index != ev.camera_index and ev.camera_index >= 0:
             self.settings.camera_index = ev.camera_index
 
-        # Contextual biometrics + activity from latest snapshot
-        if ev.snapshot_path and not self._presence_paused and not self._scanning:
+        # Contextual biometrics + activity from latest snapshot (throttled)
+        if (
+            ev.snapshot_path
+            and not self._presence_paused
+            and not self._scanning
+            and (
+                getattr(self.settings, "posture_nudge", False)
+                or getattr(self.settings, "auto_soundscape", False)
+            )
+        ):
             try:
                 import cv2
 
@@ -915,6 +2248,19 @@ class Brain:
                     self.activity.note_frame(img)
                     self._last_frame = img
                     self.context.tick_frame(img)
+            except Exception:
+                pass
+        elif ev.snapshot_path and not self._presence_paused:
+            # Keep last frame lightly for scan/opinion without full Haar bio path
+            try:
+                now = time.time()
+                if now - getattr(self, "_last_frame_load", 0) > 4.0:
+                    import cv2
+
+                    img = cv2.imread(ev.snapshot_path)
+                    if img is not None:
+                        self._last_frame = img
+                        self._last_frame_load = now
             except Exception:
                 pass
 
@@ -970,6 +2316,7 @@ class Brain:
             self._emit("heard", f"[security] away {int(gone)}s — locking")
             self.on_countdown_finished()
         else:
+            # Prefer short countdown
             secs = int(self.settings.presence_timeout_sec or 35)
             self._emit("countdown_start", secs)
             self._emit("heard", f"[security] presence lost — {secs}s to lock")
@@ -995,9 +2342,10 @@ class Brain:
         self.resources.for_state(new.value if new != JarvisState.ACTIVE else "hud")
 
     # ── intents ─────────────────────────────────────────────────
-    def handle_utterance(self, text: str) -> None:
+    def handle_utterance(self, text: str, *, from_voice: bool = False) -> None:
         text = normalize_command((text or "").strip())
-        if getattr(self.settings, "ollama_router", True):
+        # Ollama rewrite only when explicitly enabled (adds multi-second latency)
+        if getattr(self.settings, "ollama_router", False):
             try:
                 text = maybe_rewrite(
                     text,
@@ -1009,14 +2357,31 @@ class Brain:
         if not text:
             return
 
+        # Wake gate early (voice only) — before HUD "heard" flash
+        if from_voice and bool(getattr(self.settings, "wake_required", True)):
+            low0, woke0 = self._strip_wake(text.lower())
+            armed0 = time.time() < float(getattr(self, "_armed_until", 0) or 0)
+            note_or_code0 = bool(getattr(self, "_note_mode", False)) or bool(
+                getattr(getattr(self, "voice_code", None), "active", False)
+            )
+            if not woke0 and not armed0 and not note_or_code0:
+                print(f"[brain] ignore (no wake): {text[:60]}")
+                return
+
         # One command at a time — stops stacked repeats
         if self._handling:
+            print(f"[brain] busy — queued drop: {text[:60]}")
             return
         self._handling = True
         self.voice.set_busy(True)
+        reply = ""
         try:
-            self._emit("heard", text)
-            self._emit("listening", True)
+            try:
+                self._emit("heard", text)
+                self._emit("listening", True)
+                self._emit("command_ui", {"kind": "hear", "text": text})
+            except Exception:
+                pass
 
             # HITL voice resolve takes priority while a gate is open
             hitl_msg = self.hitl.resolve_voice(text)
@@ -1026,42 +2391,177 @@ class Brain:
                 self.say(hitl_msg)
                 return
 
-            ww = self.settings.wake_word.lower()
-            low = text.lower()
-            if low.startswith(ww):
-                text = text[len(ww) :].strip(" ,.")
-                low = text.lower()
+            # Feature freeze during upgrade — additive gate (allowlist only)
+            try:
+                low_probe = (text or "").lower().strip()
+                probe, woke_probe = self._strip_wake(low_probe)
+                check = probe if woke_probe else low_probe
+                if getattr(self, "registry", None) and not self.registry.allows(
+                    check or low_probe
+                ):
+                    msg = self.registry.block_message()
+                    self._emit(
+                        "command_ui", {"kind": "block", "text": check or text}
+                    )
+                    self._emit("hud_alert", "Registry frozen")
+                    self.say(msg)
+                    return
+            except Exception as e:
+                print(f"[registry] gate: {e}")
+
+            # Voice-to-code dictation mode (before normal routing)
+            try:
+                if getattr(self, "voice_code", None) and self.voice_code.active:
+                    low_vc, _ = self._strip_wake((text or "").lower())
+                    ack = self.voice_code.ingest(low_vc or text)
+                    if ack is not None:
+                        self.say(ack)
+                        return
+            except Exception as e:
+                print(f"[voice_code] {e}")
+
+            # Expire stuck note/dictation mode after 90s
+            if self._note_mode:
+                import time as _t
+
+                started = float(getattr(self, "_note_mode_at", 0) or 0)
+                if started and _t.time() - started > 90:
+                    self._note_mode = False
+                    self._note_buffer = []
+                    print("[brain] note mode auto-expired")
+
+            low, woke = self._strip_wake(text.lower())
+            # Preserve original casing for vaulted secrets (Anthropic/OpenAI keys are case-sensitive).
+            # Routing still uses `low`; set-key handlers read `self._cased_cmd`.
+            try:
+                self._cased_cmd, _ = self._strip_wake_preserve(text)
+            except Exception:
+                self._cased_cmd = text
+
+            # Bare wake word → short ack, stay ready (don't dump help menu)
+            if woke and not low:
+                # Cooldown — stop repeated "Yes?" from TV/false STT
+                now = time.time()
+                last_wake = float(getattr(self, "_last_bare_wake_at", 0) or 0)
+                if now - last_wake < 6.0:
+                    print("[brain] bare wake cooldown")
+                    self._armed_until = now + float(
+                        getattr(self.settings, "wake_arm_sec", 8.0) or 8.0
+                    )
+                    self._emit("listening", False)
+                    return
+                self._last_bare_wake_at = now
+                arm = float(getattr(self.settings, "wake_arm_sec", 8.0) or 8.0)
+                reply = f"Yes, {self.settings.user_name}?"
+                self._armed_until = now + arm
+                self._emit("hud_alert", "Listening…")
+                self.say(reply)
+                return
+
+            # Command with wake word — refresh arm for a quick follow-up
+            if woke and low:
+                self._armed_until = time.time() + float(
+                    getattr(self.settings, "wake_arm_sec", 8.0) or 8.0
+                )
 
             # Dictation mode — capture everything until "done" / "save note"
             if self._note_mode:
                 reply = self._note_dictation(low)
             else:
-                # Emotional mirroring
-                mood = self.emotion.analyze(low)
-                if mood == "stressed" and not self._persona_support:
-                    self._persona_support = True
-                    self.say(self.emotion.support_line(self.settings.user_name))
-                elif mood == "positive":
-                    self._persona_support = False
+                # Fast local strip cmds: skip memory/emotion/Hub lag; one spoken reply
+                fast = False
+                try:
+                    fast = is_fast_local_command(low)
+                except Exception:
+                    fast = False
+
+                support = ""
+                if not fast:
+                    # Emotional mirroring — prepend once, never speak separately
+                    mood = self.emotion.analyze(low)
+                    if mood == "stressed" and not self._persona_support:
+                        self._persona_support = True
+                        support = self.emotion.support_line(self.settings.user_name) + " "
+                    elif mood == "positive":
+                        self._persona_support = False
+
+                    try:
+                        if getattr(self, "mood", None):
+                            self.mood.observe_user(low)
+                        if getattr(self, "proactive", None):
+                            self.proactive.note_activity()
+                    except Exception:
+                        pass
+
+                    try:
+                        self._memory_hint = ""
+                        if self._should_query_memory(low):
+                            mem_block = self.vstore.context_block(low, n=3)
+                            if mem_block:
+                                self._emit(
+                                    "heard",
+                                    f"[memory] {mem_block.splitlines()[1][:100]}",
+                                )
+                                self._memory_hint = mem_block
+                    except Exception:
+                        self._memory_hint = ""
+                    try:
+                        if getattr(self, "live", None):
+                            self.live.snapshot(force_weather=False)
+                    except Exception:
+                        pass
+                else:
+                    self._memory_hint = ""
 
                 reply = self._route(low)
-                # Learn command sequences → quick action suggestion
-                if reply and not self._note_mode:
+                if support and reply:
+                    reply = (support + reply).strip()
+                elif support and not reply:
+                    reply = support.strip()
+                try:
+                    if reply and getattr(self, "mood", None) and not fast:
+                        self.mood.remember(low, reply)
+                except Exception:
+                    pass
+                try:
+                    if reply:
+                        self._emit(
+                            "command_ui",
+                            {
+                                "kind": "route",
+                                "text": low,
+                                "detail": ("local" if fast else (reply or "")[:80]),
+                            },
+                        )
+                except Exception:
+                    pass
+                # Learn / follow-ups — never chain after yes/accept
+                skip_follow = bool(
+                    getattr(self, "_skip_suggestion_followups", False)
+                )
+                try:
+                    if skip_follow or (
+                        getattr(self, "suggestions", None)
+                        and self.suggestions.suppressed()
+                    ):
+                        skip_follow = True
+                except Exception:
+                    pass
+                if reply and not self._note_mode and not fast and not skip_follow:
                     hint = self.sequences.observe(low)
                     if hint and self.sequences._counts.get(hint, 0) >= 3:
-                        # Proceed runs the last step of the learned sequence
                         last = hint.split("→")[-1].strip() or "set up my morning workspace"
                         self.suggestions.pending_cmd = last
+                        self.suggestions._pending_at = time.time()
                         self._emit(
                             "quick_action",
                             f"Shall I run “{last}” again?",
                         )
-                    # Follow-up suggestion after useful commands
                     follow = self.suggestions.after_command(low, reply or "")
                     if follow:
                         self._emit("quick_action", follow["title"])
                         self._emit("hud_alert", follow["detail"])
-                # Silent diary of meaningful actions
+                self._skip_suggestion_followups = False
                 if reply and any(
                     k in low
                     for k in ("done", "finished", "shipped", "deployed", "complete")
@@ -1069,7 +2569,6 @@ class Brain:
                     self.diary.log_win(low[:120])
             self._emit("listening", False)
             if reply:
-                # Never speak the same reply twice in a short window (stops rephrase loops)
                 import time as _time
 
                 now = _time.time()
@@ -1083,12 +2582,50 @@ class Brain:
                 else:
                     self._last_reply = norm
                     self._last_reply_at = now
+                    try:
+                        if not is_fast_local_command(low or text):
+                            self.rlhf.observe(low or text, action=low or text, reply=reply)
+                    except Exception:
+                        pass
                     self.say(reply)
         finally:
             self._handling = False
-            # Stay less busy in note mode so next sentences come through quickly
-            delay = 0.15 if self._note_mode else 0.35
+            # Free the mic quickly so the next command isn't dropped
+            delay = 0.05 if self._note_mode else 0.06
             threading.Timer(delay, lambda: self.voice.set_busy(False)).start()
+
+    def _strip_wake(self, text: str) -> tuple[str, bool]:
+        """Remove hey/ok/hi + wake word. Returns (remainder lowercased, woke)."""
+        rest, woke = self._strip_wake_preserve(text)
+        return rest.lower(), woke
+
+    def _strip_wake_preserve(self, text: str) -> tuple[str, bool]:
+        """Like _strip_wake but keeps original casing (API keys are case-sensitive)."""
+        raw = (text or "").strip(" .,!?")
+        low = raw.lower()
+        ww = re.escape((self.settings.wake_word or "jarvis").lower())
+        m = re.match(rf"^(?:hey |ok |okay |hi |yo )?{ww}(?:\s*[,:\-]+|\s+|$)", low)
+        if m:
+            return raw[m.end() :].strip(" .,!?"), True
+        return raw, False
+
+    def _capture_secret(self, pattern: str, fallback: str = "") -> str:
+        """Extract a secret from case-preserved utterance text when available."""
+        from jarvis.core.secrets_vault import sanitize_secret
+
+        src = (getattr(self, "_cased_cmd", None) or "").strip()
+        if src:
+            m = re.search(pattern, src, re.I)
+            if m:
+                return sanitize_secret(m.group(1))
+        fb = (fallback or "").strip()
+        if not fb:
+            return ""
+        m = re.search(pattern, fb, re.I)
+        if m:
+            return sanitize_secret(m.group(1))
+        # fallback may already be the captured key group (lowercased route path)
+        return sanitize_secret(fb)
 
     def _note_dictation(self, t: str) -> str:
         """While note mode is on, append spoken lines until user saves."""
@@ -1122,11 +2659,1168 @@ class Brain:
     def _flavor(self, kind: str, core: str) -> str:
         return self.persona.wrap(kind, core)
 
+    def _should_query_memory(self, t: str) -> bool:
+        """Skip vector search for short / obvious commands."""
+        if not t or len(t) < 12:
+            return False
+        if re.match(
+            r"^(open |lock|sleep|play |pause|volume |click |type |press |"
+            r"scroll |mute|unmute|weather|time|help|scan|build |away|"
+            r"go offline|reload |reboot |update software|hub |"
+            r"enroll|night vision|security|show stats|router |secure |"
+            r"auto lock|self audit|fix this|status$)",
+            t,
+        ):
+            return False
+        return bool(
+            re.search(
+                r"\b(where|what|remember|recall|about|my |the |mounted|"
+                r"camera|monitor|setup|config|prefer)\b",
+                t,
+            )
+        )
+
+    def _with_memory(self, core: str) -> str:
+        """Spoken replies stay clean — memory stays in the HUD log only."""
+        return core
+
+    def _try_phone_cmd(self, t: str) -> str | None:
+        """Return a reply string if this is a phone intent, else None."""
+        if not t:
+            return None
+        # iPhone companion PWA (Tailscale)
+        if re.search(
+            r"\b((open|show|launch|start)\s+(my\s+)?(phone\s+)?companion|"
+            r"phone\s+companion|"
+            r"companion\s+(link|url|setup)|"
+            r"jarvis\s+on\s+(my\s+)?(phone|iphone)|"
+            r"connect\s+jarvis\s+to\s+(my\s+)?(phone|iphone))\b",
+            t,
+        ):
+            return self._flavor("ok", self.companion_link_message())
+        if re.search(
+            r"\b(companion\s+zip|zip\s+(the\s+)?companion|"
+            r"(phone|iphone)\s+companion\s+zip|"
+            r"setup\s+zip|"
+            r"make\s+(a\s+)?companion\s+zip)\b",
+            t,
+        ):
+            return self._flavor("ok", self.companion_zip_message())
+        if re.search(r"\bcompanion\s+status\b", t):
+            return self._flavor("ok", self.companion_status_line())
+        # Status
+        if re.search(r"\b(phone status|iphone status|is my phone linked)\b", t):
+            push = self.phone.status()
+            comp = self.companion_status_line()
+            return self._flavor("ok", f"{push} {comp}")
+        # Pair / link
+        if re.search(
+            r"\b(link|pair|setup|connect)\s+(my\s+)?(phone|iphone)\b|"
+            r"\b(link my (phone|iphone)|setup (my )?phone|pair my (phone|iphone))\b",
+            t,
+        ):
+            return self._link_phone()
+        # Text / notify with body: "text my phone hello there"
+        m = re.search(
+            r"\b(?:text|notify|ping|message|alert|sms|send)\s+"
+            r"(?:to\s+)?(?:my\s+)?(?:phone|iphone|iphne|fone)\s+(.+)$",
+            t,
+        )
+        if m:
+            body = m.group(1).strip(" .,!?")
+            if body and body not in ("please", "now", "sir"):
+                self._ensure_phone_topic()
+                return self._flavor("ok", self.phone.notify(body))
+        # Bare ping / text phone
+        if re.search(
+            r"\b(?:text|notify|ping|message|alert|sms)\s+"
+            r"(?:to\s+)?(?:my\s+)?(?:phone|iphone|iphne|fone)\b|"
+            r"\b(?:phone|iphone)\s+ping\b|"
+            r"\bping(?:\s+my)?\s+(?:phone|iphone)\b|"
+            r"\bpink(?:\s+my)?\s+(?:phone|iphone)\b",
+            t,
+        ):
+            self._ensure_phone_topic()
+            return self._flavor(
+                "ok",
+                self.phone.notify("Jarvis ping — systems nominal."),
+            )
+        return None
+
+    def _try_cloud_cmd(self, t: str) -> str | None:
+        """Stripe / Notion / Buffer / Gmail voice intents."""
+        if not t:
+            return None
+        cloud = getattr(self, "cloud", None)
+        if cloud is None:
+            return None
+
+        if re.search(
+            r"\b(integrations?\s+status|cloud\s+status|cloud\s+integrations?)\b",
+            t,
+        ):
+            return self._flavor("ok", cloud.status())
+
+        # --- set tokens (vaulted via settings.save) ---
+        m = re.search(r"\bset\s+stripe\s+(?:secret\s+)?key\s+to\s+(\S.+)$", t, re.I)
+        if m:
+            key = self._capture_secret(
+                r"\bset\s+stripe\s+(?:secret\s+)?key\s+to\s+(\S.+)$",
+                m.group(1),
+            )
+            self.settings.stripe_secret_key = key
+            cloud.stripe_secret_key = key
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Stripe key saved to the vault.")
+
+        m = re.search(r"\bset\s+notion\s+token\s+to\s+(\S.+)$", t, re.I)
+        if m:
+            key = self._capture_secret(
+                r"\bset\s+notion\s+token\s+to\s+(\S.+)$",
+                m.group(1),
+            )
+            self.settings.notion_token = key
+            cloud.notion_token = key
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Notion token saved to the vault.")
+
+        m = re.search(r"\bset\s+buffer\s+token\s+to\s+(\S.+)$", t, re.I)
+        if m:
+            key = self._capture_secret(
+                r"\bset\s+buffer\s+token\s+to\s+(\S.+)$",
+                m.group(1),
+            )
+            self.settings.buffer_access_token = key
+            cloud.buffer_access_token = key
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Buffer token saved to the vault.")
+
+        m = re.search(r"\bset\s+gmail\s+token\s+to\s+(\S.+)$", t, re.I)
+        if m:
+            key = self._capture_secret(
+                r"\bset\s+gmail\s+token\s+to\s+(\S.+)$",
+                m.group(1),
+            )
+            self.settings.gmail_access_token = key
+            cloud.gmail_access_token = key
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Gmail token saved to the vault.")
+
+        # --- link / setup guides ---
+        if re.search(r"\b(link|connect|setup)\s+stripe\b|\bstripe\s+setup\b", t):
+            self._emit(
+                "artifact",
+                {
+                    "title": "STRIPE · LINK",
+                    "text": (
+                        "1) Open https://dashboard.stripe.com/apikeys\n"
+                        "2) Create a **secret** key (sk_…)\n"
+                        "3) Say: set stripe key to sk_…\n"
+                        "4) Say: stripe status · stripe payments\n"
+                    ),
+                },
+            )
+            try:
+                webbrowser.open("https://dashboard.stripe.com/apikeys")
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Stripe setup is on screen. Create a secret key, then say set stripe key to …",
+            )
+
+        if re.search(r"\b(link|connect|setup)\s+notion\b|\bnotion\s+setup\b", t):
+            self._emit(
+                "artifact",
+                {
+                    "title": "NOTION · LINK",
+                    "text": (
+                        "1) Open https://www.notion.so/my-integrations\n"
+                        "2) New integration → copy Internal Integration Secret\n"
+                        "3) Share target pages/databases with the integration\n"
+                        "4) Say: set notion token to secret_…\n"
+                        "5) Say: notion search …\n"
+                    ),
+                },
+            )
+            try:
+                webbrowser.open("https://www.notion.so/my-integrations")
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Notion setup is on screen. Create an integration secret, then say set notion token to …",
+            )
+
+        if re.search(r"\b(link|connect|setup)\s+buffer\b|\bbuffer\s+setup\b", t):
+            self._emit(
+                "artifact",
+                {
+                    "title": "BUFFER · LINK",
+                    "text": (
+                        "1) Buffer developer / account access token\n"
+                        "2) Say: set buffer token to YOUR_TOKEN\n"
+                        "3) Say: buffer status · buffer channels\n"
+                        "Cursor MCP Buffer OAuth is separate — this is for Jarvis voice.\n"
+                    ),
+                },
+            )
+            return self._flavor(
+                "ok",
+                "Buffer setup is on screen. Set an access token, then say buffer status.",
+            )
+
+        if re.search(r"\b(link|connect|setup)\s+gmail\b|\bgmail\s+setup\b", t):
+            self._emit(
+                "artifact",
+                {
+                    "title": "GMAIL · LINK",
+                    "text": (
+                        "Preferred: Connect Gmail MCP in Cursor (OAuth).\n"
+                        "For Jarvis voice, paste a short-lived OAuth access token:\n"
+                        "  set gmail token to ya29.…\n"
+                        "Then: gmail inbox · gmail status\n"
+                    ),
+                },
+            )
+            try:
+                webbrowser.open("https://mail.google.com")
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Gmail setup is on screen. Prefer Cursor OAuth; or set gmail token for Jarvis voice.",
+            )
+
+        # --- actions ---
+        if re.search(r"\bstripe\s+(status|balance)\b", t):
+            return self._flavor("ok", cloud.stripe_status())
+        if re.search(r"\b(stripe\s+payments|recent\s+stripe|list\s+stripe)\b", t):
+            return self._flavor("ok", cloud.stripe_recent_payments())
+
+        if re.search(r"\bnotion\s+status\b", t):
+            return self._flavor("ok", cloud.notion_status())
+        m = re.search(r"\bnotion\s+search\s+(.+)$", t, re.I)
+        if m:
+            return self._flavor("ok", cloud.notion_search(m.group(1).strip(" .,!?")))
+
+        if re.search(r"\bbuffer\s+status\b", t):
+            return self._flavor("ok", cloud.buffer_status())
+        if re.search(r"\bbuffer\s+(channels|profiles)\b", t):
+            return self._flavor("ok", cloud.buffer_channels())
+
+        if re.search(r"\bgmail\s+status\b", t):
+            return self._flavor("ok", cloud.gmail_status())
+        if re.search(r"\b(gmail\s+inbox|check\s+(my\s+)?(email|inbox|gmail))\b", t):
+            return self._flavor("ok", cloud.gmail_inbox())
+
+        return None
+
+    def _try_manus_cmd(self, t: str) -> str | None:
+        """Return a reply if this is a Manus AI intent, else None."""
+        if not t:
+            return None
+        try:
+            manus = getattr(self, "manus", None)
+            if manus is None:
+                return None
+
+            # Status / linked?
+            if re.search(
+                r"\b(manus\s+status|is\s+manus\s+linked|manus\s+linked)\b",
+                t,
+            ):
+                return self._flavor("ok", manus.status())
+
+            # Setup / link guide
+            if re.search(
+                r"\b((link|connect|setup|set\s+up)\s+manus|"
+                r"manus\s+(link|setup|connect))\b",
+                t,
+            ):
+                self._emit(
+                    "artifact",
+                    {
+                        "title": "MANUS AI · LINK",
+                        "text": (
+                            "1) Open https://manus.im and sign in\n"
+                            "2) Go to **API Integration** → Create API key\n"
+                            "3) Say: set manus key to YOUR_KEY\n"
+                            "4) Say: ask manus research the latest AI news\n"
+                            "\n"
+                            "API: https://api.manus.ai (header x-manus-api-key)\n"
+                            "Profile: manus-1.6 (settings.manus_agent_profile)"
+                        ),
+                    },
+                )
+                try:
+                    webbrowser.open("https://manus.im")
+                except Exception:
+                    pass
+                return self._flavor(
+                    "ok",
+                    "Manus setup is on screen. Create an API key at manus.im "
+                    "under API Integration, then say set manus key to YOUR_KEY.",
+                )
+
+            # Set API key
+            m = re.search(
+                r"\bset\s+manus\s+(?:api\s+)?key\s+to\s+(\S.+)$",
+                t,
+                re.I,
+            )
+            if m:
+                key = self._capture_secret(
+                    r"\bset\s+manus\s+(?:api\s+)?key\s+to\s+(\S.+)$",
+                    m.group(1),
+                )
+                if not key or key.lower() in ("please", "now", "sir"):
+                    return self._flavor(
+                        "clarify",
+                        "Paste in the command bar: set manus key to YOUR_KEY — from manus.im.",
+                    )
+                self.settings.manus_api_key = key
+                self.settings.manus_enabled = True
+                try:
+                    self.settings.save()
+                except Exception:
+                    pass
+                manus.api_key = key
+                manus.enabled = True
+                return self._flavor(
+                    "ok",
+                    "Manus API key saved to the vault. Say ask manus … to start a task.",
+                )
+
+            # Follow-up / continue
+            m = re.search(
+                r"\bmanus\s+(?:follow\s*up|continue|reply)\s+(.+)$",
+                t,
+                re.I,
+            )
+            if m:
+                body = m.group(1).strip(" .,!?")
+                if body:
+                    return self._flavor("ok", manus.send_followup(body))
+
+            # Result / progress / check
+            if re.search(
+                r"\b(manus\s+(result|progress|check)|check\s+manus|"
+                r"manus\s+task\s+status)\b",
+                t,
+            ):
+                return self._flavor("ok", manus.task_status())
+
+            # Code review / improve — before generic ask manus
+            m = re.search(
+                r"\bmanus\s+review\s+file\s+(\S.+)$",
+                t,
+                re.I,
+            )
+            if m:
+                fpath = m.group(1).strip(" .,!\"'")
+                return self._flavor("ok", self._run_manus_code_review(file_path=fpath))
+
+            if re.search(
+                r"\b("
+                r"manus\s+review|"
+                r"review\s+(this\s+)?with\s+manus|"
+                r"manus\s+improve(\s+this)?|"
+                r"ask\s+manus\s+to\s+improve(\s+this)?|"
+                r"improve\s+(this\s+)?with\s+manus"
+                r")\b",
+                t,
+                re.I,
+            ):
+                return self._flavor("ok", self._run_manus_code_review())
+
+            # Create task: ask manus … / send to manus … / tell manus … / manus …
+            m = re.search(
+                r"\b(?:ask\s+manus|send\s+to\s+manus|tell\s+manus|"
+                r"manus(?:\s+please)?)\s+(.+)$",
+                t,
+                re.I,
+            )
+            if m:
+                prompt = m.group(1).strip(" .,!?")
+                # Avoid colliding with status/setup/review phrases already handled
+                if not prompt or re.match(
+                    r"^(status|linked|link|setup|connect|result|progress|check|"
+                    r"follow\s*up|continue|key|review|improve)\b",
+                    prompt,
+                    re.I,
+                ):
+                    return None
+                # "ask manus to improve this" already handled; belt-and-suspenders
+                if re.match(r"^to\s+improve\b", prompt, re.I):
+                    return self._flavor("ok", self._run_manus_code_review())
+                reply = manus.create_task(prompt)
+                url = getattr(manus, "last_task_url", "") or ""
+                if url:
+                    try:
+                        webbrowser.open(url)
+                    except Exception:
+                        pass
+                self._emit(
+                    "artifact",
+                    {
+                        "title": "MANUS TASK",
+                        "text": (
+                            f"{getattr(manus, 'last_title', '') or prompt[:80]}\n"
+                            f"id: {getattr(manus, 'last_task_id', '') or '—'}\n"
+                            f"{url or '—'}\n\n{reply}"
+                        ),
+                    },
+                )
+                return self._flavor("ok", reply)
+
+            return None
+        except Exception as e:
+            return self._flavor("error", f"Manus command failed: {e}")
+
+    def _on_computer_use_status(self, status) -> None:
+        """HUD/feed updates from the agent thread (cross-thread via _emit)."""
+        try:
+            step = getattr(status, "step", 0)
+            mx = getattr(status, "max_steps", 0)
+            action = getattr(status, "last_action", "") or ""
+            running = bool(getattr(status, "running", False))
+            finished = bool(getattr(status, "finished", False))
+            result = getattr(status, "result", "") or ""
+            prov = getattr(status, "provider", "") or ""
+            if running:
+                msg = f"CU {prov} {step}/{mx}: {action}"[:140]
+                self._emit("hud_alert", msg)
+                self._emit(
+                    "command_ui",
+                    {"kind": "computer_use", "text": msg, "detail": action[:80]},
+                )
+                try:
+                    self.feed.push(
+                        "computer_use",
+                        msg,
+                        meta={"status": "running", "step": step, "provider": prov},
+                    )
+                except Exception:
+                    pass
+            elif finished:
+                done = (result or action or "session ended")[:160]
+                self._emit("hud_alert", f"Computer use: {done}")
+                self._emit("fetching", False)
+                try:
+                    self.feed.push(
+                        "computer_use",
+                        done,
+                        meta={"status": "done", "provider": prov},
+                    )
+                except Exception:
+                    pass
+                # Speak completion once from worker thread via say
+                try:
+                    self.say(self._flavor("ok", done))
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[computer-use] status ui: {e}")
+
+    def _start_computer_use_session(
+        self,
+        goal: str,
+        *,
+        provider: str = "",
+        max_steps: int | None = None,
+    ) -> str:
+        agent = getattr(self, "cu_agent", None)
+        if agent is None:
+            return "Computer-use agent failed to initialise."
+        try:
+            agent.configure_from_settings(self.settings)
+        except Exception:
+            pass
+
+        steps = int(max_steps if max_steps is not None else agent.max_steps)
+
+        def _run() -> None:
+            try:
+                # HITL gate for long autonomous runs (never silent spend of API + desktop control)
+                if agent.needs_confirm(steps) and getattr(self, "hitl", None):
+                    from jarvis.core.hitl import HitlDecision
+
+                    result = self.hitl.ask_permission(
+                        title="HITL · Computer use",
+                        detail=(
+                            f"Allow an autonomous computer-use session?\n\n"
+                            f"Goal: {goal[:280]}\n"
+                            f"Provider: {provider or agent.provider_name}\n"
+                            f"Max steps: {steps}\n\n"
+                            "Approve to let Jarvis control mouse/keyboard/browser. "
+                            "Deny cancels. Say stop computer use anytime."
+                        ),
+                        action="computer_use",
+                        agent="computer_use",
+                        meta={"goal": goal[:200], "steps": steps},
+                    )
+                    if result.decision not in (
+                        HitlDecision.APPROVED,
+                        HitlDecision.SKIPPED,
+                    ):
+                        msg = "Computer use cancelled — permission denied."
+                        self._emit("hud_alert", msg)
+                        self.say(self._flavor("ok", msg))
+                        return
+
+                self._emit("fetching", True)
+                self._emit(
+                    "artifact",
+                    {
+                        "title": "COMPUTER USE",
+                        "text": (
+                            f"Goal: {goal}\n"
+                            f"Provider: {provider or agent.provider_name}\n"
+                            f"Max steps: {steps}\n"
+                            "Say stop computer use to abort."
+                        ),
+                    },
+                )
+                reply = agent.start(goal, provider=provider, max_steps=steps)
+                self.say(self._flavor("ok", reply))
+            except Exception as e:
+                self.say(self._flavor("error", f"Computer use failed: {e}"))
+            finally:
+                # fetching cleared when agent finishes via status callback;
+                # also clear if start refused immediately
+                try:
+                    if not getattr(agent.status, "running", False):
+                        self._emit("fetching", False)
+                except Exception:
+                    self._emit("fetching", False)
+
+        threading.Thread(target=_run, daemon=True, name="computer-use-gate").start()
+        if agent.needs_confirm(steps) and getattr(self, "hitl", None) and self.hitl.enabled:
+            return self._flavor(
+                "ok",
+                "I need your approval for this computer-use run — Approve on the HUD, or say yes.",
+            )
+        # Immediate path: thread will speak the precise provider readiness line
+        return ""
+
+    def _try_computer_use_cmd(self, t: str) -> str | None:
+        """Return a reply if this is a computer-use / browser-agent intent, else None."""
+        if not t:
+            return None
+        try:
+            agent = getattr(self, "cu_agent", None)
+            if agent is None:
+                # Still allow key-setting prompts to work if init failed partially
+                if not re.search(
+                    r"\b(computer\s*use|browser\s*agent|operator|"
+                    r"anthropic\s+key|openai\s+key)\b",
+                    t,
+                    re.I,
+                ):
+                    return None
+
+            # Status
+            if re.search(
+                r"\b((computer\s*use|browser\s*agent|operator)\s+status|"
+                r"is\s+computer\s*use\s+(ready|running|linked)|"
+                r"computer\s*use\s+ready)\b",
+                t,
+                re.I,
+            ):
+                if agent is None:
+                    return self._flavor("error", "Computer-use agent is offline.")
+                try:
+                    agent.configure_from_settings(self.settings)
+                except Exception:
+                    pass
+                return self._flavor("ok", agent.status_line())
+
+            # Cancel / stop
+            if re.search(
+                r"\b((stop|cancel|abort|end|kill)\s+(computer\s*use|browser\s*agent|operator)|"
+                r"(computer\s*use|browser\s*agent|operator)\s+(stop|cancel|abort))\b",
+                t,
+                re.I,
+            ):
+                if agent is None:
+                    return self._flavor("ok", "No computer-use session to stop.")
+                return self._flavor("ok", agent.cancel())
+
+            # Setup / link guide
+            if re.search(
+                r"\b((link|connect|setup|set\s+up)\s+(computer\s*use|browser\s*agent|operator)|"
+                r"(computer\s*use|browser\s*agent)\s+(setup|link|connect))\b",
+                t,
+                re.I,
+            ):
+                self._emit(
+                    "artifact",
+                    {
+                        "title": "COMPUTER USE · SETUP",
+                        "text": (
+                            "FREE / LOCAL (no API credits):\n"
+                            "1) Install Ollama from https://ollama.com/download\n"
+                            "2) Start Ollama, then in a terminal:\n"
+                            "     ollama pull llava\n"
+                            "   (or: llama3.2-vision · qwen2.5vl · minicpm-v)\n"
+                            "3) Say: computer use provider local\n"
+                            "4) Optional browser window:\n"
+                            "     pip install playwright && playwright install chromium\n"
+                            "5) Example: computer use: open google maps\n"
+                            "\n"
+                            "PAID FALLBACK (optional):\n"
+                            "  set anthropic key to YOUR_KEY  (Claude computer-use)\n"
+                            "  set openai key to YOUR_KEY     (vision + actions)\n"
+                            "  Paste keys in the command bar — not voice.\n"
+                            "\n"
+                            "Settings: computer_use_provider=auto|ollama|local|anthropic|openai|browser_use\n"
+                            "computer_use_prefer_local=true → auto picks Ollama first\n"
+                            "Keys stay in the DPAPI vault — never commit them."
+                        ),
+                    },
+                )
+                live = ""
+                try:
+                    if agent is not None:
+                        agent.configure_from_settings(self.settings)
+                        live = " Right now: " + agent.missing_guidance()
+                except Exception:
+                    live = ""
+                return self._flavor(
+                    "ok",
+                    "Computer-use setup is on screen. For free local control: install Ollama, "
+                    "pull llava, say computer use provider local, then computer use followed by your goal. "
+                    "Cloud Anthropic/OpenAI keys are optional fallbacks."
+                    + live,
+                )
+
+            # Set API keys
+            m = re.search(
+                r"\bset\s+anthropic\s+(?:api\s+)?key\s+to\s+(\S.+)$",
+                t,
+                re.I,
+            )
+            if m:
+                key = self._capture_secret(
+                    r"\bset\s+anthropic\s+(?:api\s+)?key\s+to\s+(\S.+)$",
+                    m.group(1),
+                )
+                if not key or key.lower() in ("please", "now", "sir"):
+                    return self._flavor(
+                        "clarify",
+                        "Paste in the command bar: set anthropic key to YOUR_KEY "
+                        "(from console.anthropic.com — starts with sk-ant-). "
+                        "Voice often truncates long keys.",
+                    )
+                if not key.startswith("sk-ant-"):
+                    if key.startswith("sk-") or key.startswith("sk_"):
+                        return self._flavor(
+                            "clarify",
+                            "That looks like an OpenAI or Stripe key. "
+                            "Anthropic computer-use needs a key starting with sk-ant-.",
+                        )
+                    return self._flavor(
+                        "clarify",
+                        "Anthropic keys start with sk-ant-. "
+                        "Copy the full key from console.anthropic.com into the command bar.",
+                    )
+                self.settings.anthropic_api_key = key
+                self.settings.computer_use_enabled = True
+                try:
+                    self.settings.save()
+                except Exception:
+                    pass
+                if agent is not None:
+                    agent.anthropic_api_key = key
+                    agent.configure_from_settings(self.settings)
+                return self._flavor(
+                    "ok",
+                    "Anthropic key saved to the vault. Say computer use … to start an agent session.",
+                )
+
+            m = re.search(
+                r"\bset\s+openai\s+(?:api\s+)?key\s+to\s+(\S.+)$",
+                t,
+                re.I,
+            )
+            if m:
+                key = self._capture_secret(
+                    r"\bset\s+openai\s+(?:api\s+)?key\s+to\s+(\S.+)$",
+                    m.group(1),
+                )
+                if not key or key.lower() in ("please", "now", "sir"):
+                    return self._flavor(
+                        "clarify",
+                        "Paste in the command bar: set openai key to YOUR_KEY "
+                        "(from platform.openai.com). Voice often truncates long keys.",
+                    )
+                self.settings.openai_api_key = key
+                self.settings.computer_use_enabled = True
+                try:
+                    self.settings.save()
+                except Exception:
+                    pass
+                if agent is not None:
+                    agent.openai_api_key = key
+                    agent.configure_from_settings(self.settings)
+                return self._flavor(
+                    "ok",
+                    "OpenAI key saved to the vault. Say computer use … or operator … to start.",
+                )
+
+            # Provider switch
+            m = re.search(
+                r"\b(?:computer\s*use|browser\s*agent)\s+provider\s+(\w+)\b",
+                t,
+                re.I,
+            )
+            if m:
+                raw_name = m.group(1).strip().lower()
+                from jarvis.core.computer_use_agent import normalize_provider_name
+
+                name = normalize_provider_name(raw_name)
+                allowed = {
+                    "auto",
+                    "ollama",
+                    "local",
+                    "free",
+                    "anthropic",
+                    "openai",
+                    "browser_use",
+                    "browseruse",
+                    "desktop",
+                    "gemini",
+                    "skyvern",
+                    "openinterpreter",
+                }
+                if raw_name.replace("-", "_") not in allowed and name not in {
+                    "auto",
+                    "ollama",
+                    "anthropic",
+                    "openai",
+                    "browser_use",
+                    "desktop",
+                    "gemini",
+                    "skyvern",
+                    "openinterpreter",
+                }:
+                    return self._flavor(
+                        "clarify",
+                        "Providers: auto, ollama/local/free, anthropic, openai, browser_use, desktop "
+                        "(gemini/skyvern/openinterpreter are stubs).",
+                    )
+                self.settings.computer_use_provider = name
+                if name == "ollama":
+                    try:
+                        self.settings.computer_use_prefer_local = True
+                    except Exception:
+                        pass
+                try:
+                    self.settings.save()
+                except Exception:
+                    pass
+                if agent is not None:
+                    agent.provider_name = name
+                    try:
+                        agent.prefer_local = bool(
+                            getattr(self.settings, "computer_use_prefer_local", True)
+                        )
+                    except Exception:
+                        pass
+                spoken = "ollama (local/free)" if name == "ollama" else name
+                return self._flavor("ok", f"Computer-use provider set to {spoken}.")
+
+            # Start session: computer use … / browser agent … / operator …
+            m = re.search(
+                r"\b(?:computer\s*use|browser\s*agent|operator)\s*:?\s+(.+)$",
+                t,
+                re.I,
+            )
+            if m:
+                goal = m.group(1).strip(" .,!?")
+                if not goal or re.match(
+                    r"^(status|ready|stop|cancel|setup|link|provider|key)\b",
+                    goal,
+                    re.I,
+                ):
+                    return None
+                return self._start_computer_use_session(goal)
+
+            # "build a site for …" → computer-use agent (Maps/Lovable framing)
+            if looks_like_computer_use_goal(t) and re.search(
+                r"\bbuild\s+(a\s+)?(site|website)\s+for\b",
+                t,
+                re.I,
+            ):
+                goal = re.sub(
+                    r"^(jarvis[, ]*)?(please )?",
+                    "",
+                    t,
+                    flags=re.I,
+                ).strip()
+                framed = (
+                    f"{goal}. Research on Google Maps if needed, gather business info, "
+                    f"then open https://lovable.dev and draft a simple site."
+                )
+                return self._start_computer_use_session(framed)
+
+            return None
+        except Exception as e:
+            return self._flavor("error", f"Computer-use command failed: {e}")
+
+    def _ensure_phone_topic(self) -> None:
+        if self.phone.topic:
+            return
+        topic = PhoneBridge.make_topic(self.settings.user_name or "jarvis")
+        self.phone.topic = topic
+        self.settings.phone_ntfy_topic = topic
+        self.settings.phone_enabled = True
+        try:
+            self.settings.save()
+        except Exception:
+            pass
+
+    def _link_phone(self) -> str:
+        self._ensure_phone_topic()
+        url = self.phone.subscribe_url()
+        self._emit(
+            "artifact",
+            {
+                "title": "IPHONE LINK · ntfy + companion",
+                "text": (
+                    "PUSH ALERTS (ntfy):\n"
+                    "1) Install free app **ntfy** from the App Store on your iPhone 14.\n"
+                    f"2) Open ntfy → Subscribe to topic:\n   {self.phone.topic}\n"
+                    f"3) Or open: {url}\n"
+                    "4) Say: ping my phone\n"
+                    "\nREMOTE CONTROL (Tailscale PWA):\n"
+                    "5) Say **open phone companion** for the chat URL.\n"
+                    "   Install Tailscale on PC + iPhone (same account).\n"
+                ),
+            },
+        )
+        try:
+            self.phone.notify(
+                "Jarvis linked. You're connected, Sir.",
+                title="JARVIS · linked",
+            )
+        except Exception:
+            pass
+        return self._flavor(
+            "ok",
+            f"Install ntfy on your iPhone and subscribe to topic {self.phone.topic}. "
+            "I just sent a test ping. For remote control abroad, say open phone companion — "
+            "you already have a Tailscale travel companion built in.",
+        )
+
+    def _route_desk_lane(self, t: str) -> str | None:
+        """High-priority desk/security/NV intents — returns None if not matched."""
+        if getattr(self, "security", None) and re.search(
+            r"\b(enrol+ (my )?face|face enrol+|set up (face|biometric))\b", t
+        ):
+            # Single speak: async enroll result only (no "hold still" + result pair)
+            return self._enroll_face_now() or ""
+        if getattr(self, "security", None) and re.search(
+            r"\b(security status|biometric status|intruder status)\b", t
+        ):
+            return self._flavor("ok", self.security.status())
+        if getattr(self, "security", None) and re.search(
+            r"\b(arm security|security on|enable (face )?security)\b", t
+        ):
+            self.security.enabled = True
+            self.security._save_meta()
+            try:
+                self.settings.security_enabled = True
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Security armed.")
+        if getattr(self, "security", None) and re.search(
+            r"\b(disarm security|security off|disable (face )?security)\b", t
+        ):
+            self.security.enabled = False
+            self.security._save_meta()
+            try:
+                self.settings.security_enabled = False
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Security disarmed.")
+        if getattr(self, "security", None) and re.search(
+            r"\b(intruder alerts? off|disable intruder( alerts?)?|"
+            r"stop intruder( alerts?)?|quiet (the )?intruder|"
+            r"no intruder alerts?)\b",
+            t,
+        ):
+            try:
+                self.settings.intruder_alert = False
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", self.security.set_intruder_alert(False))
+        if getattr(self, "security", None) and re.search(
+            r"\b(intruder alerts? on|enable intruder( alerts?)?|"
+            r"arm intruder( alerts?)?)\b",
+            t,
+        ):
+            try:
+                self.settings.intruder_alert = True
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", self.security.set_intruder_alert(True))
+        if re.search(r"\b(secure (the )?desk|lock (the )?workspace)\b", t):
+            self._emit("hud_alert", "DESK SECURE")
+            try:
+                self.system.lock()
+            except Exception:
+                pass
+            return self._flavor("ok", "Desk secured.")
+        if re.search(
+            r"\b(auto lock off|disable (auto |presence )?lock|presence lock off|"
+            r"don'?t (auto )?lock|stop (auto )?locking)\b",
+            t,
+        ):
+            self.settings.lock_on_absence = False
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            try:
+                if getattr(self, "security", None):
+                    self.security.lock_on_leave = False
+                    self.security._save_meta()
+            except Exception:
+                pass
+            self.pause_presence_lock(False)
+            if self._countdown_active:
+                self._countdown_active = False
+                self._emit("countdown_cancel", True)
+            return self._flavor(
+                "ok",
+                "Auto-lock off. I only lock when you say secure desk.",
+            )
+        if re.search(
+            r"\b(auto lock on|enable (auto |presence )?lock|presence lock on)\b",
+            t,
+        ):
+            self.settings.lock_on_absence = True
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            try:
+                if getattr(self, "security", None):
+                    self.security.lock_on_leave = True
+                    self.security._save_meta()
+            except Exception:
+                pass
+            return self._flavor("ok", "Auto-lock on. I'll lock after you step away.")
+        # Night vision OFF before ON; auto before bare on
+        if re.search(
+            r"\b(night vision auto off|disable (auto )?night vision auto|"
+            r"turn(ing)? off (auto )?night vision auto|auto night vision off)\b",
+            t,
+        ):
+            try:
+                self.settings.night_vision_auto = False
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Night vision auto off. Say night vision on if you still want it.")
+        if re.search(
+            r"\b(night vision auto( on)?|enable (auto )?night vision auto|"
+            r"turn(ing)? on (auto )?night vision auto|auto night vision( on)?)\b",
+            t,
+        ):
+            try:
+                self.settings.night_vision_auto = True
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Night vision auto on — engages in settings timezone dusk window.",
+            )
+        if re.search(
+            r"\b(night vision off|disable (the )?night vision|turn(ing)? off (the )?night vision|"
+            r"turn (the )?night vision off|nvg off|stop (the )?night vision|"
+            r"no night vision)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_night_vision(False, announce=False))
+        if re.search(
+            r"\b(night vision( on)?|enable (the )?night vision|turn(ing)? on (the )?night vision|"
+            r"turn (the )?night vision on|nvg( on)?)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_night_vision(True, announce=False))
+        if getattr(self, "autobug", None) and re.search(
+            r"\b(fix (this |the )?(bug|error)|autobug|debug this)\b",
+            t,
+        ):
+            return self._flavor("ok", self.autobug.analyze(t))
+        if getattr(self, "autobug", None) and re.search(
+            r"\b(open last error|show last (error|bug))\b", t
+        ):
+            p = self.autobug.last_path()
+            if not p.exists():
+                return self._flavor("ok", "No saved error yet.")
+            try:
+                self._emit(
+                    "artifact",
+                    {"title": "LAST ERROR", "text": p.read_text(encoding="utf-8")[:4000]},
+                )
+            except Exception:
+                pass
+            return self._flavor("ok", "Last error is on screen.")
+        if getattr(self, "self_audit", None) and re.search(
+            r"\b(self[- ]?audit|run (a )?self audit|audit yourself)\b", t
+        ):
+            return self._flavor("ok", self.self_audit.run(apply=False))
+        if re.search(r"\b(router status|semantic router|route priority)\b", t):
+            try:
+                # Keep ack short — full legend stays in HUD artifact
+                legend = self.router.priority_legend()
+                self._emit(
+                    "artifact",
+                    {"title": "ROUTER", "text": legend},
+                )
+                return self._flavor("ok", "Router is local-first. Legend is on screen.")
+            except Exception as e:
+                return self._flavor("ok", f"Router offline: {e}")
+        if re.search(r"\b(spatial (gestures? )?(on|enable)|enable spatial)\b", t):
+            self._emit("spatial_ui", True)
+            return self._flavor(
+                "ok",
+                "Spatial gestures on. Open camera — pinch to edges, swipe between monitors.",
+            )
+        if re.search(r"\b(spatial (gestures? )?(off|disable)|disable spatial)\b", t):
+            self._emit("spatial_ui", False)
+            return self._flavor("ok", "Spatial gestures off.")
+        if re.search(r"\b(spatial status|gesture spatial)\b", t):
+            self._emit("spatial_status", True)
+            return self._flavor(
+                "ok",
+                "Spatial: pinch hold at left/right edge to throw boards; "
+                "swipe right PDTester, left HUD home, up dual layout, down stack.",
+            )
+        return None
+
     def _route(self, t: str) -> str:
-        # Hub & Spoke — Sarah / Tom / Admin multi-agent (before local desktop intents)
+        """
+        Priority (semantic router lanes — first match wins):
+          emergency → hotkey → phone/manus → travis → desk → facts →
+          media → build → productivity → hub/AI → chitchat → fallback
+
+        Simple local intents never call Hub. Complex / agent asks may.
+        """
+        # Classify once for hub gate + HUD
+        decision = None
+        try:
+            if getattr(self, "router", None):
+                decision = self.router.decide(t)
+                self._emit(
+                    "command_ui",
+                    {
+                        "kind": "route",
+                        "text": t[:80],
+                        "detail": f"{decision.lane.value}/{decision.complexity.value}",
+                    },
+                )
+        except Exception:
+            decision = None
+
+        # Phone / iPhone — FIRST (must not fall through to Help / Hub)
+        phone_reply = self._try_phone_cmd(t)
+        if phone_reply is not None:
+            return phone_reply
+
+        # Cloud integrations (Stripe / Notion / Buffer / Gmail)
+        try:
+            cloud_reply = self._try_cloud_cmd(t)
+            if cloud_reply is not None:
+                return cloud_reply
+        except Exception as e:
+            print(f"[cloud] {e}")
+
+        # Manus AI agent — local bridge (before Hub)
+        try:
+            manus_reply = self._try_manus_cmd(t)
+            if manus_reply is not None:
+                return manus_reply
+        except Exception:
+            pass
+
+        # Computer-use / browser agent (before Hub)
+        try:
+            cu_reply = self._try_computer_use_cmd(t)
+            if cu_reply is not None:
+                return cu_reply
+        except Exception as e:
+            print(f"[computer-use] route: {e}")
+
+        # Voice hotkeys — copy/paste/save macros (before Travis / Hub)
+        try:
+            if getattr(self, "hotkeys", None):
+                hk = self.hotkeys.try_run(t)
+                if hk is not None:
+                    return self._flavor("ok", hk)
+        except Exception:
+            pass
+
+        # Travis personality modes — Park / Tactical / Peer Review
+        travis_intent = parse_mode_command(t)
+        if travis_intent is not None:
+            return self._apply_travis_mode(travis_intent)
+
+        # DESK lane first (security / NV / enroll) — before Hub & long chain
+        desk = self._route_desk_lane(t)
+        if desk is not None:
+            return desk
+
+        # Hub & Spoke — only when router allows (local-first)
+        hub_ok = True
+        try:
+            if decision is not None and getattr(self, "router", None):
+                hub_ok = self.router.allows_hub(t)
+            elif decision is not None and decision.force_local:
+                hub_ok = False
+        except Exception:
+            hub_ok = True
+
+        explicit_hub = bool(
+            re.search(
+                r"\b(start hub|restart hub|hub status|hub standby|"
+                r"ask (sarah|tom|admin)|agent (sarah|tom|admin))\b",
+                t,
+            )
+            or HubClient.wants_hub(t)
+        )
+        # Complex / research / coding — prefer Hub when router says hub
+        complex_hub = bool(
+            decision is not None
+            and decision.complexity.value == "hub"
+            and not decision.force_local
+            and (len(t.split()) >= 5 or explicit_hub)
+        )
+
+        # Explicit spoke asks always reach Hub; complex only when router allows
         if getattr(self.settings, "hub_enabled", True) and (
-            HubClient.wants_hub(t)
-            or re.search(r"\b(start hub|restart hub|hub status)\b", t)
+            explicit_hub or (hub_ok and complex_hub)
         ):
             if re.search(r"\b(start hub|restart hub)\b", t):
                 ok = self.hub.ensure_running(wait_sec=14.0)
@@ -1145,27 +3839,41 @@ class Brain:
                 )
             return self._run_hub(t)
 
-        # Accept pending suggestion — only clear yes/affirm within a short window
+        # Accept pending suggestion — one shot, then suppress cascade
         if re.search(
             r"\b(yes|yeah|yep|do it|go ahead|sure|please do|sounds good)\b",
             t,
         ) and self.suggestions.pending_cmd:
-            if not self.suggestions.pending_fresh(25.0):
-                self.suggestions.pending_cmd = ""
+            if not self.suggestions.pending_fresh(45.0):
+                self.suggestions.clear_pending()
             else:
                 cmd = self.suggestions.pending_cmd
-                self.suggestions.pending_cmd = ""
                 # Avoid accidental workspace/browser spam from a lone "yes"
                 if re.search(r"\b(workspace|work mode|starting work|check email)\b", cmd):
                     if not re.search(
                         r"\b(do it|go ahead|please do|yes please|set (it )?up)\b", t
                     ):
-                        self.suggestions.pending_cmd = cmd  # keep offer
                         return (
                             "Just to confirm — say 'go ahead' if you want me to open "
                             "apps and tabs for that."
                         )
+                cmd = self.suggestions.accept()
+                if not cmd:
+                    return self._flavor("ok", "Nothing pending.")
+                self._skip_suggestion_followups = True
                 return self._route(cmd)
+
+        # Suggestions on / off
+        if re.search(
+            r"\b(stop suggesting|suggestions? off|disable suggestions?|"
+            r"no more suggestions?|quiet suggestions?)\b",
+            t,
+        ):
+            return self._flavor("ok", self.suggestions.set_enabled(False))
+        if re.search(
+            r"\b(suggestions? on|enable suggestions?|start suggesting)\b", t
+        ):
+            return self._flavor("ok", self.suggestions.set_enabled(True))
 
         # Ask for suggestions
         if re.search(
@@ -1203,6 +3911,45 @@ class Brain:
             if self.bedtime.active:
                 self.states.set(JarvisState.ACTIVE)
                 self.bedtime.exit()
+            # Prefer structured daily standup when saying good morning
+            if "good morning" in t or re.search(r"\b(morning brief|daily brief|standup)\b", t):
+                cache = Path(__file__).resolve().parent / "data" / "morning_standup.txt"
+                if cache.exists():
+                    try:
+                        age = time.time() - cache.stat().st_mtime
+                        if age < 14 * 3600:  # same-day-ish precache from Task Scheduler
+                            text = cache.read_text(encoding="utf-8").strip()
+                            if text:
+                                try:
+                                    self.ha.on_jarvis_state("brief")
+                                except Exception:
+                                    pass
+                                self._emit("hud_alert", "Morning standup ready")
+                                self.feed.push("brief", text[:180])
+                                return self._flavor("ok", text)
+                    except Exception:
+                        pass
+                wx = ""
+                try:
+                    wx = self.weather.speak_brief()
+                except Exception:
+                    wx = ""
+                weather_line = f"Weather: {wx}." if wx else ""
+                try:
+                    if getattr(self, "live", None):
+                        weather_line = self.live.briefing_prefix()
+                except Exception:
+                    pass
+                brief = self.brief.morning_standup(
+                    weather_line=weather_line, open_inbox=False
+                )
+                try:
+                    self.ha.on_jarvis_state("brief")
+                except Exception:
+                    pass
+                self._emit("hud_alert", "Morning standup ready")
+                self.feed.push("brief", brief[:180])
+                return self._flavor("ok", brief)
             packet = self.wake_brief.compose(mode="return" if "back" in t else "wake")
             self._emit("stats", packet["stats"])
             self._emit("feed", self.feed.lines_for_ui(18) or packet["feed_lines"])
@@ -1465,16 +4212,23 @@ class Brain:
         if re.search(r"\b(close|hide|exit) (the )?(3d )?map( view)?\b", t):
             self._emit("map_ui", False)
             return self._flavor("ok", "Closing the map. Arc reactor restored.")
-        if re.search(r"\bfly (?:the )?map to\s+(.+)$", t) or re.search(
-            r"\b(?:recenter map|map focus)\s+(?:on\s+)?(.+)$", t
+
+        # Zoom / fly map to a city or country → open (if needed) + cinematic fly
+        dest = self._extract_map_zoom_place(t)
+        if dest:
+            return self._map_zoom_to(dest)
+
+        # Relative zoom (no destination) — still opens map with intro if closed
+        if re.search(
+            r"\b(zoom\s+in|zoom\s+closer|magnify(\s+map)?|pull\s+in(\s+on\s+the\s+map)?)\b",
+            t,
         ):
-            m2 = re.search(
-                r"\b(?:fly (?:the )?map to|recenter map|map focus)\s+(?:on\s+)?(.+)$",
-                t,
-            )
-            dest = (m2.group(1) if m2 else "").strip(" .")
-            self._emit("map_ui", {"place": dest, "markers": None})
-            return self._flavor("ok", f"Flying the map to {dest}.")
+            return self._map_zoom_delta(2.2)
+        if re.search(
+            r"\b(zoom\s+out|pull\s+back(\s+on\s+the\s+map)?|pull\s+out(\s+on\s+the\s+map)?)\b",
+            t,
+        ):
+            return self._map_zoom_delta(-2.6)
 
         # ABC News + gesture HUD (before generic web search)
         if re.search(
@@ -1495,15 +4249,22 @@ class Brain:
             return self._flavor("ok", "Closing the news panel.")
 
         if re.search(
-            r"\b((show|put|move) (stats|ops|operations|command center) on (the )?(other|second) (monitor|screen|display)|"
-            r"ops (board|monitor)|show ops|open ops)\b",
+            r"\b((show|put|move) (stats|ops|operations|command center|pdtester|devlog|digests?)"
+            r"( on (the )?(other|second) (monitor|screen|display))?|"
+            r"ops (board|monitor)|show ops|open ops|show stats|"
+            r"open (the )?(ops|pdtester|devlog)|show (pdtester|digests?))\b",
             t,
         ):
             self._emit("show_ops", True)
             self._emit("place_ops", "secondary")
+            try:
+                self.settings.ops_monitor_enabled = True
+                self.settings.save()
+            except Exception:
+                pass
             return self._flavor(
                 "ok",
-                "Operations board is on your other monitor — live stats and data feed.",
+                "PDTester is on your other monitor — six digests and the live feed.",
             )
         if re.search(
             r"\b((put|move) (jarvis|hud|yourself) on (the )?(other|second) (monitor|screen|display)|"
@@ -1562,16 +4323,48 @@ class Brain:
             self._emit("show_ops", True)
             return self._flavor("ok", packet["speak"])
 
-        # Time / date
+        # Time / date — East Coast (Philadelphia) timezone
         if re.search(r"\b(what time|current time|tell me the time)\b", t):
-            return self._flavor("time", datetime.now().strftime("It's %I:%M %p."))
+            try:
+                if getattr(self, "live", None):
+                    d = self.live.snapshot()
+                    return self._flavor("time", f"It's {d['time_12']} on {d['date']}.")
+            except Exception:
+                pass
+            from zoneinfo import ZoneInfo
+
+            now = datetime.now(ZoneInfo("America/New_York"))
+            return self._flavor(
+                "time",
+                "It's "
+                + now.strftime("%I:%M %p").lstrip("0")
+                + now.strftime(" on %A, %B %d, %Y."),
+            )
         if re.search(r"\b(what(?:'s| is) the date|today'?s date|what day)\b", t):
-            return self._flavor("time", datetime.now().strftime("Today is %A, %B %d, %Y."))
+            try:
+                if getattr(self, "live", None):
+                    d = self.live.snapshot()
+                    return self._flavor(
+                        "time",
+                        f"Today is {d['date']}. Local time {d['time_12']}.",
+                    )
+            except Exception:
+                pass
+            from zoneinfo import ZoneInfo
+
+            now = datetime.now(ZoneInfo("America/New_York"))
+            return self._flavor("time", now.strftime("Today is %A, %B %d, %Y."))
 
         # Weather
         if re.search(r"\b(weather|temperature|how hot|how cold)\b", t):
             self._emit("weather_ui", True)
             self.habits.log("weather")
+            try:
+                if getattr(self, "live", None):
+                    prefix = self.live.briefing_prefix()
+                    return self._flavor("weather", prefix)
+            except Exception:
+                pass
             return self._flavor("weather", self.weather.speak_brief())
 
         # Daily brief / schedule / email
@@ -1744,6 +4537,7 @@ class Brain:
 
             # Enter listen / dictate mode
             self._note_mode = True
+            self._note_mode_at = time.time()
             self._note_buffer = []
             self.habits.log("note_mode")
             self._emit("track", "NOTE · listening")
@@ -1755,16 +4549,66 @@ class Brain:
         if m and not re.search(r"\bremember (this|that)\b", t):
             note = m.group(1).strip()
             self.habits.log("note")
+            try:
+                self.vstore.remember(note, kind="note")
+            except Exception:
+                pass
             return self._flavor(
                 "ok", self.notes.take(note, from_screen=False, audio=False)
             )
+
+        # Durable vector facts — "note that my camera is on the left monitor"
+        m = re.search(
+            r"\b(?:note that|for the record|remember that|don't forget that)\s+(.+)$",
+            t,
+        )
+        if m:
+            fact = m.group(1).strip(" .")
+            if fact:
+                msg = self.vstore.remember(fact, kind="fact")
+                return self._flavor("ok", msg)
+
+        # Possessive durable facts: "my eMeet camera is mounted on my left monitor"
+        m = re.search(
+            r"^(?:please\s+)?(my|the)\s+(.{3,60}?)\s+"
+            r"(is|are|was|sits|mounted|located|plugged|connected|lives)\s+(.+)$",
+            t,
+        )
+        if m and not re.search(
+            r"\b(playing|open|running|loading|wrong|broken|down|time|weather|"
+            r"password|volume|muted|busy|here|there|ready)\b",
+            t,
+        ):
+            fact = t.strip(" .")
+            msg = self.vstore.remember(fact, kind="fact")
+            return self._flavor("ok", msg)
+
+        if re.search(r"\b(memory status|how(?:'s| is) (your )?memory)\b", t):
+            return self._flavor("ok", self.vstore.status())
+        m = re.search(r"\b(?:what do you (know|remember) about|recall)\s+(.+)$", t)
+        if m:
+            q = m.group(2).strip()
+            hits = self.vstore.recall(q, n=5)
+            if not hits:
+                return self._flavor("ok", f"Nothing stored about {q} yet.")
+            return self._flavor("ok", "Here's what I remember: " + "; ".join(hits))
+        m = re.search(r"\b(?:forget(?: that)?)\s+(.+)$", t)
+        if m:
+            return self._flavor("ok", self.vstore.forget(m.group(1).strip()))
+
         if re.search(r"\b(show notes|my notes|list notes|open notes)\b", t):
             if "open" in t:
                 return self._flavor("ok", self.notes.open_log())
             return self.notes.list_recent()
 
         # Clipboard
-        if re.search(r"\b(read clipboard|what(?:'s| is) on (my )?clipboard|clipboard)\b", t):
+        if re.search(
+            r"\b(read clipboard|what(?:'s| is) on (my )?clipboard|clipboard|"
+            r"summarize (the |my )?clipboard|clipboard summary)\b",
+            t,
+        ):
+            if re.search(r"summar|summary", t):
+                return self._flavor("ok", self._summarize_clipboard())
             if pyperclip is None:
                 return "Clipboard module not installed."
             try:
@@ -1784,6 +4628,30 @@ class Brain:
             return self._flavor("ok", self.music.volume_up())
         if re.search(r"\b(volume down|turn it down|quieter|lower the volume)\b", t):
             return self._flavor("ok", self.music.volume_down())
+
+        # Audio device routing (pycaw)
+        if re.search(r"\b(audio (status|devices)|list (audio |sound )?(devices|outputs))\b", t):
+            return self._flavor("ok", self.audio.status())
+        m = re.search(
+            r"\b(?:switch|set|use|change)\s+(?:(?:to|the)\s+)?"
+            r"(headphones?|headset|speakers?|emeet|[\w\s\-]{2,40}?)"
+            r"(?:\s+(?:audio|output|sound|device))?\b",
+            t,
+        )
+        if m and re.search(r"\b(switch|headphones?|speakers?|audio output|sound (to|output))\b", t):
+            target = m.group(1).strip()
+            return self._flavor("ok", self.audio.switch_output(target))
+        if re.search(r"\b(use headphones|switch to headphones)\b", t):
+            return self._flavor("ok", self.audio.switch_output("headphones"))
+        if re.search(r"\b(use speakers|switch to speakers)\b", t):
+            return self._flavor("ok", self.audio.switch_output("speakers"))
+        m = re.search(r"\b(?:set )?(?:volume|master volume)\s+(?:to\s+)?(\d{1,3})\b", t)
+        if m:
+            return self._flavor("ok", self.audio.set_volume(int(m.group(1))))
+        if re.search(r"\b(mute (audio|sound|volume)|mute output)\b", t):
+            return self._flavor("ok", self.audio.mute(True))
+        if re.search(r"\b(unmute)\b", t):
+            return self._flavor("ok", self.audio.mute(False))
         if re.search(r"\b(volume max|max volume|full volume)\b", t):
             for _ in range(15):
                 self.music.media_key("volup")
@@ -1870,17 +4738,53 @@ class Brain:
             self.habits.log("activity")
             return self._describe_activity()
 
+        # Google Maps directions (CTK: navigate to …)
+        m = re.search(
+            r"\b(?:navigate(?:\s+to)?|directions(?:\s+to)?|take me to|drive to|route to)\s+(.+)$",
+            t,
+        )
+        if m:
+            dest = m.group(1).strip(" .")
+            dest = re.sub(r"\b(please|for me|now)\b", "", dest, flags=re.I).strip(" .")
+            if dest:
+                url = (
+                    "https://www.google.com/maps/dir/?api=1&destination="
+                    + urllib.parse.quote_plus(dest)
+                )
+                try:
+                    webbrowser.open(url)
+                except Exception:
+                    self.apps.open(url)
+                self.habits.log("navigate", dest[:40])
+                return self._flavor(
+                    "ok", f"Plotting transit vectors for {dest}."
+                )
+
         # Scan item through camera (one-shot — camera closes when done)
         if re.search(
             r"\b(scan|scan (this|that|it|item|object)|what(?:'s| is) this|"
-            r"identify|read (the )?text|ocr)\b",
+            r"identify|read (the )?text|ocr|camera search)\b",
             t,
         ):
             if self._scanning:
                 return "Already scanning — one moment."
             self._scanning = True
+            # CTK "camera search" / explicit online search → Google Lens
+            self._scan_open_browser = bool(
+                re.search(
+                    r"\b(camera search|search (it |this )?(online|on google|with google)|"
+                    r"google (this|that|it)|lens)\b",
+                    t,
+                )
+                or "camera search" in t
+            )
             self.habits.log("scan")
             self._emit("scan_now", True)
+            if self._scan_open_browser:
+                return self._flavor(
+                    "scan",
+                    "Activating camera array — I'll identify it and open Google Lens.",
+                )
             return self._flavor("scan", "Hold it steady in the green box — I'll tell you what it is.")
 
         # Camera / EMEET (accepts typos like "camrea") — NEVER shell-open as a file
@@ -1890,16 +4794,46 @@ class Brain:
             except Exception:
                 pass
             self._emit("camera_ui", True)
+            self._emit("hud_alert", "Opening camera theater…")
             return self._flavor(
                 "open",
-                "Opening full-screen camera theater. "
-                "ABC News Live is top-left — Jarvis is bottom-right and draggable. "
-                "Pinch to move panels.",
+                "Opening the camera theater now — one moment.",
             )
         if re.search(r"\b(close|hide)\s+(the\s+|my\s+)?(cam|camera|camrea|webcam|emeet)\b|\bcamera\s+off\b", t):
             self._emit("camera_ui", False)
             # UI restarts presence after the device is released — don't race here
             return self._flavor("ok", "Camera closed. Presence lock re-armed.")
+        if re.search(r"\b(switch (the )?cam(era)?|next cam(era)?|change cam(era)?)\b", t):
+            try:
+                cur = int(getattr(self.settings, "camera_index", 0) or 0)
+                nxt = (cur + 1) % 6
+                self.settings.camera_index = nxt
+                self.settings.save()
+                self.vision.stop()
+            except Exception:
+                nxt = 1
+            self._emit("camera_ui", True)
+            return self._flavor(
+                "ok",
+                f"Switching camera to device index {nxt}.",
+            )
+        if re.search(r"\b(test (the )?mic(rophone)?|mic(rophone)? test|can you hear me)\b", t):
+            lvl = 0.0
+            try:
+                lvl = float(self.voice.level())
+            except Exception:
+                pass
+            prefer = getattr(self.settings, "mic_prefer", "") or "default"
+            if lvl < 0.02:
+                return self._flavor(
+                    "ok",
+                    f"Mic path is {prefer}, but I'm barely hearing signal. "
+                    "Talk louder, unmute the mic, or say switch to headphones.",
+                )
+            return self._flavor(
+                "ok",
+                f"Yes — microphone is live on {prefer}. Level about {int(lvl * 100)} percent.",
+            )
 
         # Open apps / folders / sites
         m = re.search(r"\b(?:open|launch|start)\s+(.+)$", t)
@@ -1911,7 +4845,7 @@ class Brain:
                 except Exception:
                     pass
                 self._emit("camera_ui", True)
-                return self._flavor("open", "Opening your EMEET USB SmartCam.")
+                return self._flavor("open", "Bringing the camera theater to the front now.")
             result = self.apps.open(target)
             if result == "CAMERA_UI":
                 try:
@@ -1919,9 +4853,30 @@ class Brain:
                 except Exception:
                     pass
                 self._emit("camera_ui", True)
-                return self._flavor("open", "Opening your EMEET USB SmartCam.")
+                return self._flavor("open", "Bringing the camera theater to the front now.")
             self.habits.log("open_app", target[:40])
             return self._flavor("open", result)
+
+        # Unlock BEFORE lock (else "unlock my pc" matches lock)
+        if re.search(
+            r"\b(unlock (my )?(pc|computer|workstation|screen)|"
+            r"type (my )?pin|sign (me )?in)\b",
+            t,
+        ):
+            self._emit("hud_alert", "UNLOCK")
+            return self._flavor("ok", self.system.unlock())
+        m_pin = re.search(
+            r"\bset (my )?unlock (pin|password|passcode)\s*(?:to|=)?\s*(.+)$",
+            t,
+            flags=re.I,
+        )
+        if m_pin:
+            from jarvis.core.pc_unlock import store_unlock_pin
+
+            # Never echo the PIN back into TTS / logs
+            msg = store_unlock_pin(m_pin.group(3).strip(" .,\"'"))
+            self._emit("heard", "[security] unlock PIN updated (redacted)")
+            return self._flavor("ok", msg)
 
         # Lock / shutdown / clap wake standby
         if re.search(r"\b(lock( (the )?(pc|computer|workstation))?|lock screen)\b", t):
@@ -1960,7 +4915,67 @@ class Brain:
             return self._flavor("ok", self.system.kill_named([name]))
 
         # Status
-        if re.search(r"\b(status|system (status|vitals)|how(?:'s| is) (the )?(cpu|system))\b", t):
+        if re.search(
+            r"\b(upgrade check|self health|health check|desk health|system health)\b",
+            t,
+        ):
+            return self._flavor("ok", self._upgrade_check_line())
+        if re.search(r"\b(recent errors|show (recent )?errors|log errors)\b", t):
+            return self._flavor("ok", self._recent_errors_line())
+        if re.search(
+            r"\b(full status|systems? overview|upgrade status|feature status)\b", t
+        ):
+            if "upgrade status" in t or "feature status" in t or (
+                "upgrade" in t and "check" not in t and "full" not in t
+            ):
+                return self._flavor("ok", self._upgrade_status_line())
+            return self._flavor("ok", self._full_status_line())
+        if re.search(
+            r"\b(quiet mode|mute alerts|silence (the )?desk|do not disturb)\b", t
+        ):
+            return self._flavor("ok", self._enter_quiet_mode())
+        if re.search(
+            r"\b(loud mode|exit quiet|unmute alerts|leave quiet mode|end quiet mode)\b",
+            t,
+        ):
+            return self._flavor("ok", self._exit_quiet_mode())
+        if re.search(
+            r"\b(wake word only|require wake( word)?|listen for wake)\b", t
+        ):
+            self.settings.wake_required = True
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Wake word required. Say Jarvis first — I will ignore ambient talk.",
+            )
+        if re.search(
+            r"\b(always listen|wake word off|disable wake( word)?)\b", t
+        ):
+            self.settings.wake_required = False
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Always listening. I will act on commands without hearing Jarvis first.",
+            )
+        if re.search(r"\b(desk ready|prep (my )?desk|ready (the )?desk)\b", t):
+            return self._flavor("ok", self._desk_ready())
+        if re.search(
+            r"\b(summarize (my )?day|day summary|recap (my )?day)\b", t
+        ):
+            return self._flavor("ok", self._summarize_my_day())
+        if re.search(
+            r"\b(summarize (the |my )?clipboard|clipboard summary)\b", t
+        ):
+            return self._flavor("ok", self._summarize_clipboard())
+        if re.search(
+            r"\b(system (status|vitals)|how(?:'s| is) (the )?(cpu|system))\b", t
+        ) or re.fullmatch(r"status", t.strip()):
             tel = self.system.telemetry()
             bat = f"{tel.battery:.0f}%" if tel.battery is not None else "AC"
             return self._flavor(
@@ -1968,11 +4983,219 @@ class Brain:
                 f"CPU {tel.cpu:.0f} percent, memory {tel.memory:.0f} percent, battery {bat}.",
             )
 
-        # Update software
+        # Update software (manual patch panel)
         if re.search(r"\b(update software|add (a )?feature|hot.?reload|patch system)\b", t):
             self.voice.mute_mic(True)
             self._emit("update_ui", True)
             return "Update panel open. Type your request — I will sandbox it."
+
+        # Cancel upgrade BEFORE upgrade (else "cancel upgrade" starts one)
+        if re.search(r"\b(cancel upgrade|abort upgrade|unfreeze( registry)?)\b", t):
+            try:
+                if getattr(self, "registry", None):
+                    self.registry.unfreeze()
+                self._emit("upgrade_ui", {"pct": 100, "done": True, "cancel": True})
+                self._emit("registry_ui", {"frozen": False})
+                self._emit("hud_alert", "Upgrade cancelled")
+            except Exception:
+                pass
+            return self._flavor("ok", "Upgrade cancelled. Registry live.")
+
+        # Full hot-upgrade with loading UI 0→100%
+        if re.search(
+            r"\b((run( an)? |system )?upgrade( (jarvis|system|everything|all|core|scripts?|files?)?)?|"
+            r"upgrade all)\b",
+            t,
+        ) and not re.search(r"\b(update software|cancel|abort)\b", t):
+            return self._run_hot_upgrade()
+
+        # Feature registry / command monitor (additive)
+        if re.search(
+            r"\b(feature status|registry status|list features|feature registry)\b", t
+        ):
+            try:
+                return self._flavor("ok", self.registry.status())
+            except Exception as e:
+                return self._flavor("ok", f"Registry unavailable: {e}")
+        if re.search(r"\b(show|open) (the )?command monitor\b", t):
+            self._emit("monitor_ui", True)
+            return self._flavor("ok", "Command monitor on the right rail.")
+        if re.search(r"\b(hide|close) (the )?command monitor\b", t):
+            self._emit("monitor_ui", False)
+            return self._flavor("ok", "Command monitor hidden.")
+
+        # Automated workflows
+        if re.search(r"\b(list workflows?|what workflows|workflow(s)? list)\b", t):
+            if self.workflows:
+                return self._flavor("ok", self.workflows.list_workflows())
+            return self._flavor("ok", "Workflow engine offline.")
+        wf = re.search(
+            r"\b(?:run|start|execute)\s+(morning|night|focus|standup|secure)"
+            r"(?:\s+workflow|\s+routine)?\b",
+            t,
+        )
+        if wf:
+            return self._flavor("ok", self._run_workflow(wf.group(1)))
+        if re.search(r"\b(morning (workflow|routine)|start my day)\b", t):
+            return self._flavor("ok", self._run_workflow("morning"))
+        if re.search(r"\b(night (workflow|routine)|wind down)\b", t):
+            return self._flavor("ok", self._run_workflow("night"))
+        if re.search(r"\b(focus (workflow|routine)|deep work mode)\b", t):
+            return self._flavor("ok", self._run_workflow("focus"))
+
+        # Additive system / lamp / ops helpers (existing APIs only)
+        if re.search(r"\b(disk space|how much disk|storage (left|free))\b", t):
+            try:
+                tel = self.system.telemetry()
+                used_pct = getattr(tel, "disk", 0)
+                total_g, free_g = self.system.disk_capacity()
+                return self._flavor(
+                    "ok",
+                    f"Disk at {used_pct:.0f} percent — {free_g:.0f} gigabytes free of {total_g:.0f}.",
+                )
+            except Exception as e:
+                return self._flavor("ok", f"Disk check failed: {e}")
+        if re.search(r"\b(task status|queue status|background tasks)\b", t):
+            try:
+                line = getattr(self.tasks, "status_line", None)
+                return self._flavor(
+                    "ok", line() if callable(line) else "Task queue online."
+                )
+            except Exception:
+                return self._flavor("ok", "Task queue status unavailable.")
+        if re.search(r"\b(home assistant status|ha status)\b", t):
+            try:
+                return self._flavor("ok", self.ha.status())
+            except Exception as e:
+                return self._flavor("ok", f"Home Assistant: {e}")
+        if re.search(r"\b(toggle( the)? lamp|lamp toggle)\b", t):
+            try:
+                # Prefer explicit toggle if present
+                tog = getattr(self.lamp, "toggle", None)
+                if callable(tog):
+                    return self._flavor("ok", tog())
+                return self._flavor("ok", self.lamp.turn_on())
+            except Exception as e:
+                return self._flavor("ok", f"Lamp toggle failed: {e}")
+        if re.search(r"\bcoding mode\b", t):
+            try:
+                return self._flavor("ok", self.lights.set_mode("coding"))
+            except Exception:
+                return self._flavor("ok", self.lamp.turn_on())
+        if re.search(r"\breading mode\b", t):
+            try:
+                return self._flavor("ok", self.lights.set_mode("reading"))
+            except Exception:
+                return self._flavor("ok", self.lamp.turn_on())
+
+        # ── Productivity suite (additive) ───────────────────────
+        if re.search(r"\b(mood status|how(?:'s| is) your mood)\b", t):
+            try:
+                return self._flavor("ok", self.mood.status())
+            except Exception:
+                return self._flavor("ok", "Mood engine offline.")
+        if re.search(r"\bproactive (on|enable)\b", t):
+            try:
+                self.proactive.set_enabled(True)
+                self.settings.proactive_enabled = True
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Proactive interventions armed.")
+        if re.search(r"\bproactive (off|disable)\b", t):
+            try:
+                self.proactive.set_enabled(False)
+                self.settings.proactive_enabled = False
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "I'll stay quiet unless spoken to.")
+        if re.search(r"\b(git status|repo status)\b", t):
+            if not getattr(self, "gitbot", None):
+                return self._flavor("ok", "Git helper offline.")
+            return self._flavor("ok", self.gitbot.status_line())
+        if re.search(
+            r"\b(auto commit( and push)?|commit (my )?(code|changes)( and push)?|"
+            r"push (my )?changes|github (auto )?commit)\b",
+            t,
+        ):
+            if not getattr(self, "gitbot", None):
+                return self._flavor("ok", "Git helper offline.")
+            push = bool(re.search(r"\bpush\b", t))
+            hint = ""
+            m = re.search(r"\b(?:message|saying)\s+(.+)$", t)
+            if m:
+                hint = m.group(1).strip(" .")
+            return self._flavor("ok", self.gitbot.commit_all(hint, push=push or None))
+        if re.search(
+            r"\b(schedule|book|add|create)\b.+\b(calendar|meeting|event)\b|"
+            r"\bschedule\b.+\b(next|tomorrow|monday|tuesday|wednesday|thursday|friday)\b|"
+            r"\bremind me\b.+\b(at|next|tomorrow)\b",
+            t,
+        ):
+            if not getattr(self, "calendar", None):
+                return self._flavor("ok", "Calendar offline.")
+            return self._flavor("ok", self.calendar.schedule(t))
+        if re.search(r"\b(tech news|technology (news|headlines))\b", t):
+            if not getattr(self, "topics", None):
+                return self._flavor("ok", "Topic monitor offline.")
+            return self._flavor("ok", self.topics.headlines("tech"))
+        if re.search(r"\b(gaming news|game (news|headlines)|ign news)\b", t):
+            if not getattr(self, "topics", None):
+                return self._flavor("ok", "Topic monitor offline.")
+            return self._flavor("ok", self.topics.headlines("gaming"))
+        if re.search(r"\b(marketing news|marketing (headlines|pulse))\b", t):
+            if not getattr(self, "topics", None):
+                return self._flavor("ok", "Topic monitor offline.")
+            return self._flavor("ok", self.topics.headlines("marketing"))
+        if re.search(r"\b(check prices|price (check|alerts?|watch)|any price drops)\b", t):
+            if not getattr(self, "prices", None):
+                return self._flavor("ok", "Price watch offline.")
+            return self._flavor("ok", self.prices.check())
+        if re.search(r"\b(price watch status|watchlist)\b", t):
+            if not getattr(self, "prices", None):
+                return self._flavor("ok", "Price watch offline.")
+            return self._flavor("ok", self.prices.status())
+        m_price = re.search(
+            r"\bwatch(?:\s+price)?(?:\s+for)?\s+(.+?)\s+(?:at|url)\s+(\S+)",
+            t,
+            flags=re.I,
+        )
+        if m_price:
+            if not getattr(self, "prices", None):
+                return self._flavor("ok", "Price watch offline.")
+            return self._flavor(
+                "ok", self.prices.watch(m_price.group(1).strip(), m_price.group(2).strip())
+            )
+        if re.search(
+            r"\b(start voice( to)? code|dictate code|voice to code|code dictation)\b",
+            t,
+        ):
+            if not getattr(self, "voice_code", None):
+                return self._flavor("ok", "Voice-to-code offline.")
+            return self._flavor("ok", self.voice_code.start("javascript"))
+        if re.search(r"\b(media pause on stand|pause (video|netflix|youtube) when i (stand|leave))\b", t):
+            if not getattr(self, "media_presence", None):
+                return self._flavor("ok", "Media presence offline.")
+            self.media_presence.enabled = True
+            try:
+                self.settings.media_pause_on_stand = True
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "I'll pause media when you stand up.")
+        if re.search(r"\b(media pause off|don'?t pause (media|video))\b", t):
+            if getattr(self, "media_presence", None):
+                self.media_presence.enabled = False
+            return self._flavor("ok", "Media pause on stand disabled.")
+
+        if re.search(r"\b(mark (task |it )?complete|task complete|you('re| are) complete)\b", t):
+            try:
+                self.feed.push("task", "Marked complete")
+            except Exception:
+                pass
+            self._emit("hud_alert", "TASK COMPLETE")
+            return self._flavor("ok", "Marked complete.")
 
         # Watchdog lifecycle — reload core (exit 0) or go fully offline (exit 99)
         if re.search(
@@ -1995,16 +5218,60 @@ class Brain:
             )
 
         # ── Environmental / contextual intelligence ──────────────
+        # Alexa / smart lamp
+        if re.search(r"\b(lamp status|light status|alexa lamp)\b", t):
+            return self._flavor("ok", self.lamp.status())
+
+        # RLHF preference feedback
+        if re.search(r"\b(rlhf status|feedback status)\b", t):
+            return self._flavor("ok", self.rlhf.status())
+        if re.search(
+            r"\b(approve( that| this| it)?|that was (good|correct|right)|good job|"
+            r"thumbs up|prefer that)\b",
+            t,
+        ) and not self.hitl.pending:
+            return self._flavor("ok", self.rlhf.approve())
+        if re.search(
+            r"\b(reject( that| this| it)?|that was (wrong|bad|incorrect)|thumbs down|"
+            r"don'?t do that|prefer not)\b",
+            t,
+        ) and not self.hitl.pending:
+            return self._flavor("ok", self.rlhf.reject())
+        if re.search(r"\b(digest (rlhf|feedback)|run (rlhf )?digest)\b", t):
+            return self._flavor("ok", self.rlhf.digest(apply=True))
+
+        if re.search(
+            r"\b((turn|switch|put) (the )?(lamp|light|bulb) on|"
+            r"(lamp|light|bulb) on|lights? on)\b",
+            t,
+        ) and not re.search(r"\b(night vision|coding|reading)\b", t):
+            self._reactor_safe("fetch")
+            return self._flavor("ok", self.lamp.turn_on())
+        if re.search(
+            r"\b((turn|switch|put) (the )?(lamp|light|bulb) off|"
+            r"(lamp|light|bulb) off|lights? off)\b",
+            t,
+        ):
+            self._reactor_safe("fetch")
+            return self._flavor("ok", self.lamp.turn_off())
+        if re.search(r"\b(toggle (the )?(lamp|light|bulb)|lamp toggle)\b", t):
+            self._reactor_safe("fetch")
+            return self._flavor("ok", self.lamp.toggle())
+        m = re.search(
+            r"\b(?:set|dim|brighten)?\s*(?:the )?(?:lamp|light|bulb)\s*"
+            r"(?:to\s+)?(\d{1,3})\s*(?:%|percent)?\b",
+            t,
+        )
+        if m and re.search(r"\b(lamp|light|bulb|brightness|dim|bright)\b", t):
+            self._reactor_safe("fetch")
+            return self._flavor("ok", self.lamp.brightness(int(m.group(1))))
+
         if re.search(r"\b(coding mode|code mode|bright (lights?|white))\b", t):
             return self._flavor("ok", self.lights.set_mode("coding"))
         if re.search(r"\b(reading mode|warm (lights?|amber)|read mode)\b", t):
             return self._flavor("ok", self.lights.set_mode("reading"))
         if re.search(r"\b(late night( mode)?|night mode|dim red)\b", t):
             return self._flavor("ok", self.lights.set_mode("late_night"))
-        if re.search(r"\b(night vision( on)?|enable night vision|nvg( on)?)\b", t):
-            return self._flavor("ok", self.set_night_vision(True, announce=True))
-        if re.search(r"\b(night vision off|disable night vision|nvg off)\b", t):
-            return self._flavor("ok", self.set_night_vision(False, announce=True))
         if re.search(r"\b(brown noise|focus noise|soundscape|binaural)\b", t):
             return self._flavor("ok", self.soundscape.play_brown_noise())
         if re.search(r"\b(calm audio|calming audio|play calm)\b", t):
@@ -2057,15 +5324,62 @@ class Brain:
 
         # Theme / boost / panic — OFF patterns first so "panic off" never re-triggers
         if re.search(r"\b(dark mode|night theme)\b", t):
+            if not getattr(self.settings, "theme_sync_windows", False):
+                return self._flavor(
+                    "ok",
+                    "Windows theme sync is off so I will not change your taskbar. "
+                    "Say enable windows theme sync first, or change Windows settings yourself.",
+                )
             return self._flavor("ok", self.theme_sync.set_dark(True))
         if re.search(r"\b(light mode|day theme)\b", t):
+            if not getattr(self.settings, "theme_sync_windows", False):
+                return self._flavor(
+                    "ok",
+                    "Windows theme sync is off. Say enable windows theme sync to allow light mode.",
+                )
             return self._flavor("ok", self.theme_sync.set_dark(False))
+        if re.search(r"\b(enable windows theme sync|windows theme sync on)\b", t):
+            self.settings.theme_sync_windows = True
+            self.theme_sync.windows_enabled = True
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Windows theme sync enabled. Say dark mode or light mode to change the taskbar.",
+            )
+        if re.search(r"\b(disable windows theme sync|windows theme sync off)\b", t):
+            self.settings.theme_sync_windows = False
+            self.theme_sync.windows_enabled = False
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Windows theme sync disabled.")
         if re.search(r"\b(sync theme|adaptive theme)\b", t):
             return self._flavor("ok", self.theme_sync.apply_for_hour())
+        if re.search(r"\b(fix( my)? (taskbar|theme)|restore dark( theme)?)\b", t):
+            msg = self.theme_sync.restore_dark_taskbar()
+            return self._flavor("ok", msg)
         if re.search(r"\b(boost( mode)?|performance boost|game mode)\b", t):
             return self._flavor("ok", self.boost.boost())
         if re.search(r"\b(restore processes|end boost)\b", t):
             return self._flavor("ok", self.boost.restore())
+        # Smooth / eco HUD (not process suspend — pairs with governor)
+        if re.search(
+            r"\b("
+            r"smooth mode off|performance mode off|exit smooth|"
+            r"full fidelity|end smooth mode"
+            r")\b",
+            t,
+        ):
+            return self._set_performance_mode(False)
+        if re.search(
+            r"\b(smooth mode|performance mode|eco hud|eco mode)\b",
+            t,
+        ):
+            return self._set_performance_mode(True)
         if re.search(
             r"\b("
             r"cancel panic|end panic|panic off|clear panic|stand down|"
@@ -2139,16 +5453,35 @@ class Brain:
             threading.Thread(target=_help, daemon=True, name="screen-help").start()
             return "Reading your screen so I can help…"
 
-        # Computer-use: click on-screen text
+        # Computer-use: click / type / hotkeys / scroll (pyautogui)
         m = re.search(
             r"\b(?:click|press|tap|hit)\s+(?:(?:on|the)\s+)?(.+)$",
             t,
         )
-        if m and not re.search(r"\b(play|pause|mute|camera|lock)\b", t):
+        if m and not re.search(r"\b(play|pause|mute|camera|lock|ctrl|alt|shift|enter|tab)\b", t):
             label = m.group(1).strip().strip("\"'")
             if 1 < len(label) < 48:
                 self._emit("fetching", True)
                 return self._flavor("ok", self.computer.click_text(label))
+
+        m = re.search(r"\b(?:type|enter text|type out)\s+(.+)$", t)
+        if m:
+            return self._flavor("ok", self.computer.type_text(m.group(1).strip()))
+
+        m = re.search(
+            r"\b(?:press|hit)\s+((?:ctrl|control|alt|shift|win|cmd)(?:\s*\+\s*|\s+)[\w]+(?:\s*\+\s*[\w]+)?|enter|tab|escape|esc)\b",
+            t,
+        )
+        if m:
+            raw = m.group(1).lower().replace("control", "ctrl").replace("escape", "esc")
+            keys = re.split(r"\s*\+\s*|\s+", raw)
+            keys = [k for k in keys if k]
+            return self._flavor("ok", self.computer.hotkey(*keys))
+
+        if re.search(r"\b(scroll down|page down)\b", t):
+            return self._flavor("ok", self.computer.scroll(-4))
+        if re.search(r"\b(scroll up|page up)\b", t):
+            return self._flavor("ok", self.computer.scroll(4))
 
         # Custom autonomous instructions
         if re.search(r"\b(add instruction|add behavior|from now on|always remember)\b", t):
@@ -2217,16 +5550,54 @@ class Brain:
             return self._flavor("ok", self.work.start_work())
 
         # Help
+        if re.search(r"\b(task status|background tasks|queue status)\b", t):
+            return self._flavor("ok", self.tasks.status_line())
+        if re.search(r"\b(home assistant status|ha status)\b", t):
+            return self._flavor("ok", self.ha.status())
+        m = re.search(r"\b(?:ha|home assistant)\s+(?:scene|activate)\s+(.+)$", t)
+        if m:
+            ent = m.group(1).strip()
+            if not ent.startswith("scene."):
+                ent = f"scene.{ent.replace(' ', '_').lower()}"
+            return self._flavor("ok", self.ha.activate_scene(ent))
+        m = re.search(r"\b(?:trigger|run) n8n\s+(\S+)\b", t)
+        if m:
+            path = m.group(1).strip()
+            tid = self.tasks.submit(
+                f"n8n:{path}",
+                lambda p=path: self.n8n.trigger(p, {"source": "jarvis", "text": t}),
+            )
+            return self._flavor(
+                "ok",
+                f"Queued n8n workflow {path} in the background (task {tid}).",
+            )
+        if re.search(r"\b(voicemeeter|audio isolation|mic isolation)\b", t):
+            from jarvis.core.audio_isolation import VOICEMEETER_SETUP
+
+            self._emit("artifact", {"title": "AUDIO ISOLATION", "text": VOICEMEETER_SETUP})
+            return self._flavor(
+                "ok",
+                "Audio isolation guide is on screen. Use mic_prefer for your headset.",
+            )
+
         if re.search(r"\b(help|what can you do|commands|list commands)\b", t):
             return (
                 f"At your service, {self.settings.user_name}. "
-                "Try: open camera, pull up the news, open map view, "
-                "build a site, start vibe coding, find biz, "
-                "away mode, show stats, play music, sleep, or lock. "
-                "Shortcuts: site · vibe · camera · screen · music · sarah · tom · admin. "
-                "Say panic off to leave panic mode. "
-                "HITL: approve / deny before deploy. "
-                "Hub: hub status · hub standby."
+                "Smart: quiet mode · smooth mode · desk ready · full status · summarize my day · "
+                "wake word only · always listen · suggestions off · upgrade status · upgrade check · recent errors. "
+                "Travis: park · tactical · peer review. "
+                "Workflows: morning · night · focus · secure. "
+                "Security: enroll · intruder alerts off · secure desk. "
+                "Phone: companion · ping my phone. "
+                "Manus: ask manus · manus review. "
+                "Computer use: computer use … · browser agent … · operator … · "
+                "stop computer use · set anthropic/openai key. "
+                "Cloud: integrations status · stripe status · notion search … · "
+                "buffer channels · gmail inbox · link stripe / notion / buffer / gmail. "
+                "Agents: ask sarah · ask tom · ask admin · hub status. "
+                "Desk: camera · lock · screenshot · music · weather. "
+                "Build: site · vibe · map · news · away. "
+                "Say upgrade for hot reload. Full list stays punchy — ask for a category."
             )
 
         # Contextual "do that" via thought stream
@@ -2235,19 +5606,261 @@ class Brain:
             if len(recent) >= 2:
                 return self._route(recent[-2])
 
+        # Vague ask — only speak recalled facts when user explicitly asks
+        if re.search(
+            r"\b(what do you remember|from memory|recall( that)?|remind me about)\b",
+            t,
+        ):
+            hint = getattr(self, "_memory_hint", "") or ""
+            bullets = [
+                ln[2:].strip() for ln in hint.splitlines() if ln.startswith("- ")
+            ]
+            if not bullets:
+                try:
+                    bullets = self.vstore.recall(t, n=3)
+                except Exception:
+                    bullets = []
+            if bullets:
+                return self._flavor("ok", "; ".join(bullets[:2]))
+            return self._flavor("ok", "Nothing stored for that yet.")
+
         return self.persona.fallback()
 
-    def _screenshot(self) -> str:
+    def _full_status_line(self) -> str:
+        """One-line systems pack: desk · companion · manus · hub."""
+        bits: list[str] = []
         try:
-            import pyautogui
+            tel = self.system.telemetry()
+            bits.append(
+                f"CPU {getattr(tel, 'cpu', 0):.0f}% · RAM {getattr(tel, 'memory', getattr(tel, 'ram', 0)):.0f}%"
+            )
+        except Exception:
+            bits.append("systems nominal")
+        try:
+            if getattr(self, "security", None):
+                bits.append(self.security.status())
+        except Exception:
+            pass
+        try:
+            bits.append(self.companion_status_line())
+        except Exception:
+            try:
+                bits.append(self.phone.status())
+            except Exception:
+                pass
+        try:
+            manus = getattr(self, "manus", None)
+            if manus is not None:
+                bits.append(manus.status())
+        except Exception:
+            pass
+        try:
+            cu = getattr(self, "cu_agent", None)
+            if cu is not None and getattr(cu.status, "running", False):
+                bits.append(
+                    f"CU {cu.status.provider} {cu.status.step}/{cu.status.max_steps}"
+                )
+        except Exception:
+            pass
+        try:
+            if getattr(self.settings, "hub_enabled", True):
+                h = self.hub.health()
+                if h:
+                    bits.append(f"Hub online · sessions {h.get('sessions')}")
+                else:
+                    bits.append("Hub offline")
+        except Exception:
+            bits.append("Hub unknown")
+        if getattr(self, "_quiet_mode", False):
+            bits.append("quiet mode on")
+        line = " · ".join(b for b in bits if b)
+        if len(line) > 420:
+            line = line[:400].rsplit("·", 1)[0].strip(" ·") + "."
+        return line
 
-            folder = Path.home() / "Pictures" / "Jarvis"
-            folder.mkdir(parents=True, exist_ok=True)
-            path = folder / f"shot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-            pyautogui.screenshot(str(path))
-            return f"Screenshot saved to {path}"
+    def _summarize_my_day(self) -> str:
+        parts: list[str] = []
+        try:
+            if getattr(self, "live", None):
+                parts.append(self.live.briefing_prefix().rstrip("."))
+        except Exception:
+            pass
+        try:
+            wx = self.weather.speak_brief()
+            if wx:
+                parts.append(wx)
+        except Exception:
+            pass
+        try:
+            cal = self.brief.schedule_only()
+            day = self.habits.tell_me_about_my_day(cal)
+            if day:
+                parts.append(day)
+        except Exception:
+            try:
+                parts.append(self.brief.summarize(open_inbox=False))
+            except Exception:
+                pass
+        if not parts:
+            return "Nothing queued for today yet. Say good morning for a standup."
+        return " ".join(parts)[:480]
+
+    def _desk_ready(self) -> str:
+        """Light focus prep — coding lights + mic live + short status."""
+        notes: list[str] = []
+        try:
+            if getattr(self, "lights", None):
+                notes.append(self.lights.set_mode("coding"))
+        except Exception:
+            pass
+        try:
+            self.voice.mute_mic(False)
+            self.voice.set_busy(False)
+        except Exception:
+            pass
+        if getattr(self, "_quiet_mode", False):
+            try:
+                notes.append(self._exit_quiet_mode())
+            except Exception:
+                pass
+        self._emit("hud_alert", "DESK READY")
+        core = "Desk ready — coding lights, mic live."
+        if notes:
+            core += " " + " ".join(str(n) for n in notes if n)[:120]
+        return core
+
+    def _enter_quiet_mode(self) -> str:
+        self._quiet_mode = True
+        try:
+            self.voice.mute_mic(True)
+        except Exception:
+            pass
+        try:
+            if getattr(self, "security", None):
+                self._quiet_saved_intruder = bool(self.security.intruder_alert)
+                self.security.set_intruder_alert(False)
+        except Exception:
+            self._quiet_saved_intruder = None
+        self._emit("hud_alert", "QUIET MODE")
+        return "Quiet mode on — mic muted, intruder alerts silenced. Say loud mode to restore."
+
+    def _exit_quiet_mode(self) -> str:
+        self._quiet_mode = False
+        try:
+            self.voice.mute_mic(False)
+            self.voice.set_busy(False)
+        except Exception:
+            pass
+        try:
+            if getattr(self, "security", None) and self._quiet_saved_intruder is not None:
+                self.security.set_intruder_alert(bool(self._quiet_saved_intruder))
+            self._quiet_saved_intruder = None
+        except Exception:
+            pass
+        self._emit("hud_alert", "LIVE")
+        return "Loud mode — mic live, alerts restored."
+
+    def _summarize_clipboard(self) -> str:
+        try:
+            import pyperclip
+        except Exception:
+            return "Clipboard module not installed."
+        try:
+            clip = (pyperclip.paste() or "").strip()
+        except Exception:
+            return "Could not read the clipboard."
+        if not clip:
+            return "Clipboard is empty."
+        # Soft summarize: first sentence / trim
+        one = re.split(r"(?<=[.!?])\s+", clip, maxsplit=1)[0].strip()
+        words = clip.split()
+        if len(words) <= 28:
+            preview = clip
+        else:
+            preview = " ".join(words[:28]) + "…"
+        if one and len(one) < 160 and one != preview:
+            return f"Clipboard ({len(words)} words): {one}"
+        return f"Clipboard ({len(words)} words): {preview[:220]}"
+
+    def _upgrade_status_line(self) -> str:
+        try:
+            if getattr(self, "registry", None):
+                return self.registry.status()
         except Exception as e:
-            return f"Screenshot failed: {e}"
+            return f"Registry unavailable: {e}"
+        return "Feature registry offline."
+
+    def _recent_errors_line(self) -> str:
+        try:
+            from jarvis.core.health_check import recent_errors_blurb
+
+            return recent_errors_blurb()
+        except Exception as e:
+            return f"Could not read errors: {e}"
+
+    def _upgrade_check_line(self) -> str:
+        """Self-health: logs · computer-use readiness · integrations · wake."""
+        try:
+            from jarvis.core.health_check import build_upgrade_check
+        except Exception as e:
+            return f"Health check module unavailable: {e}"
+        companion = ""
+        manus_line = ""
+        hub_line = ""
+        security_line = ""
+        try:
+            companion = self.companion_status_line()
+        except Exception:
+            try:
+                companion = self.phone.status()
+            except Exception:
+                pass
+        try:
+            manus = getattr(self, "manus", None)
+            if manus is not None:
+                manus_line = str(manus.status())
+        except Exception:
+            pass
+        try:
+            if getattr(self.settings, "hub_enabled", True):
+                h = self.hub.health()
+                hub_line = (
+                    f"Hub online sessions {h.get('sessions')}"
+                    if h
+                    else "Hub offline"
+                )
+            else:
+                hub_line = "Hub disabled"
+        except Exception:
+            hub_line = "Hub unknown"
+        try:
+            if getattr(self, "security", None):
+                security_line = str(self.security.status())
+        except Exception:
+            pass
+        cloud = getattr(self, "cloud", None)
+        line = build_upgrade_check(
+            settings=self.settings,
+            cu_agent=getattr(self, "cu_agent", None),
+            cloud=cloud,
+            companion_line=companion,
+            manus_line=manus_line,
+            hub_line=hub_line,
+            security_line=security_line,
+        )
+        try:
+            self._emit(
+                "artifact",
+                {
+                    "title": "UPGRADE CHECK",
+                    "text": line
+                    + "\n\nTips: computer use status · setup computer use · "
+                    "integrations status · full status · upgrade status",
+                },
+            )
+        except Exception:
+            pass
+        return line
 
     def apply_update_request(self, text: str) -> str:
         self.voice.mute_mic(False)
@@ -2255,7 +5868,126 @@ class Brain:
         # Persist as custom behavior + hot-load stub plugin
         note = self.instructions.append(text)
         plugin = self.updater.apply(text)
-        return f"{note} {plugin}"
+        msg = f"{note} {plugin}"
+        if getattr(self.settings, "reload_after_update", True):
+            self._emit("app_exit", 0)
+            return (
+                f"{msg} Compilation successful. Reloading environment layers."
+            )
+        return msg
+
+    def _run_hot_upgrade(self) -> str:
+        """Show upgrade loading UI and hot-refresh plugins + scripts to 100%."""
+        try:
+            if getattr(self, "registry", None):
+                self.registry.freeze("upgrade")
+                self._emit("command_ui", {"kind": "upgrade", "text": "registry frozen"})
+                self._emit("registry_ui", {"frozen": True})
+        except Exception as e:
+            print(f"[upgrade] freeze: {e}")
+        self._emit("upgrade_ui", "start")
+        self._reactor_safe("build")
+        try:
+            self.habits.log("upgrade")
+        except Exception:
+            pass
+
+        def _job() -> None:
+            time.sleep(0.45)
+
+            def on_progress(pct: int, phase: str, detail: str) -> None:
+                self._emit(
+                    "upgrade_ui",
+                    {"pct": int(pct), "phase": phase, "detail": detail},
+                )
+                try:
+                    self._emit(
+                        "command_ui",
+                        {
+                            "kind": "upgrade",
+                            "text": f"{pct}% {phase}",
+                            "detail": detail[:60],
+                        },
+                    )
+                except Exception:
+                    pass
+
+            try:
+                msg = self.updater.hot_upgrade(progress=on_progress)
+            except Exception as e:
+                msg = f"Upgrade hit turbulence at the last gate: {e}"
+                self._emit(
+                    "upgrade_ui",
+                    {"pct": 100, "phase": "COMPLETE", "detail": str(e)[:120]},
+                )
+            try:
+                import importlib
+                from jarvis.core import commands as cmd_mod
+
+                importlib.reload(cmd_mod)
+            except Exception:
+                pass
+            try:
+                if getattr(self, "registry", None):
+                    self.registry.unfreeze()
+                    self._emit("registry_ui", {"frozen": False})
+                    self._emit(
+                        "command_ui",
+                        {"kind": "upgrade", "text": "registry open · 100%"},
+                    )
+            except Exception as e:
+                print(f"[upgrade] unfreeze: {e}")
+            self._reactor_safe("idle")
+            try:
+                self.feed.push("upgrade", msg[:180])
+            except Exception:
+                pass
+            time.sleep(0.8)
+            self.say(msg)
+
+        threading.Thread(target=_job, daemon=True, name="jarvis-upgrade").start()
+        return "Upgrade sequence engaged. Registry frozen until 100 percent."
+
+    def _route_workflow_step(self, cmd: str) -> str | None:
+        """Execute one workflow step without re-entering utterance locks."""
+        try:
+            c = (cmd or "").lower().strip()
+            if getattr(self, "registry", None) and not self.registry.allows(c):
+                return self.registry.block_message()
+            return self._route(c)
+        except Exception as e:
+            print(f"[workflow] step: {e}")
+            return None
+
+    def _run_workflow(self, name: str) -> str:
+        if not getattr(self, "workflows", None):
+            return "Workflow engine offline."
+        self._emit("hud_alert", f"Workflow · {name}")
+        self._reactor_safe("build")
+
+        def _job() -> None:
+            def progress(label: str, meta: dict) -> None:
+                self._emit(
+                    "command_ui",
+                    {
+                        "kind": "workflow",
+                        "text": label,
+                        "detail": f"{meta.get('index')}/{meta.get('total')}",
+                    },
+                )
+                self._emit("hud_alert", f"Workflow · {label}")
+
+            try:
+                msg = self.workflows.run(name, progress=progress)
+            except Exception as e:
+                msg = f"Workflow failed: {e}"
+            self._reactor_safe("idle")
+            self.say(msg)
+
+        threading.Thread(
+            target=_job, daemon=True, name=f"workflow-{name}"
+        ).start()
+        return f"Starting {name} workflow."
 
     def _describe_activity(self) -> str:
         """Look through the camera and say what the user appears to be doing."""
@@ -2308,17 +6040,21 @@ class Brain:
     def scan_frame(self, frame, ocr: bool = True) -> str:
         self._scanning = True
         self._last_frame = frame
+        open_browser = bool(getattr(self, "_scan_open_browser", False))
+        self._scan_open_browser = False
         try:
             result = self.scanner.scan_frame(
                 frame,
                 ocr=ocr,
-                open_browser=False,
+                open_browser=open_browser,
                 identify=self.activity.identify_item,
             )
             query = result.get("query") or "unknown item"
             detail = (result.get("description") or result.get("reply") or "").strip()
             spoken = self.persona.scan_line(query)
             full = f"{spoken} {detail}".strip()
+            if open_browser:
+                full = f"{full} Opening Google Lens.".strip()
             self._emit("scan_result", full)
             self._emit(
                 "artifact",

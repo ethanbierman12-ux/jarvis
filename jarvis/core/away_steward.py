@@ -419,18 +419,11 @@ class AwaySteward:
             return f"Calendar watch failed: {e}"
 
     def _job_quiet_hours(self) -> str:
-        try:
-            import subprocess
-
-            subprocess.Popen(
-                ["powershell", "-NoProfile", "-Command", "Start-Process ms-settings:quiethours"],
-                shell=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            return "Opened Focus Assist / quiet hours settings."
-        except Exception as e:
-            return f"Quiet hours failed: {e}"
+        # Never open ms-settings:quiethours — it steals focus while the user works
+        return (
+            "Quiet hours: skipped opening Windows Settings. "
+            "Set Focus Assist manually if you want it."
+        )
 
     def _job_lock(self) -> str:
         try:

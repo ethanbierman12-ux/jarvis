@@ -26,22 +26,206 @@ from jarvis.config import DATA_DIR
 MAP_HTML = DATA_DIR / "map_3d.html"
 
 
-def _geocode(place: str) -> tuple[float, float] | None:
+def _geocode_detail(place: str) -> dict[str, Any] | None:
+    """Nominatim lookup with type + zoom hint for city/country framing."""
+    q = (place or "").strip()
+    if not q:
+        return None
+    return _nominatim_search(q)
+
+
+def _nominatim_search(q: str) -> dict[str, Any] | None:
     try:
         url = (
             "https://nominatim.openstreetmap.org/search?"
-            + urllib.parse.urlencode({"q": place, "format": "json", "limit": 1})
+            + urllib.parse.urlencode(
+                {
+                    "q": q,
+                    "format": "json",
+                    "limit": 1,
+                    "addressdetails": 1,
+                    "namedetails": 1,
+                }
+            )
         )
         req = urllib.request.Request(
-            url, headers={"User-Agent": "JarvisMapView/1.0"}
+            url,
+            headers={
+                "User-Agent": "JarvisMapView/1.0",
+                "Accept-Language": "en",
+            },
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=12) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         if not data:
             return None
-        return float(data[0]["lat"]), float(data[0]["lon"])
+        row = data[0]
+        lat = float(row["lat"])
+        lon = float(row["lon"])
+        cls = (row.get("class") or "").lower()
+        typ = (row.get("type") or "").lower()
+        addr = row.get("address") or {}
+        nd = row.get("namedetails") or {}
+        en_name = (nd.get("name:en") or nd.get("name") or "").strip()
+        display = (row.get("display_name") or q).split(",")
+        parts = [p.strip() for p in display if p.strip()]
+        if en_name:
+            # Keep one geographic qualifier when useful (e.g. Tokyo, Japan)
+            qual = ""
+            if addr.get("country") and addr.get("country").lower() not in en_name.lower():
+                # For countries alone, skip qualifier
+                if not (
+                    cls == "boundary"
+                    and typ == "administrative"
+                    and addr.get("country")
+                    and not any(
+                        addr.get(k)
+                        for k in ("city", "town", "state", "province", "region", "county")
+                    )
+                ):
+                    if addr.get("country"):
+                        qual = f", {addr['country']}"
+            short = f"{en_name}{qual}"
+        else:
+            short = ", ".join(parts[:3]) if parts else q
+        zoom = _zoom_for_place(cls, typ, addr)
+        kind = _kind_label(cls, typ, addr)
+        # Prefecture/metro named like the query (Tokyo) → city frame; US states stay region
+        ql = q.lower()
+        prov = (addr.get("province") or "").lower()
+        state = (addr.get("state") or "").lower()
+        city_l = (
+            addr.get("city")
+            or addr.get("town")
+            or addr.get("municipality")
+            or ""
+        ).lower()
+        if city_l == ql or (prov == ql and prov and prov != state):
+            kind = "city"
+            zoom = max(float(zoom), 10.8)
+        elif state == ql and not city_l:
+            kind = "region"
+            zoom = max(float(zoom), 6.8)
+        return {
+            "lat": lat,
+            "lon": lon,
+            "query": q,
+            "name": short or q,
+            "kind": kind,
+            "zoom": zoom,
+            "class": cls,
+            "type": typ,
+            "country": (addr.get("country") or "").strip(),
+            "state": (
+                addr.get("state") or addr.get("region") or addr.get("province") or ""
+            ).strip(),
+            "city": (
+                addr.get("city")
+                or addr.get("town")
+                or addr.get("village")
+                or addr.get("municipality")
+                or ""
+            ).strip(),
+        }
     except Exception:
         return None
+
+
+def _zoom_for_place(cls: str, typ: str, addr: dict[str, Any] | None = None) -> float:
+    """Country → wide, city → street-level-ish pitched view."""
+    typ = (typ or "").lower()
+    cls = (cls or "").lower()
+    addr = addr or {}
+    has_settlement = any(
+        addr.get(k) for k in ("city", "town", "village", "municipality", "suburb")
+    )
+    has_state = bool(
+        addr.get("state") or addr.get("region") or addr.get("province") or addr.get("county")
+    )
+    has_country = bool(addr.get("country"))
+
+    if typ in ("country", "nation"):
+        return 4.6
+    if cls == "boundary" and typ == "administrative":
+        if has_country and not has_settlement and not has_state:
+            return 4.6
+        if has_state and not has_settlement:
+            # Prefecture / state frame (Tokyo-as-province, California, etc.)
+            return 8.2
+    if typ in ("state", "province", "region", "county"):
+        return 7.4
+    if typ in ("city", "town", "municipality", "borough"):
+        return 11.4
+    if typ in ("village", "hamlet", "suburb", "neighbourhood", "neighborhood"):
+        return 13.2
+    if cls == "place":
+        if typ == "country":
+            return 4.6
+        if typ in ("state", "region", "province"):
+            return 7.4
+        if typ in ("city", "town"):
+            return 11.4
+    if has_settlement:
+        return 11.6
+    if has_state and not has_settlement:
+        return 8.2
+    if has_country and not has_settlement and not has_state:
+        return 4.6
+    return 13.8
+
+
+def _kind_label(cls: str, typ: str, addr: dict[str, Any] | None = None) -> str:
+    typ = (typ or "").lower()
+    cls = (cls or "").lower()
+    addr = addr or {}
+    has_settlement = any(
+        addr.get(k) for k in ("city", "town", "village", "municipality", "suburb")
+    )
+    has_state = bool(addr.get("state") or addr.get("region") or addr.get("province"))
+    if typ in ("country", "nation") or (
+        cls == "boundary"
+        and typ == "administrative"
+        and addr.get("country")
+        and not has_settlement
+        and not has_state
+    ):
+        return "country"
+    if typ in ("state", "province", "region") or (
+        has_state and not has_settlement and typ == "administrative"
+    ):
+        return "region"
+    if typ in ("city", "town", "municipality", "borough"):
+        return "city"
+    if typ in ("village", "hamlet", "suburb", "neighbourhood", "neighborhood"):
+        return "district"
+    if has_settlement:
+        return "city"
+    if typ:
+        return typ.replace("_", " ")
+    return "location"
+
+
+def _brief_for(hit: dict[str, Any]) -> str:
+    """One tight spoken line about the target."""
+    name = hit.get("name") or hit.get("query") or "target"
+    kind = hit.get("kind") or "location"
+    lat = float(hit["lat"])
+    lon = float(hit["lon"])
+    ns = "north" if lat >= 0 else "south"
+    ew = "east" if lon >= 0 else "west"
+    coords = f"{abs(lat):.1f} {ns}, {abs(lon):.1f} {ew}"
+    country = hit.get("country") or ""
+    extra = ""
+    if country and country.lower() not in name.lower() and kind != "country":
+        extra = f", {country}"
+    return f"{name}{extra} - {kind}. {coords}."
+
+
+def _geocode(place: str) -> tuple[float, float] | None:
+    hit = _geocode_detail(place)
+    if not hit:
+        return None
+    return float(hit["lat"]), float(hit["lon"])
 
 
 def write_map_html(
@@ -121,12 +305,13 @@ const map = new maplibregl.Map({{
   container: 'map',
   style: 'https://tiles.openfreemap.org/styles/dark',
   center: center,
-  zoom: animateIntro ? 3.2 : {zoom},
+  zoom: animateIntro ? 2.15 : {zoom},
   pitch: animateIntro ? 0 : {pitch},
   bearing: animateIntro ? 0 : -18,
   antialias: true,
   attributionControl: true
 }});
+window.map = map;
 map.addControl(new maplibregl.NavigationControl({{visualizePitch:true}}), 'top-right');
 
 function setScan(on, text) {{
@@ -210,43 +395,135 @@ map.on('load', () => {{
       zoom: {zoom},
       pitch: {pitch},
       bearing: -18,
+      speed: 0.55,
+      curve: 1.7,
       essential: true,
-      duration: 2800
+      duration: 3200
     }});
     map.once('moveend', () => {{
       addMarkers(markers);
       if (!startScanning) setScan(false);
-      // Slow cinematic orbit after settle
+      window._jarvisOrbiting = true;
       let bearing = map.getBearing();
       function orbit() {{
+        if (!window._jarvisOrbiting) return;
         bearing = (bearing + 0.035) % 360;
-        map.setBearing(bearing);
-        requestAnimationFrame(orbit);
+        try {{ map.setBearing(bearing); }} catch (e) {{}}
+        window._jarvisOrbitRAF = requestAnimationFrame(orbit);
       }}
-      requestAnimationFrame(orbit);
+      window._jarvisOrbitRAF = requestAnimationFrame(orbit);
     }});
   }} else {{
     addMarkers(markers);
+    window._jarvisOrbiting = true;
     let bearing = map.getBearing();
     function orbit() {{
+      if (!window._jarvisOrbiting) return;
       bearing = (bearing + 0.035) % 360;
-      map.setBearing(bearing);
-      requestAnimationFrame(orbit);
+      try {{ map.setBearing(bearing); }} catch (e) {{}}
+      window._jarvisOrbitRAF = requestAnimationFrame(orbit);
     }}
-    requestAnimationFrame(orbit);
+    window._jarvisOrbitRAF = requestAnimationFrame(orbit);
   }}
+  window._jarvisMapReady = true;
 }});
 
+window._jarvisOrbiting = false;
+window._jarvisOrbitRAF = null;
+window._jarvisFlying = false;
+window._jarvisMapReady = false;
+
+window.jarvisZoomBy = function(delta) {{
+  try {{
+    const m = window.map || map;
+    if (!m) return;
+    window._jarvisOrbiting = false;
+    if (window._jarvisOrbitRAF) {{
+      try {{ cancelAnimationFrame(window._jarvisOrbitRAF); }} catch (e) {{}}
+      window._jarvisOrbitRAF = null;
+    }}
+    const d = Number(delta) || 0;
+    const next = Math.max(1.2, Math.min(18.5, m.getZoom() + d));
+    setScan(true, d >= 0 ? 'ZOOMING IN…' : 'PULLING BACK…');
+    m.easeTo({{
+      zoom: next,
+      pitch: {pitch},
+      duration: 1400,
+      essential: true
+    }});
+    m.once('moveend', () => {{
+      setScan(false);
+      window._jarvisOrbiting = true;
+      let bearing = m.getBearing();
+      function orbit() {{
+        if (!window._jarvisOrbiting) return;
+        bearing = (bearing + 0.035) % 360;
+        try {{ m.setBearing(bearing); }} catch (e) {{}}
+        window._jarvisOrbitRAF = requestAnimationFrame(orbit);
+      }}
+      window._jarvisOrbitRAF = requestAnimationFrame(orbit);
+    }});
+  }} catch (e) {{}}
+}};
+
 window.jarvisFlyTo = function(lon, lat, place, zoom) {{
-  document.getElementById('place').textContent = place || 'Target';
-  map.flyTo({{
-    center: [lon, lat],
-    zoom: zoom || 14.5,
-    pitch: {pitch},
-    bearing: -12,
-    essential: true,
-    duration: 2200
+  const m = window.map || map;
+  if (!m) return;
+  const targetZoom = (zoom == null || zoom === undefined) ? 14.5 : Number(zoom);
+  const el = document.getElementById('place');
+  if (el) el.textContent = place || 'Target';
+  setScan(true, 'ZOOMING IN…');
+  window._jarvisOrbiting = false;
+  window._jarvisFlying = true;
+  if (window._jarvisOrbitRAF) {{
+    try {{ cancelAnimationFrame(window._jarvisOrbitRAF); }} catch (e) {{}}
+    window._jarvisOrbitRAF = null;
+  }}
+
+  const curZoom = m.getZoom();
+  const curCenter = m.getCenter();
+  // Pull back for a clear zoom-in read, then dive to target
+  const pullBack = Math.max(2.4, Math.min(curZoom, targetZoom) - 3.2);
+
+  function dive() {{
+    m.flyTo({{
+      center: [lon, lat],
+      zoom: targetZoom,
+      pitch: {pitch},
+      bearing: -18,
+      speed: 0.45,
+      curve: 1.85,
+      essential: true,
+      duration: Math.max(2400, Math.min(4800, 900 + Math.abs(curZoom - targetZoom) * 420))
+    }});
+    m.once('moveend', () => {{
+      window._jarvisFlying = false;
+      setScan(false);
+      window._jarvisOrbiting = true;
+      let bearing = m.getBearing();
+      function orbit() {{
+        if (!window._jarvisOrbiting) return;
+        bearing = (bearing + 0.035) % 360;
+        try {{ m.setBearing(bearing); }} catch (e) {{}}
+        window._jarvisOrbitRAF = requestAnimationFrame(orbit);
+      }}
+      window._jarvisOrbitRAF = requestAnimationFrame(orbit);
+    }});
+  }}
+
+  // Stage 1: ease toward target while pulling altitude for drama
+  m.easeTo({{
+    center: [
+      curCenter.lng + (lon - curCenter.lng) * 0.35,
+      curCenter.lat + (lat - curCenter.lat) * 0.35
+    ],
+    zoom: pullBack,
+    pitch: Math.max(28, {pitch} - 20),
+    bearing: m.getBearing() + 25,
+    duration: 1100,
+    essential: true
   }});
+  m.once('moveend', dive);
 }};
 
 window.jarvisSetMarkers = function(list, scanning) {{
@@ -412,29 +689,45 @@ class MapView(QFrame):
         query: str = "",
         options: list[dict[str, Any]] | None = None,
         animate: bool = True,
+        lat: float | None = None,
+        lon: float | None = None,
+        zoom: float | None = None,
+        label: str | None = None,
+        brief: str | None = None,
     ) -> str:
-        target = (place or city or "Philadelphia").strip()
+        target = (label or place or city or "Philadelphia").strip()
         self._city = city
-        coords = _geocode(target) or _geocode(city)
-        if not coords:
-            lat, lon = 39.9526, -75.1652
-            target = target or "Philadelphia"
+        if lat is not None and lon is not None:
+            zoom_lvl = float(zoom if zoom is not None else 11.4)
+            brief_txt = (brief or "").strip()
         else:
-            lat, lon = coords
+            detail = _geocode_detail(target) or _geocode_detail(city)
+            if not detail:
+                lat, lon = 39.9526, -75.1652
+                target = target or "Philadelphia"
+                zoom_lvl = 14.3
+                brief_txt = ""
+            else:
+                lat, lon = float(detail["lat"]), float(detail["lon"])
+                target = str(detail.get("name") or target)
+                zoom_lvl = float(zoom if zoom is not None else detail.get("zoom") or 14.3)
+                brief_txt = brief or _brief_for(detail)
 
         marks = self._normalize_markers(markers or [])
         self._markers = marks
         path = write_map_html(
-            lat=lat,
-            lon=lon,
+            lat=float(lat),
+            lon=float(lon),
             place=target,
             markers=marks,
             pitch=62,
-            zoom=14.3,
+            zoom=zoom_lvl,
             animate_intro=animate,
             scanning=scanning,
         )
         self.place_lab.setText(target.upper())
+        if brief_txt and not scanning:
+            self.options_status.setText(brief_txt)
         if scanning:
             self.options_status.setText(
                 f"Scanning for “{query or 'businesses'}”…"
@@ -524,20 +817,82 @@ class MapView(QFrame):
             except Exception:
                 pass
 
-    def fly_to(self, place: str) -> str:
-        coords = _geocode(place)
-        if not coords:
-            return f"Could not locate {place}."
-        lat, lon = coords
-        self.place_lab.setText(place.upper())
+    def fly_to(
+        self,
+        place: str,
+        *,
+        lat: float | None = None,
+        lon: float | None = None,
+        zoom: float | None = None,
+        label: str | None = None,
+        brief: str | None = None,
+    ) -> str:
+        hit = None
+        if lat is None or lon is None:
+            hit = _geocode_detail(place)
+            if not hit:
+                return f"Could not locate {place}."
+            lat = float(hit["lat"])
+            lon = float(hit["lon"])
+            zoom = float(hit.get("zoom") or 14.5)
+            label = str(hit.get("name") or place)
+            brief = _brief_for(hit)
+        else:
+            zoom = float(zoom if zoom is not None else 14.5)
+            label = (label or place or "Target").strip()
+            brief = (brief or f"{label}.").strip()
+
+        self.place_lab.setText(label.upper())
+        self.options_status.setText(brief)
         if self._web is not None:
-            js = (
-                f"if (window.jarvisFlyTo) jarvisFlyTo({lon}, {lat}, "
-                f"{json.dumps(place)}, 14.5);"
-            )
-            self._web.page().runJavaScript(js)
-            return f"Flying to {place}."
-        return f"Located {place}."
+            # Call page jarvisFlyTo (window.map exposed). Retry until engine ready.
+            lab_js = json.dumps(label)
+            js = f"""
+(function tryFly(n) {{
+  try {{
+    if (window.jarvisFlyTo && (window.map || window._jarvisMapReady)) {{
+      jarvisFlyTo({float(lon)}, {float(lat)}, {lab_js}, {float(zoom)});
+      return;
+    }}
+  }} catch (e) {{}}
+  if (n < 25) setTimeout(function() {{ tryFly(n + 1); }}, 200);
+}})(0);
+"""
+            try:
+                self._web.page().runJavaScript(js)
+            except Exception:
+                pass
+            return f"Zooming to {label}. {brief}"
+        return f"Located {label}. {brief}"
+
+    def zoom_by(self, delta: float) -> str:
+        """Relative cinematic zoom in (+) / out (−) on the live map."""
+        d = float(delta or 0)
+        if self._web is not None:
+            js = f"""
+(function tryZoom(n) {{
+  try {{
+    if (window.jarvisZoomBy && (window.map || window._jarvisMapReady)) {{
+      jarvisZoomBy({d});
+      return;
+    }}
+  }} catch (e) {{}}
+  if (n < 25) setTimeout(function() {{ tryZoom(n + 1); }}, 200);
+}})(0);
+"""
+            try:
+                self._web.page().runJavaScript(js)
+            except Exception:
+                pass
+            return "Zooming in." if d >= 0 else "Pulling back."
+        return "Map engine offline."
+
+    def lookup_brief(self, place: str) -> tuple[str, dict[str, Any] | None]:
+        """Geocode + brief without flying (for brain when opening map cold)."""
+        hit = _geocode_detail(place)
+        if not hit:
+            return f"Could not locate {place}.", None
+        return _brief_for(hit), hit
 
     def focus_option(self, index: int) -> None:
         if self._web is not None:

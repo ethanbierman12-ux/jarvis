@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import Optional
 
 import numpy as np
@@ -292,12 +293,21 @@ class CameraTheater(QFrame):
         self.dock.set_status("Opening camera theater…")
         self.dock.set_gesture("Gesture: ready · fist locks")
         self._enter_fullscreen()
-        if self._gestures_on and self._tracker is None:
-            self._tracker = HandGestureTracker()
         # News loads after camera is live (WebEngine was slowing open)
         self.news.hide()
         self._place_corners()
+        # Defer MediaPipe so the window paints immediately
+        if self._gestures_on and self._tracker is None:
+            QTimer.singleShot(400, self._lazy_gestures)
         QTimer.singleShot(50, self._open_best)
+
+    def _lazy_gestures(self) -> None:
+        if not self._gestures_on or self._tracker is not None:
+            return
+        try:
+            self._tracker = HandGestureTracker()
+        except Exception as e:
+            print(f"[theater] gestures offline: {e}")
 
     def _unlock_gestures(self) -> None:
         self._gesture_locked = False
@@ -403,7 +413,7 @@ class CameraTheater(QFrame):
         return self._probe
 
     def _try_sources(self, sources: list) -> list[tuple[float, object, int, str, str]]:
-        """Try camera sources by index only (DSHOW-by-name is unsupported here)."""
+        """Try camera sources by index — accept dim feeds, reject OBS only."""
         import cv2
 
         from jarvis.core.camera_io import open_by_index, silence_opencv_logs
@@ -413,24 +423,22 @@ class CameraTheater(QFrame):
         seen: set[int] = set()
         with silence_opencv_logs():
             for source in sources:
-                # Skip string device names — OpenCV DSHOW cannot open by name
                 if isinstance(source, str):
                     continue
                 idx = int(source)
                 if idx in seen or idx < 0:
                     continue
                 seen.add(idx)
-                # Prefer shared opener (DSHOW → MSMF)
-                got = open_by_index(idx, reads=4)
+                got = open_by_index(idx, reads=6)
                 if not got:
                     continue
                 cap, backend = got
-                # Score via probe helper
                 frames = []
-                for _ in range(3):
+                for _ in range(5):
                     ok, fr = cap.read()
                     if ok and fr is not None:
                         frames.append(fr)
+                    time.sleep(0.02)
                 if len(frames) < 1:
                     try:
                         cap.release()
@@ -441,7 +449,8 @@ class CameraTheater(QFrame):
                 if len(frames) >= 2:
                     motion = float(np.mean(cv2.absdiff(frames[0], frames[-1])))
                 score = probe._frame_score(frames[-1], motion=motion)
-                if score < 5 or probe._is_obs_placeholder(frames[-1]):
+                # Soft reject — dark rooms score low but are still valid EMEET feeds
+                if probe._is_obs_placeholder(frames[-1]) or score < -500:
                     try:
                         cap.release()
                     except Exception:
@@ -450,10 +459,13 @@ class CameraTheater(QFrame):
                         print(f"[theater] skip OBS placeholder at index {idx}")
                     continue
                 if idx == self._preferred_index:
-                    score += 25
+                    score += 40
+                prefer_u = (self._prefer or "").upper()
+                if prefer_u and prefer_u in ("EMEET", "SMARTCAM") and idx <= 2:
+                    score += 12
                 label = f"index {idx}"
                 found.append((score, cap, idx, backend, label))
-                if score >= 30 and idx == self._preferred_index:
+                if score >= 25 and idx == self._preferred_index:
                     break
         return found
 
@@ -471,20 +483,48 @@ class CameraTheater(QFrame):
             self.view.setText(f"OpenCV missing: {e}")
             return
 
-        # Index-only scan — preferred first, then 0..3
+        # Preferred first, then scan a wider index range (EMEET often not 0)
         sources: list = []
         if self._preferred_index >= 0:
             sources.append(self._preferred_index)
-        for i in range(4):
+        for i in range(9):
             if i not in sources:
                 sources.append(i)
 
         candidates = self._try_sources(sources)
         if not candidates:
-            self.view.setText(
-                "No real camera.\nClose OBS Virtual Camera, then retry."
-            )
-            self.dock.set_status("Camera failed — close OBS Virtual Camera")
+            # Last resort: shared picker with softer gates
+            try:
+                from jarvis.core.camera_io import pick_best_camera
+
+                picked = pick_best_camera(
+                    preferred_index=self._preferred_index,
+                    prefer=self._prefer or "EMEET",
+                    max_index=8,
+                )
+            except Exception:
+                picked = None
+            if not picked:
+                self.view.setText(
+                    "No camera feed.\nClose Zoom / Teams / OBS Virtual Camera,\n"
+                    "unplug/replug EMEET, then say open camera again."
+                )
+                self.dock.set_status("Camera failed — device busy or missing")
+                return
+            cap, idx, backend, score = picked
+            self._cap = cap
+            self._index = idx
+            self._backend = backend
+            self._label = f"index {idx}"
+            self._fail_streak = 0
+            self.dock.set_status(f"LIVE · {self._label} · {backend} · fist locks panels")
+            self.view.setText("")
+            self._paint_ms = getattr(self, "_paint_ms", 66)
+            self._timer.start(self._paint_ms)
+            self._place_corners()
+            self.dock.raise_()
+            QTimer.singleShot(80, self._show_news_top_left)
+            print(f"[theater] fallback pick idx={idx} via {backend} score={score:.1f}")
             return
 
         candidates.sort(key=lambda c: c[0], reverse=True)
@@ -502,11 +542,17 @@ class CameraTheater(QFrame):
         self._fail_streak = 0
         self.dock.set_status(f"LIVE · {label} · {backend} · fist locks panels")
         self.view.setText("")
-        self._timer.start(50)
+        self._paint_ms = getattr(self, "_paint_ms", 66)
+        self._timer.start(self._paint_ms)
         self._place_corners()
         self.dock.raise_()
         QTimer.singleShot(80, self._show_news_top_left)
         print(f"[theater] chose idx={self._index} via {backend} score={score:.1f}")
+
+    def set_paint_interval(self, ms: int) -> None:
+        self._paint_ms = max(50, min(120, int(ms)))
+        if self._timer.isActive():
+            self._timer.setInterval(self._paint_ms)
 
     def _paint_frame(self) -> None:
         if self._cap is None:
@@ -542,7 +588,7 @@ class CameraTheater(QFrame):
             elif mean < 28:
                 draw = cv2.convertScaleAbs(frame, alpha=1.28, beta=16)
             else:
-                draw = frame
+                draw = frame.copy()
 
             if self._mirror:
                 draw = cv2.flip(draw, 1)
@@ -557,6 +603,12 @@ class CameraTheater(QFrame):
                     )
                     self._last_gesture = state
                     self._update_gesture_lock(state)
+                    # Emit label gestures to brain (fist / wave / thumbs)
+                    try:
+                        if state.label in ("fist", "thumbs_up", "wave_left"):
+                            self.gesture.emit(state)
+                    except Exception:
+                        pass
                     if not self._gesture_locked and state.active:
                         sx, sy = self._smooth_cursor
                         cx, cy = state.cursor

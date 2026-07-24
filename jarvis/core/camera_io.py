@@ -168,7 +168,8 @@ def probe_index(index: int) -> tuple[float, Optional[Any], str]:
         if len(frames) >= 2:
             motion = float(np.mean(cv2.absdiff(frames[0], frames[-1])))
         sc = score_frame(frames[-1], motion=motion)
-        if sc < 5 or is_obs_placeholder(frames[-1]):
+        # Accept dim night rooms; only hard-reject OBS placeholder / pure black
+        if sc < -500 or is_obs_placeholder(frames[-1]):
             cap.release()
             return sc, None, backend
         return sc, cap, backend
@@ -183,7 +184,7 @@ def probe_index(index: int) -> tuple[float, Optional[Any], str]:
 def pick_best_camera(
     preferred_index: int = 0,
     prefer: str = "EMEET",
-    max_index: int = 5,
+    max_index: int = 8,
 ) -> tuple[Any, int, str, float] | None:
     """
     Pick the best live USB camera by index only.
@@ -204,12 +205,12 @@ def pick_best_camera(
             sc, cap, backend = probe_index(idx)
             if cap is None:
                 continue
-            # Prefer configured index / first real device when scores are close
             bonus = 0.0
             if idx == preferred_index:
-                bonus += 40.0
-            if prefer.upper() == "EMEET" and idx in (0, 1):
-                bonus += 10.0
+                bonus += 50.0
+            # Mild bias toward early USB indices (common for EMEET)
+            if prefer and prefer.upper() in ("EMEET", "SMARTCAM") and idx <= 2:
+                bonus += 12.0
             total = sc + bonus
             if best is None or total > best[0]:
                 if best is not None:
@@ -217,8 +218,7 @@ def pick_best_camera(
                 best = (total, cap, idx, backend)
             else:
                 extras.append(cap)
-            # Good enough early exit on preferred index
-            if total >= 50 and idx == preferred_index:
+            if total >= 40 and idx == preferred_index:
                 break
 
     for c in extras:

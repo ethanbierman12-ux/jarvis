@@ -32,11 +32,13 @@ class CmdButton(QPushButton):
     ) -> None:
         super().__init__(label, parent)
         self._cmd = cmd or label.lower()
-        self._kind = kind  # ghost | start | danger | media
+        self._kind = kind  # ghost | start | talk | danger | media
         self._flash = 0.0
         self._busy = False
 
-        if kind == "start":
+        if kind == "talk":
+            self.setObjectName("TalkBtn")
+        elif kind == "start":
             self.setObjectName("StartBtn")
         elif kind == "danger":
             self.setObjectName("DangerBtn")
@@ -49,6 +51,8 @@ class CmdButton(QPushButton):
         if compact:
             self.setMinimumHeight(30)
             self.setMaximumHeight(34)
+        elif kind == "talk":
+            self.setMinimumHeight(38)
         else:
             self.setMinimumHeight(34 if kind != "media" else 30)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -117,10 +121,10 @@ class CmdButton(QPushButton):
             bg = f"rgba(255, 90, 50, {int(40 + 90 * f)})"
             border = "#ff6b35"
             color = "#ffe8dc"
-        elif self._kind == "start":
+        elif self._kind in ("start", "talk"):
             bg = f"rgba(0, 240, 255, {int(70 + 100 * f)})"
-            border = "#00f0ff"
-            color = "#ffffff"
+            border = "#00e5ff"
+            color = "#041018" if self._kind == "talk" else "#ffffff"
         else:
             bg = f"rgba(0, 232, 255, {int(35 + 110 * f)})"
             border = "#00e8ff"

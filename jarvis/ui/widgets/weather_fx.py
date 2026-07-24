@@ -29,11 +29,16 @@ class WeatherAtmosphere(QWidget):
             return
         self._mood = mood
         if mood in ("rain", "storm"):
-            self._spawn_drops(80 if mood == "rain" else 120)
+            # Don't cover the camera theater
+            parent = self.parentWidget()
+            cam = getattr(parent, "camera", None) if parent is not None else None
+            if cam is not None and cam.isVisible():
+                return
+            self._spawn_drops(48 if mood == "rain" else 72)
             self.show()
             self.raise_()
             if not self._timer.isActive():
-                self._timer.start(33)
+                self._timer.start(66)  # ~15 FPS overlay — was 33ms / 30 FPS
         else:
             self._timer.stop()
             self._drops.clear()

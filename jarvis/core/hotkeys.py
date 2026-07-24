@@ -1,4 +1,4 @@
-"""Hotkeys disabled — F5 only launches Jarvis via wake_agent (no START spam)."""
+"""Hotkeys stub — global F5 is wake_agent; HUD F5 is MainWindow reload shortcut."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ class HotkeyService:
 
     def start(self) -> None:
         self._ok = False
-        print("[hotkeys] disabled (no F5 START inside Jarvis)")
+        print("[hotkeys] disabled (F5 = wake launch / HUD reload, not START)")
 
     def stop(self) -> None:
         pass

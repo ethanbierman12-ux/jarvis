@@ -14,7 +14,14 @@ from typing import Optional
 
 
 class ThemeSync:
+    """Optional Windows light/dark sync. Off by default — was flipping the taskbar white at boot."""
+
+    def __init__(self, *, windows_enabled: bool = False) -> None:
+        self.windows_enabled = bool(windows_enabled)
+
     def apply_for_hour(self, hour: Optional[int] = None, ambient_bright: float | None = None) -> str:
+        if not self.windows_enabled:
+            return "Windows theme sync is off — Jarvis will not change your taskbar or system colors."
         hour = datetime.now().hour if hour is None else hour
         # ambient_bright 0..1 from webcam mean luminance if provided
         if ambient_bright is not None:
@@ -24,6 +31,11 @@ class ThemeSync:
         return self.set_dark(dark)
 
     def set_dark(self, dark: bool) -> str:
+        if not self.windows_enabled:
+            return (
+                "Windows theme sync is off. Say enable windows theme sync if you want "
+                "Jarvis to change system light/dark mode."
+            )
         # Windows AppsUseLightTheme: 0 = dark, 1 = light
         val = 0 if dark else 1
         try:
@@ -62,6 +74,16 @@ class ThemeSync:
             return "Dark mode on." if dark else "Light mode on."
         except Exception as e:
             return f"Theme switch failed: {e}"
+
+    def restore_dark_taskbar(self) -> str:
+        """One-shot repair if a prior build forced light system theme."""
+        # Temporarily allow write
+        prev = self.windows_enabled
+        self.windows_enabled = True
+        try:
+            return self.set_dark(True)
+        finally:
+            self.windows_enabled = prev
 
 
 class PerformanceBoost:

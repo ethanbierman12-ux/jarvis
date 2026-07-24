@@ -1,4 +1,8 @@
-"""Light vision computer-use — screenshot → find text → click like a human."""
+"""Light vision computer-use — screenshot → find text → click like a human.
+
+For the autonomous screenshot→LLM→action loop (Anthropic / OpenAI / browser-use),
+see jarvis.core.computer_use_agent.ComputerUseAgent.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +25,8 @@ class ComputerUse:
     """
     Best-effort desktop navigation without a cloud computer-use API.
     Uses screenshot + OCR (pytesseract if installed) + pyautogui.
+
+    Autonomous multi-step agents live in computer_use_agent.py.
     """
 
     def __init__(self) -> None:
@@ -120,3 +126,65 @@ class ComputerUse:
             return "Typed that for you."
         except Exception as e:
             return f"Typing failed: {e}"
+
+    def hotkey(self, *keys: str) -> str:
+        keys = tuple(k.strip().lower() for k in keys if k and str(k).strip())
+        if not keys:
+            return "No hotkey specified."
+        try:
+            import pyautogui
+
+            pyautogui.FAILSAFE = True
+            pyautogui.hotkey(*keys)
+            return f"Pressed {'+'.join(keys)}."
+        except Exception as e:
+            return f"Hotkey failed: {e}"
+
+    def scroll(self, clicks: int = -3) -> str:
+        try:
+            import pyautogui
+
+            pyautogui.scroll(int(clicks))
+            direction = "up" if clicks > 0 else "down"
+            return f"Scrolled {direction}."
+        except Exception as e:
+            return f"Scroll failed: {e}"
+
+    def move_click(self, x: int, y: int, *, clicks: int = 1) -> str:
+        try:
+            import pyautogui
+
+            pyautogui.FAILSAFE = True
+            pyautogui.moveTo(int(x), int(y), duration=0.2)
+            pyautogui.click(clicks=max(1, int(clicks)))
+            return f"Clicked at {x},{y}."
+        except Exception as e:
+            return f"Click failed: {e}"
+
+    def run_macro(self, steps: list[dict]) -> str:
+        """
+        Execute a list of action dicts, e.g.
+        [{"click": "Export"}, {"hotkey": ["ctrl", "s"]}, {"scroll": -4}, {"type": "hello"}]
+        """
+        notes: list[str] = []
+        for step in steps or []:
+            if not isinstance(step, dict):
+                continue
+            if "click" in step:
+                notes.append(self.click_text(str(step["click"])))
+            elif "type" in step:
+                notes.append(self.type_text(str(step["type"])))
+            elif "hotkey" in step:
+                keys = step["hotkey"]
+                if isinstance(keys, str):
+                    keys = keys.replace("-", "+").split("+")
+                notes.append(self.hotkey(*[str(k) for k in keys]))
+            elif "scroll" in step:
+                notes.append(self.scroll(int(step["scroll"])))
+            elif "wait" in step:
+                time.sleep(float(step["wait"]))
+                notes.append(f"Waited {step['wait']}s.")
+            else:
+                notes.append(f"Skipped unknown step: {step}")
+            time.sleep(0.15)
+        return " ".join(notes) if notes else "Macro was empty."

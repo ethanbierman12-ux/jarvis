@@ -62,9 +62,9 @@ echo ========================================
 
 echo  F5 is now fast + global.
 
-echo  - Closed Jarvis  → launches instantly
+echo  - Closed Jarvis  → launches (via runner watchdog)
 
-echo  - Open Jarvis    → focuses window
+echo  - Open Jarvis    → soft-reloads core and brings HUD back
 
 echo  - No START spam
 

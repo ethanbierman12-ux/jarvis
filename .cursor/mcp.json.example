@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "buffer": {
+      "url": "https://mcp.buffer.com/mcp"
+    },
+    "gmail": {
+      "url": "https://gmailmcp.googleapis.com/mcp/v1"
+    },
+    "stripe": {
+      "url": "https://mcp.stripe.com"
+    },
+    "notion": {
+      "url": "https://mcp.notion.com/mcp"
+    }
+  }
+}

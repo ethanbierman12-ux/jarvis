@@ -755,6 +755,384 @@
       "weekday": "Sunday",
       "kind": "vibe_code",
       "detail": "coding"
+    },
+    {
+      "ts": "2026-07-19T10:31:40",
+      "hour": 10,
+      "weekday": "Sunday",
+      "kind": "vibe_code",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-19T10:32:11",
+      "hour": 10,
+      "weekday": "Sunday",
+      "kind": "open_app",
+      "detail": "documents"
+    },
+    {
+      "ts": "2026-07-19T10:37:10",
+      "hour": 10,
+      "weekday": "Sunday",
+      "kind": "weather",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T00:50:44",
+      "hour": 0,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "chrome"
+    },
+    {
+      "ts": "2026-07-20T00:50:51",
+      "hour": 0,
+      "weekday": "Monday",
+      "kind": "weather",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T00:53:46",
+      "hour": 0,
+      "weekday": "Monday",
+      "kind": "web_search",
+      "detail": "to him so he can do everything"
+    },
+    {
+      "ts": "2026-07-20T01:09:10",
+      "hour": 1,
+      "weekday": "Monday",
+      "kind": "web_search",
+      "detail": "google"
+    },
+    {
+      "ts": "2026-07-20T01:15:53",
+      "hour": 1,
+      "weekday": "Monday",
+      "kind": "weather",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T01:30:47",
+      "hour": 1,
+      "weekday": "Monday",
+      "kind": "activity",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T01:31:03",
+      "hour": 1,
+      "weekday": "Monday",
+      "kind": "activity",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T02:38:33",
+      "hour": 2,
+      "weekday": "Monday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-20T02:48:10",
+      "hour": 2,
+      "weekday": "Monday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-20T02:48:50",
+      "hour": 2,
+      "weekday": "Monday",
+      "kind": "music",
+      "detail": "japan"
+    },
+    {
+      "ts": "2026-07-20T02:49:09",
+      "hour": 2,
+      "weekday": "Monday",
+      "kind": "map_zoom",
+      "detail": "Spain"
+    },
+    {
+      "ts": "2026-07-20T02:56:42",
+      "hour": 2,
+      "weekday": "Monday",
+      "kind": "upgrade",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T03:02:52",
+      "hour": 3,
+      "weekday": "Monday",
+      "kind": "upgrade",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T03:23:58",
+      "hour": 3,
+      "weekday": "Monday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-20T03:25:16",
+      "hour": 3,
+      "weekday": "Monday",
+      "kind": "map_zoom",
+      "detail": "Spain"
+    },
+    {
+      "ts": "2026-07-20T03:25:47",
+      "hour": 3,
+      "weekday": "Monday",
+      "kind": "map_zoom",
+      "detail": "Rome, Italy"
+    },
+    {
+      "ts": "2026-07-20T03:26:28",
+      "hour": 3,
+      "weekday": "Monday",
+      "kind": "upgrade",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T03:27:39",
+      "hour": 3,
+      "weekday": "Monday",
+      "kind": "weather",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T03:27:41",
+      "hour": 3,
+      "weekday": "Monday",
+      "kind": "work_mode",
+      "detail": "start"
+    },
+    {
+      "ts": "2026-07-20T03:27:43",
+      "hour": 3,
+      "weekday": "Monday",
+      "kind": "music",
+      "detail": "focus"
+    },
+    {
+      "ts": "2026-07-20T04:39:54",
+      "hour": 4,
+      "weekday": "Monday",
+      "kind": "upgrade",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T04:41:58",
+      "hour": 4,
+      "weekday": "Monday",
+      "kind": "upgrade",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T04:43:57",
+      "hour": 4,
+      "weekday": "Monday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-20T04:44:29",
+      "hour": 4,
+      "weekday": "Monday",
+      "kind": "upgrade",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T04:48:37",
+      "hour": 4,
+      "weekday": "Monday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-20T04:50:58",
+      "hour": 4,
+      "weekday": "Monday",
+      "kind": "upgrade",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T04:59:48",
+      "hour": 4,
+      "weekday": "Monday",
+      "kind": "music",
+      "detail": "jarvis i'm"
+    },
+    {
+      "ts": "2026-07-20T05:00:06",
+      "hour": 5,
+      "weekday": "Monday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T05:00:24",
+      "hour": 5,
+      "weekday": "Monday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T05:05:56",
+      "hour": 5,
+      "weekday": "Monday",
+      "kind": "music",
+      "detail": "next"
+    },
+    {
+      "ts": "2026-07-20T05:49:50",
+      "hour": 5,
+      "weekday": "Monday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-20T05:50:46",
+      "hour": 5,
+      "weekday": "Monday",
+      "kind": "site_build",
+      "detail": "autonomous"
+    },
+    {
+      "ts": "2026-07-20T05:52:36",
+      "hour": 5,
+      "weekday": "Monday",
+      "kind": "news_abc",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T05:52:42",
+      "hour": 5,
+      "weekday": "Monday",
+      "kind": "news_abc",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T05:52:44",
+      "hour": 5,
+      "weekday": "Monday",
+      "kind": "news_abc",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T05:55:37",
+      "hour": 5,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "last"
+    },
+    {
+      "ts": "2026-07-20T06:23:31",
+      "hour": 6,
+      "weekday": "Monday",
+      "kind": "news_abc",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T06:23:33",
+      "hour": 6,
+      "weekday": "Monday",
+      "kind": "news_abc",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T06:23:37",
+      "hour": 6,
+      "weekday": "Monday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-20T06:23:49",
+      "hour": 6,
+      "weekday": "Monday",
+      "kind": "news_abc",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-20T06:51:11",
+      "hour": 6,
+      "weekday": "Monday",
+      "kind": "upgrade",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-23T02:06:29",
+      "hour": 2,
+      "weekday": "Thursday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-23T02:15:45",
+      "hour": 2,
+      "weekday": "Thursday",
+      "kind": "map_zoom",
+      "detail": "Par, Iran"
+    },
+    {
+      "ts": "2026-07-23T02:16:02",
+      "hour": 2,
+      "weekday": "Thursday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-23T02:16:13",
+      "hour": 2,
+      "weekday": "Thursday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-07-23T02:16:47",
+      "hour": 2,
+      "weekday": "Thursday",
+      "kind": "map_zoom",
+      "detail": "in"
+    },
+    {
+      "ts": "2026-07-23T02:17:10",
+      "hour": 2,
+      "weekday": "Thursday",
+      "kind": "map_zoom",
+      "detail": "Tokyo, Japan"
+    },
+    {
+      "ts": "2026-07-23T23:22:36",
+      "hour": 23,
+      "weekday": "Thursday",
+      "kind": "upgrade",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-23T23:54:30",
+      "hour": 23,
+      "weekday": "Thursday",
+      "kind": "news_abc",
+      "detail": ""
+    },
+    {
+      "ts": "2026-07-23T23:56:16",
+      "hour": 23,
+      "weekday": "Thursday",
+      "kind": "business_find",
+      "detail": "businesses near me"
+    },
+    {
+      "ts": "2026-07-23T23:57:26",
+      "hour": 23,
+      "weekday": "Thursday",
+      "kind": "music",
+      "detail": ""
     }
   ],
   "priorities": []

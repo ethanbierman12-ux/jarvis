@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Jarvis" />
+  <meta name="theme-color" content="#02080c" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <title>Jarvis</title>
+  <style>
+    :root {
+      --bg0: #02080c;
+      --bg1: #071218;
+      --cyan: #00e8ff;
+      --cyan-dim: rgba(0, 232, 255, 0.14);
+      --text: #e8f4f8;
+      --muted: #6a8a96;
+      --line: rgba(0, 232, 255, 0.22);
+      --user: rgba(0, 232, 255, 0.1);
+      --jarvis: rgba(255, 255, 255, 0.04);
+      --ok: #3dffb0;
+      --danger: #ff5c6a;
+      --font: "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+      --mono: ui-monospace, "SF Mono", Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%;
+      background: radial-gradient(120% 80% at 50% -10%, #0a2230 0%, var(--bg0) 55%);
+      color: var(--text);
+      font-family: var(--font);
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+    header {
+      padding: 1.1rem 1.15rem 0.7rem;
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+    .brand {
+      font-size: 1.55rem;
+      font-weight: 650;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      text-shadow: 0 0 24px rgba(0, 232, 255, 0.35);
+    }
+    .sub {
+      margin-top: 0.25rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-top: 0.55rem;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+      padding: 0.25rem 0.55rem;
+      border: 1px solid var(--line);
+      background: var(--cyan-dim);
+    }
+    .dot {
+      width: 0.45rem; height: 0.45rem; border-radius: 50%;
+      background: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+    }
+    .dot.live { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    #gate, #app { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    #gate { padding: 1.5rem 1.15rem; justify-content: center; gap: 0.85rem; }
+    #gate label { font-size: 0.75rem; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+    #gate input, #composer input {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--bg1);
+      color: var(--text);
+      padding: 0.85rem 0.95rem;
+      font-size: 1rem;
+      border-radius: 0;
+      outline: none;
+    }
+    #gate input:focus, #composer input:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 1px rgba(0, 232, 255, 0.25);
+    }
+    button {
+      border: 1px solid var(--cyan);
+      background: linear-gradient(180deg, rgba(0, 232, 255, 0.22), rgba(0, 232, 255, 0.06));
+      color: var(--cyan);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.85rem 1rem;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+    button:active { transform: scale(0.98); opacity: 0.9; }
+    button:disabled { opacity: 0.45; }
+    #log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem 1.1rem 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      -webkit-overflow-scrolling: touch;
+    }
+    .msg {
+      max-width: 92%;
+      padding: 0.75rem 0.9rem;
+      line-height: 1.4;
+      font-size: 0.95rem;
+      border: 1px solid transparent;
+      animation: rise 0.28s ease-out;
+    }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: var(--user);
+      border-color: var(--line);
+    }
+    .msg.jarvis {
+      align-self: flex-start;
+      background: var(--jarvis);
+      border-color: rgba(255,255,255,0.08);
+    }
+    .msg .who {
+      display: block;
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 0.3rem;
+    }
+    #composer {
+      display: flex;
+      gap: 0.55rem;
+      padding: 0.75rem 1rem 1rem;
+      border-top: 1px solid var(--line);
+      background: rgba(2, 8, 12, 0.92);
+    }
+    #composer input { flex: 1; }
+    #composer button { flex: 0 0 auto; min-width: 5.5rem; }
+    .hint { color: var(--muted); font-size: 0.85rem; line-height: 1.45; }
+    .err { color: var(--danger); font-size: 0.85rem; }
+    #app.hidden, #gate.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">Jarvis</div>
+    <div class="sub">Travel companion · text him anywhere on your Tailscale network</div>
+    <div class="pill"><span class="dot" id="dot"></span><span id="linkState">Checking link…</span></div>
+  </header>
+
+  <section id="gate">
+    <label for="token">Access token</label>
+    <input id="token" type="password" autocomplete="off" placeholder="Paste companion token" />
+    <p class="hint">Open the link Jarvis gives you (includes token), or paste the token from desk setup. Keep Tailscale connected on this iPhone.</p>
+    <p class="err" id="gateErr" hidden></p>
+    <button id="unlock" type="button">Connect</button>
+  </section>
+
+  <section id="app" class="hidden">
+    <div id="log" aria-live="polite"></div>
+    <form id="composer">
+      <input id="text" type="text" enterkeyhint="send" autocomplete="off" placeholder="Command Jarvis…" />
+      <button type="submit" id="send">Send</button>
+    </form>
+  </section>
+
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const storeKey = "jarvis_companion_token";
+    let token = qs.get("token") || localStorage.getItem(storeKey) || "";
+
+    const gate = document.getElementById("gate");
+    const app = document.getElementById("app");
+    const log = document.getElementById("log");
+    const textEl = document.getElementById("text");
+    const tokenEl = document.getElementById("token");
+    const gateErr = document.getElementById("gateErr");
+    const dot = document.getElementById("dot");
+    const linkState = document.getElementById("linkState");
+
+    function setLinked(ok, msg) {
+      dot.classList.toggle("live", !!ok);
+      linkState.textContent = msg;
+    }
+
+    function addMsg(who, body) {
+      const el = document.createElement("div");
+      el.className = "msg " + who;
+      el.innerHTML = `<span class="who">${who === "user" ? "YOU" : "JARVIS"}</span>${escapeHtml(body)}`;
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    async function api(path, opts = {}) {
+      const headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+      if (token) headers["Authorization"] = "Bearer " + token;
+      const res = await fetch(path, Object.assign({}, opts, { headers }));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+      return data;
+    }
+
+    async function probe() {
+      try {
+        const h = await api("/api/health");
+        if (!token) {
+          setLinked(false, "Token required");
+          return false;
+        }
+        if (!h.auth) {
+          // health always reports auth from cookie/header — force status check
+        }
+        await api("/api/status");
+        setLinked(true, "Linked · online");
+        return true;
+      } catch (e) {
+        setLinked(false, "Offline — check Tailscale");
+        return false;
+      }
+    }
+
+    async function enterApp() {
+      const ok = await probe();
+      if (!ok) {
+        gate.classList.remove("hidden");
+        app.classList.add("hidden");
+        if (token) {
+          gateErr.hidden = false;
+          gateErr.textContent = "Could not reach Jarvis. Open Tailscale, then retry.";
+        }
+        return;
+      }
+      localStorage.setItem(storeKey, token);
+      gate.classList.add("hidden");
+      app.classList.remove("hidden");
+      if (!log.childElementCount) {
+        addMsg("jarvis", "Online. Send a command — weather, lock, lamp on, brief…");
+      }
+      textEl.focus();
+    }
+
+    document.getElementById("unlock").addEventListener("click", async () => {
+      token = (tokenEl.value || "").trim();
+      if (!token) {
+        gateErr.hidden = false;
+        gateErr.textContent = "Paste your companion token first.";
+        return;
+      }
+      gateErr.hidden = true;
+      await enterApp();
+    });
+
+    document.getElementById("composer").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = (textEl.value || "").trim();
+      if (!text) return;
+      textEl.value = "";
+      addMsg("user", text);
+      const btn = document.getElementById("send");
+      btn.disabled = true;
+      try {
+        const data = await api("/api/chat", {
+          method: "POST",
+          body: JSON.stringify({ text }),
+        });
+        addMsg("jarvis", data.reply || "Done.");
+        setLinked(true, "Linked · online");
+      } catch (err) {
+        addMsg("jarvis", "Could not reach desk: " + err.message);
+        setLinked(false, "Link broken");
+      } finally {
+        btn.disabled = false;
+        textEl.focus();
+      }
+    });
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+
+    if (token) {
+      tokenEl.value = token;
+      enterApp();
+    } else {
+      setLinked(false, "Awaiting token");
+    }
+
+    setInterval(() => { if (!app.classList.contains("hidden")) probe(); }, 20000);
+  </script>
+</body>
+</html>

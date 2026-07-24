@@ -82,7 +82,10 @@ def _fallback_utterance(action: str, target: str, original: str) -> str:
     if action == "MEDIA_CONTROL":
         return "play music" if "play" in original.lower() else "playpause"
     if action == "WEB_NAVIGATE":
-        return f"open {t}" if t.startswith("http") else f"search the web for {t or original}"
+        if t.startswith("http"):
+            return f"open {t}"
+        dest = t or original
+        return f"navigate to {dest}"
     if action == "HUB":
         return original
     if action == "SCREEN":

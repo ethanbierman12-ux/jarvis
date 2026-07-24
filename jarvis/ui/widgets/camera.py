@@ -237,7 +237,7 @@ class CameraOpener:
                 pass
             return None
         # Allow dark-but-real cameras (score can be modest)
-        if best_score < 5 and motion < 0.15:
+        if best_score < -500 and motion < 0.05:
             try:
                 cap.release()
             except Exception:
@@ -331,9 +331,16 @@ class CornerCamera(QFrame, CameraOpener):
         self._tracker: HandGestureTracker | None = None
         self._last_gesture = GestureState()
         self._gesture_skip = 0
+        self._paint_ms = 50  # ~20 FPS — was 33ms; UI-thread CV is expensive
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._paint_frame)
         self.hide()
+
+    def set_paint_interval(self, ms: int) -> None:
+        """Throttle live paint (smooth / eco mode)."""
+        self._paint_ms = max(40, min(120, int(ms)))
+        if self._timer.isActive():
+            self._timer.setInterval(self._paint_ms)
 
     def _toggle_gestures(self) -> None:
         self._gestures_on = self.gest_btn.isChecked()
@@ -425,7 +432,7 @@ class CornerCamera(QFrame, CameraOpener):
         gest = " · GESTURE" if self._gestures_on else ""
         self.title.setText(nice + gest)
         self.view.setText("")
-        self._timer.start(33)
+        self._timer.start(self._paint_ms)
         self.show()
         self.raise_()
         eng = self._tracker.engine if self._tracker else "off"
@@ -533,18 +540,12 @@ class CornerCamera(QFrame, CameraOpener):
         try:
             import cv2
 
-            draw = frame.copy()
-            # Night boost — EMEET in a dark room still readable
-            if float(np.mean(draw)) < 40:
-                try:
-                    lab = cv2.cvtColor(draw, cv2.COLOR_BGR2LAB)
-                    l, a, b = cv2.split(lab)
-                    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-                    l2 = clahe.apply(l)
-                    draw = cv2.cvtColor(cv2.merge([l2, a, b]), cv2.COLOR_LAB2BGR)
-                    draw = cv2.convertScaleAbs(draw, alpha=1.15, beta=18)
-                except Exception:
-                    draw = cv2.convertScaleAbs(draw, alpha=1.4, beta=25)
+            # Cheap night boost (subsample mean; skip CLAHE — was UI-thread heavy)
+            mean = float(np.mean(frame[::8, ::8]))
+            if mean < 40:
+                draw = cv2.convertScaleAbs(frame, alpha=1.35, beta=22)
+            else:
+                draw = frame.copy()
             if self._mirror:
                 draw = cv2.flip(draw, 1)
             h, w = draw.shape[:2]
@@ -574,9 +575,12 @@ class CornerCamera(QFrame, CameraOpener):
             )
 
             if self._gestures_on and self._tracker is not None:
-                self._gesture_skip = (self._gesture_skip + 1) % 2
+                # Every 3rd frame + downscale — MediaPipe on full 4K freezes HUD
+                self._gesture_skip = (self._gesture_skip + 1) % 3
                 if self._gesture_skip == 0:
-                    state = self._tracker.process(frame, mirrored=True)
+                    state = self._tracker.process(
+                        frame, mirrored=True, max_width=320
+                    )
                     self._last_gesture = state
                     self.gesture.emit(state)
                     if state.pinch and state.active:
@@ -585,15 +589,16 @@ class CornerCamera(QFrame, CameraOpener):
                         self.gesture_swipe.emit(state.swipe)
                 draw = draw_gestures(draw, self._last_gesture)
 
+            # Resize with OpenCV before Qt (SmoothTransformation on full frame = lag)
+            tw = max(1, self.view.width())
+            th = max(1, self.view.height())
+            scale = min(tw / w, th / h)
+            nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
+            if nw != w or nh != h:
+                draw = cv2.resize(draw, (nw, nh), interpolation=cv2.INTER_AREA)
             rgb = cv2.cvtColor(draw, cv2.COLOR_BGR2RGB)
             hh, ww, ch = rgb.shape
             img = QImage(rgb.data, ww, hh, ch * ww, QImage.Format.Format_RGB888).copy()
-            pix = QPixmap.fromImage(img).scaled(
-                max(1, self.view.width()),
-                max(1, self.view.height()),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            self.view.setPixmap(pix)
+            self.view.setPixmap(QPixmap.fromImage(img))
         except Exception as e:
             self.view.setText(str(e))

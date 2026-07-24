@@ -25,7 +25,7 @@ def run() -> int:
     QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_UseDesktopOpenGL, True)
     fmt = QSurfaceFormat()
     fmt.setSwapInterval(1)
-    fmt.setSamples(4)
+    fmt.setSamples(0)  # no MSAA — saves GPU fill
     QSurfaceFormat.setDefaultFormat(fmt)
 
     app = QApplication(sys.argv)
@@ -35,6 +35,7 @@ def run() -> int:
     app.setProperty("jarvis_exit_code", EXIT_OFFLINE)
 
     from jarvis.config import Settings
+    from jarvis.core.logging_setup import setup_logging, tee_prints
     from jarvis.core.instance import (
         claim_instance,
         focus_existing_window,
@@ -42,6 +43,11 @@ def run() -> int:
     )
     from jarvis.core.displays import displays
     from jarvis.ui.main_window import MainWindow
+
+    log = setup_logging()
+    # Full stdout tee is expensive — opt in with JARVIS_TEE=1
+    if os.environ.get("JARVIS_TEE", "").strip() in ("1", "true", "yes"):
+        tee_prints(log)
 
     # Single instance — F5 should focus, not spawn a second HUD
     if not claim_instance():

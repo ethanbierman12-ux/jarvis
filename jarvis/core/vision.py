@@ -56,8 +56,12 @@ def _vision_worker(
         cap, idx, backend, score = picked
         print(f"[vision] using index {idx} via {backend} score={score:.1f}")
 
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
+        try:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
 
         cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -216,7 +220,10 @@ class VisionService:
         threading.Thread(target=_pump, daemon=True, name="jarvis-vision-pump").start()
 
     def set_fps(self, fps: int) -> None:
-        self.fps = max(2, int(fps))
+        fps = max(1, min(8, int(fps)))  # hard ceiling — presence never needs more
+        if getattr(self, "fps", None) == fps:
+            return
+        self.fps = fps
         if self._cmd:
             try:
                 self._cmd.put_nowait({"fps": self.fps})
@@ -230,7 +237,18 @@ class VisionService:
             except Exception:
                 pass
         if self._proc and self._proc.is_alive():
-            self._proc.join(timeout=1.5)
+            self._proc.join(timeout=2.2)
             if self._proc.is_alive():
-                self._proc.terminate()
+                try:
+                    self._proc.terminate()
+                except Exception:
+                    pass
+                self._proc.join(timeout=0.8)
         self._proc = None
+        # Give Windows USB stack a beat to release the handle
+        try:
+            import time as _t
+
+            _t.sleep(0.25)
+        except Exception:
+            pass

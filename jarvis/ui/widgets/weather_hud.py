@@ -63,15 +63,29 @@ class WeatherPanel(QFrame):
         lay.addStretch(1)
 
     def set_context(self, data: dict) -> None:
-        if data.get("temp_c") is not None:
-            self.temp.setText(f"{data['temp_c']:.0f}°")
-        self.condition.setText((data.get("condition") or "—").title())
+        # Prefer Fahrenheit display for US cities
+        temp = data.get("temp_display")
+        if temp is None:
+            if data.get("temp_f") is not None:
+                temp = data["temp_f"]
+            elif data.get("temp_c") is not None:
+                temp = float(data["temp_c"]) * 9.0 / 5.0 + 32.0
+        unit = (data.get("unit_label") or ("F" if (data.get("units") or "f") == "f" else "C"))
+        if temp is not None:
+            self.temp.setText(f"{float(temp):.0f}°{unit}")
+        date = data.get("date") or ""
+        cond = (data.get("condition") or "—").title()
+        if date:
+            self.condition.setText(f"{date} · {cond}")
+        else:
+            self.condition.setText(cond)
         self.city.setText((data.get("city") or "").upper())
         lines = []
         for day in data.get("forecast") or []:
+            unit_sym = "°F" if (data.get("units") or "f") == "f" else "°C"
             lines.append(
                 f"{day.get('date', '')[-5:]}  "
-                f"{day.get('min', '—')}–{day.get('max', '—')}°  "
+                f"{day.get('min', '—')}–{day.get('max', '—')}{unit_sym}  "
                 f"{(day.get('desc') or '')[:18]}"
             )
         self.forecast.setText("\n".join(lines[:5]) if lines else "Forecast standing by.")

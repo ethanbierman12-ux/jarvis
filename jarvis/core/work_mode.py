@@ -33,10 +33,8 @@ class WorkMode:
 
     def start_work(self) -> str:
         done: list[str] = []
-
-        quiet = self._enable_focus_assist()
-        if quiet:
-            done.append(quiet)
+        # Do NOT open Windows Focus Assist settings — that pops a Settings window
+        # every time and fights the user. Silent work launch only.
 
         proj = Path(self.project_path)
         if proj.exists():
@@ -80,16 +78,7 @@ class WorkMode:
         return "Work mode on: " + ", ".join(done) + "."
 
     def end_work(self) -> str:
-        try:
-            subprocess.Popen(
-                ["powershell", "-NoProfile", "-Command", "Start-Process ms-settings:quiethours"],
-                shell=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except Exception:
-            pass
-        return "Work mode off — open Focus Assist if you want alerts back."
+        return "Work mode off."
 
     def _open_ide(self, project: Path | None) -> str:
         candidates = [
@@ -126,14 +115,5 @@ class WorkMode:
         return ""
 
     def _enable_focus_assist(self) -> str:
-        """Open Windows Focus Assist / Quiet Hours so non-essential toasts can be silenced."""
-        try:
-            subprocess.Popen(
-                ["powershell", "-NoProfile", "-Command", "Start-Process ms-settings:quiethours"],
-                shell=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            return "Focus Assist settings opened"
-        except Exception:
-            return ""
+        """Deprecated — never open Settings UI (was popping Focus Assist constantly)."""
+        return ""

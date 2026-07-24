@@ -18,6 +18,8 @@ Starts the **watchdog** (`runner.py`), which keeps Jarvis alive:
 
 Voice: **reload core** / **reboot jarvis** → reload · **go offline** / **power down** → stop · **Ctrl+Alt+K** → emergency kill (crash-recover).
 
+**F5** (global via `install_f5_wake.bat` / `run.bat wake`): launches Jarvis when closed; soft-reloads core when open. HUD-focused F5 does the same reload when the wake agent is not armed.
+
 Boot shows **INITIATING SYSTEM 1…** with loading % → 100 and boot sound, then blooms into the main HUD.
 
 ## Voice / commands
@@ -25,12 +27,45 @@ Boot shows **INITIATING SYSTEM 1…** with loading % → 100 and boot sound, the
 | You say | Jarvis does |
 |--------|-------------|
 | `Play Bruno Mars` | Spotify / YouTube Music |
-| `Open Chrome` | Launches installed apps |
+| `Open camera` / `Camrea` | Full-screen theater (retries if device busy) |
+| `Switch camera` | Next camera index |
+| `Test microphone` / `Can you hear me` | Mic path + level check |
+| `Turn on/off the lamp` | Alexa Echo voice relay |
+| `Good morning` / `Standup` | Daily briefing |
+| `Screenshot` | Saves under Pictures/Jarvis |
+| `Navigate to City Hall` | Google Maps directions |
 | `What time is it` / `Weather` | Speaks time / weather |
 | `Lock` / `Confirm shutdown` | Locks PC / shuts down |
+| `Camera search` / `Scan this online` | Camera ID + Google Lens |
 | `Standby for clap` / `Sleep` | Sleeps PC for clap → Wake-on-LAN |
 | `Goodnight` | Guardian bedtime (purge media + lock) |
-| `Update software` | Typing UI → sandboxed plugin hot-load |
+| `Update software` | Typing UI → sandboxed plugin + watchdog reload |
+| `Go offline` / `Reload core` | Stop watchdog / reboot via `runner.py` |
+| `Note that my camera is on the left monitor` | ChromaDB long-term memory |
+| `What do you remember about my camera` | Semantic memory recall |
+| `Switch to headphones` / `Set volume to 40` | pycaw audio routing |
+| `Click Export` / `Type hello` / `Press ctrl s` | PyAutoGUI desktop automation |
+
+Optional ElevenLabs: set `elevenlabs_api_key` in `config/settings.json` (mirrored to `config/config.json`). Falls back to Edge TTS.
+
+### Upgrade stack
+
+- **ChromaDB** vector memory → `jarvis/data/chroma`
+- **Rotating logs** (5 MB × 3) → `jarvis/data/jarvis.log`
+- **Mic hot-plug recovery** in the voice loop
+- **Windows Startup**: `install_jarvis_startup.bat`
+- **Audio isolation**: rejects Voicemeeter / loopback mics — see `docs/VOICEMEETER.md`
+- **Macro pad**: `http://127.0.0.1:8765/macro?cmd=stop` (Stream Deck)
+- **Home Assistant / n8n / morning brief / Downloads watch**: `docs/INTEGRATIONS.md`
+- **6AM standup precache**: `install_morning_brief.bat`
+- **DPAPI secrets vault**: API keys leave `settings.json` → `jarvis/data/vault/`
+- **RLHF**: `Ctrl+Shift+Up/Down` or say *approve* / *reject* · `install_rlhf_digest.bat`
+- **Spatial / edge roadmap**: `docs/ROADMAP_SPATIAL.md`
+
+```powershell
+.\run.bat deps
+.\run.bat
+```
 
 Hotkey input: type in the command bar and press Enter.
 

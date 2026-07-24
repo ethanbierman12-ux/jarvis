@@ -1,0 +1,17 @@
+---
+description: Jarvis audio isolation, macro pad, HA, and morning brief conventions
+globs:
+  - jarvis/core/audio_isolation.py
+  - jarvis/core/macro_gateway.py
+  - jarvis/core/home_assistant.py
+  - jarvis/core/daily_brief.py
+  - config/settings.json
+alwaysApply: false
+---
+
+# Jarvis integrations
+
+- Mic path: `mic_reject_loopback` must stay true for gaming; set `mic_prefer` to a physical device substring.
+- Silent stop: HTTP `http://127.0.0.1:8765/macro?cmd=stop` — do not require TTS for halt.
+- HA scenes map via `STATE_SCENES` in `home_assistant.py`; enable only when `ha_token` is set.
+- Morning standup: `DailyBrief.morning_standup` + optional `scripts/morning_precache.py` at 6AM.

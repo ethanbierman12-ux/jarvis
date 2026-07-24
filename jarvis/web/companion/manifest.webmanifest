@@ -1,0 +1,18 @@
+{
+  "name": "Jarvis",
+  "short_name": "Jarvis",
+  "description": "Jarvis travel companion — command your desk from iPhone",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#02080c",
+  "theme_color": "#02080c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

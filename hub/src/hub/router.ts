@@ -76,6 +76,29 @@ export function planRoutes(userText: string): RoutePlan {
     };
   }
 
+  // Explicit spoke asks
+  if (/\b(ask )?sarah\b|\bagent sarah\b/.test(t)) {
+    const intent = /draft|reply/.test(t) ? "draft_reply" : "triage";
+    return {
+      reason: "Explicit Sarah ask",
+      steps: [{ spoke: "sarah", intent, input: userText }],
+    };
+  }
+  if (/\b(ask )?tom\b|\bagent tom\b/.test(t)) {
+    const intent = /fix|patch|pr|pull/.test(t) ? "fix" : "investigate";
+    return {
+      reason: "Explicit Tom ask",
+      steps: [{ spoke: "tom", intent, input: userText }],
+    };
+  }
+  if (/\b(ask )?admin\b|\bagent admin\b/.test(t)) {
+    const intent = /priority|notion|risk/.test(t) ? "priority" : "schedule_meeting";
+    return {
+      reason: "Explicit Admin ask",
+      steps: [{ spoke: "admin", intent, input: userText }],
+    };
+  }
+
   if (/ticket|inbox|draft reply|support|email customer/.test(t)) {
     const intent = /draft|reply/.test(t) ? "draft_reply" : "triage";
     return {

@@ -31,6 +31,14 @@ _PANIC_AMBER = QColor(220, 24, 24)
 _PANIC_HOT = QColor(255, 120, 100)
 _PANIC_DIM = QColor(90, 12, 12)
 
+# Travis persona accents (Park gold / Tactical green / Peer blue)
+_TRAVIS_ACCENTS = {
+    "park": QColor(255, 200, 72),
+    "tactical": QColor(26, 255, 122),
+    "peer": QColor(42, 107, 255),
+    "peer_review": QColor(42, 107, 255),
+}
+
 
 class ArcReactor(QWidget):
     """
@@ -55,15 +63,17 @@ class ArcReactor(QWidget):
         self._amp = 0.0
         self._activity = "idle"  # idle|listen|speak|build|fetch|away|panic
         self._activity_boost = 0.0
+        self._speaking_locked = False
         self._parallax = (0.0, 0.0)
         self._hover: Optional[str] = None
         self._hits: list[tuple[str, QRectF]] = []
-        self._fps = 28
+        self._fps = 66  # ~15 FPS paint (was 28ms ≈ 36 FPS)
         self._accent = QColor(0, 240, 255)  # spokes / weather tint
         self._panic = False
+        self._travis_mode = ""  # park | tactical | peer | ""
         self._seed = random.Random(42)
-        self._particles = self._make_particles(220)
-        self._spikes = self._make_spikes(48)
+        self._particles = self._make_particles(64)  # was 220
+        self._spikes = self._make_spikes(24)  # was 48
         self._nodes = [
             {"label": "Images", "angle": 200, "cmd": "open pictures", "side": "L"},
             {"label": "Documents", "angle": 225, "cmd": "open documents", "side": "L"},
@@ -82,7 +92,8 @@ class ArcReactor(QWidget):
 
     # ── public API ──────────────────────────────────────────────
     def set_target_fps(self, fps: int) -> None:
-        self._fps = max(12, min(50, int(1000 / max(10, fps))))
+        # fps = frames/sec → timer interval ms
+        self._fps = max(50, min(120, int(1000 / max(8, fps))))
         self._timer.setInterval(self._fps)
 
     def set_amplitude(self, amp: float) -> None:
@@ -91,7 +102,7 @@ class ArcReactor(QWidget):
     def set_weather_accent(self, hex_color: str) -> None:
         c = QColor(hex_color)
         if c.isValid():
-            if not self._panic:
+            if not self._panic and not self._travis_mode:
                 self._accent = c
             self.update()
 
@@ -111,22 +122,55 @@ class ArcReactor(QWidget):
             self._activity = "panic"
             self._activity_boost = 1.0
         else:
-            self._accent = QColor(0, 240, 255)
+            self._restore_accent()
             if self._activity == "panic":
                 self._activity = "idle"
                 self._activity_boost = 0.0
         self.update()
+
+    def set_travis_mode(self, mode: str) -> None:
+        """Park (gold) / Tactical (green) / Peer Review (blue) persona sync."""
+        mode = (mode or "").strip().lower().replace("-", "_")
+        if mode in ("peer_review", "review"):
+            mode = "peer"
+        if mode in ("off", "clear", "none", "jarvis"):
+            mode = ""
+        self._travis_mode = mode if mode in _TRAVIS_ACCENTS else ""
+        if not self._panic:
+            self._restore_accent()
+        if self._travis_mode:
+            self._flare = max(self._flare, 0.55)
+            self._activity_boost = max(self._activity_boost, 0.4)
+        self.update()
+
+    def _restore_accent(self) -> None:
+        if self._travis_mode and self._travis_mode in _TRAVIS_ACCENTS:
+            self._accent = QColor(_TRAVIS_ACCENTS[self._travis_mode])
+        else:
+            self._accent = QColor(0, 240, 255)
 
     def pulse_speak(self) -> None:
         self._speak = 1.0
         self._flare = max(self._flare, 0.85)
         self.set_activity("speak")
 
+    def set_speaking(self, active: bool) -> None:
+        """Lock the core in a talking state for the whole TTS clip."""
+        self._speaking_locked = bool(active)
+        if active:
+            self._speak = 1.0
+            self._flare = max(self._flare, 0.9)
+            self.set_activity("speak")
+            self._amp = max(self._amp, 0.55)
+        else:
+            self._speak = max(self._speak, 0.35)
+        self.update()
+
     def flare(self, strength: float = 1.0) -> None:
         self._flare = max(self._flare, min(1.0, float(strength)))
 
     def set_activity(self, mode: str) -> None:
-        """idle | listen | speak | build | fetch | away | panic"""
+        """idle | listen | speak | build | fetch | away | panic | park | tactical | peer"""
         mode = (mode or "idle").lower()
         if self._panic and mode != "panic":
             # Stay in panic visuals until cleared
@@ -145,9 +189,12 @@ class ArcReactor(QWidget):
             "vibe": 0.95,
             "site": 1.0,
             "panic": 1.0,
+            "park": 0.5,
+            "tactical": 0.85,
+            "peer": 0.6,
         }
         self._activity_boost = boosts.get(mode, 0.35)
-        if mode in ("build", "site", "vibe", "away", "fetch", "panic"):
+        if mode in ("build", "site", "vibe", "away", "fetch", "panic", "tactical"):
             self._flare = max(self._flare, 0.7)
         self.update()
 
@@ -155,13 +202,38 @@ class ArcReactor(QWidget):
         self._parallax = ((x - 0.5) * 16.0, (y - 0.5) * 12.0)
 
     def _c(self, r: int, g: int, b: int, a: int = 255) -> QColor:
-        """Map amber/gold → crimson while panic is active."""
+        """Map amber/gold → crimson while panic; tint toward Travis accent."""
         if self._panic:
             # Keep heat, crush green/blue into red threat tone
             return QColor(
                 min(255, max(r, 200) + 20),
                 max(0, min(90, g // 4 + 10)),
                 max(0, min(70, b // 5)),
+                a,
+            )
+        tm = self._travis_mode
+        if tm == "tactical":
+            # Pull toward pulsed green
+            return QColor(
+                max(0, min(120, r // 3)),
+                min(255, max(g, 180) + 40),
+                max(0, min(140, b // 2 + 40)),
+                a,
+            )
+        if tm == "peer":
+            # Arc-vector blue
+            return QColor(
+                max(0, min(100, r // 3)),
+                max(40, min(160, g // 2 + 40)),
+                min(255, max(b, 200) + 30),
+                a,
+            )
+        if tm == "park":
+            # Warm bright gold (default core, slightly hotter)
+            return QColor(
+                min(255, max(r, 220)),
+                min(255, max(g, 170)),
+                max(0, min(90, b // 2)),
                 a,
             )
         return QColor(r, g, b, a)
@@ -197,19 +269,32 @@ class ArcReactor(QWidget):
 
     def _tick(self) -> None:
         boost = 1.0 + self._activity_boost * 1.8 + self._speak * 0.9 + self._flare * 0.6
+        if self._speaking_locked:
+            boost += 0.85
         self._a = (self._a + 0.42 * boost) % 360
         self._a2 = (self._a2 - 0.28 * boost) % 360
         self._a3 = (self._a3 + 0.18 * boost) % 360
         self._pulse = (self._pulse + 0.045 + 0.03 * self._activity_boost) % (2 * math.pi)
-        if self._speak > 0:
+        if self._speaking_locked:
+            # Hold speech energy — amp comes from TTS envelope via set_amplitude
+            self._speak = max(0.75, self._speak)
+            self._flare = max(0.45, self._flare)
+            self._activity = "speak"
+            self._activity_boost = max(0.7, self._activity_boost)
+            if self._amp < 0.25:
+                # Fallback pulse if audio envelope hasn't arrived yet
+                self._amp = 0.4 + 0.35 * abs(math.sin(self._pulse * 3.2))
+        elif self._speak > 0:
             self._speak = max(0.0, self._speak - 0.018)
-        if self._flare > 0:
+        if self._flare > 0 and not self._speaking_locked:
             self._flare = max(0.0, self._flare - 0.022)
         # Transient modes ease back once energy drains (panic stays locked)
         if self._panic:
             self._activity = "panic"
             self._activity_boost = max(0.85, self._activity_boost)
             self._flare = max(0.35, self._flare)
+        elif self._speaking_locked:
+            pass
         elif self._activity in ("speak", "fetch", "listen") and self._speak < 0.05 and self._flare < 0.08:
             self._activity_boost *= 0.96
             if self._activity_boost < 0.04:
@@ -218,10 +303,29 @@ class ArcReactor(QWidget):
         elif self._activity == "idle":
             self._activity_boost *= 0.985
         # Soften amplitude so waves ease down when quiet
-        if self._amp > 0.01:
+        if self._speaking_locked:
+            # Light smoothing only — keep the talk pulse alive
+            if self._amp > 0.01:
+                self._amp = self._amp * 0.82 + 0.18 * self._amp
+        elif self._amp > 0.01:
             self._amp *= 0.92
         else:
             self._amp = 0.0
+        # Idle: paint every other tick (~7–8 FPS) — still alive, less GPU thrash
+        idle = (
+            self._activity == "idle"
+            and not self._speaking_locked
+            and not self._panic
+            and self._amp < 0.03
+            and self._flare < 0.08
+            and self._activity_boost < 0.05
+        )
+        if idle:
+            self._idle_skip = getattr(self, "_idle_skip", 0) + 1
+            if self._idle_skip % 2:
+                return
+        else:
+            self._idle_skip = 0
         self.update()
 
     def mouseMoveEvent(self, e) -> None:

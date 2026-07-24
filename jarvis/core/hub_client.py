@@ -203,10 +203,12 @@ class HubClient:
         # Explicit hub / spoke commands
         if re_search(
             t,
-            r"\b(hub|sarah|agent tom|ask tom|ask sarah|ask admin|"
+            r"\b(hub|sarah|tom|admin|ask tom|ask sarah|ask admin|"
+            r"agent tom|agent sarah|agent admin|"
             r"support ticket|customer support|escalat(e|ion)|"
             r"open (a )?pr|pull request|mock pr|"
-            r"multi[- ]?agent|spoke)\b",
+            r"multi[- ]?agent|spoke|"
+            r"research|code review|refactor)\b",
         ):
             return True
         # Classic multi-agent example

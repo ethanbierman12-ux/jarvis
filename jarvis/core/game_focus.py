@@ -15,9 +15,6 @@ from jarvis.config import DATA_DIR, ROOT
 
 PREFETCH_PATH = DATA_DIR / "prefetch.json"
 HEAVY = (
-    "code.exe",
-    "cursor.exe",
-    "devenv.exe",
     "unity.exe",
     "unrealeditor.exe",
     "premiere pro.exe",
@@ -34,6 +31,8 @@ HEAVY = (
     "gta5.exe",
     "r5apex.exe",
 )
+# Editors (Cursor / VS Code / devenv) intentionally excluded — focusing them
+# must NOT mute the mic or open Windows Focus Assist.
 
 
 class GameFocusWatch:
@@ -62,7 +61,11 @@ class GameFocusWatch:
     def _loop(self) -> None:
         while self._running:
             name = self._foreground_exe()
-            heavy = name in HEAVY or any(g in name for g in ("game", "steam"))
+            # Only treat actual games / known heavy apps — never IDEs
+            heavy = name in HEAVY or (
+                name.endswith(".exe")
+                and any(g in name for g in ("-win64-shipping", "gameoverlay"))
+            )
             if heavy and not self._active:
                 self._active = True
                 self._name = name

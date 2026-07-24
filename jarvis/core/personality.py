@@ -28,9 +28,21 @@ class Personality:
         if name.lower() in ("ethan", "user", "me"):
             name = "Sir"
         self.user_name = name
+        self._travis = None  # optional TravisController
+
+    def bind_travis(self, travis) -> None:
+        """Attach Travis mode controller for dynamic prompt overlays."""
+        self._travis = travis
 
     def system_prompt(self) -> str:
-        return SYSTEM_PROMPT.replace("Sir", self.user_name)
+        base = SYSTEM_PROMPT.replace("Sir", self.user_name)
+        tv = self._travis
+        if tv is not None:
+            try:
+                return tv.overlay_prompt(base)
+            except Exception:
+                pass
+        return base
 
     def greet(self) -> str:
         hour = datetime.now().hour
@@ -48,6 +60,10 @@ class Personality:
                 f"{tod}. At your service, {self.user_name}.",
             ]
         )
+
+    def boot_welcome(self) -> str:
+        """Spoken once when boot loading finishes."""
+        return f"Welcome, {self.user_name}."
 
     def wrap(self, kind: str, core: str) -> str:
         """Frame factual replies — keep punchy for voice."""
@@ -78,9 +94,9 @@ class Personality:
                 "Why do AIs prefer the dark? Light attracts bugs — regrettably apt.",
             ],
             "fallback": [
-                f"Listening, {self.user_name}. Say help for commands.",
-                f"Still here, {self.user_name}. What shall we execute?",
-                f"Awaiting your command, {self.user_name}.",
+                f"Say open camera, enroll, weather, or help — I'm listening, {self.user_name}.",
+                f"I didn't catch that, {self.user_name}. Try: lock, music, stats, or lamp on.",
+                f"Ready, {self.user_name}. Try camera, enroll, router, secure, or sarah.",
             ],
             "opinion": [""],
             "compliment": [""],
@@ -98,26 +114,39 @@ class Personality:
             return self.fallback()
 
         pre = random.choice(prefixes.get(kind, [""]))
-        if random.random() < 0.45:
+        # Prefer bare factual replies — fluff prefixes only ~15% of the time
+        if random.random() < 0.85 or not pre:
             return core
         return (pre + core).strip()
 
     def fallback(self) -> str:
         return self.wrap("fallback", "x")
 
-    def speakable(self, text: str, max_words: int = 20) -> str:
-        """Trim for TTS — military-grade brevity."""
+    def speakable(self, text: str, max_words: int = 60) -> str:
+        """Trim for TTS — keep full sentences when possible."""
         t = re.sub(r"\s+", " ", (text or "").strip())
         if not t:
             return t
-        # Prefer first sentence for long payloads
-        if len(t.split()) > max_words:
-            first = re.split(r"(?<=[.!?])\s+", t)[0]
-            words = first.split()
-            if len(words) > max_words:
-                first = " ".join(words[:max_words]).rstrip(",;:") + "."
-            return first
-        return t
+        words = t.split()
+        if len(words) <= max_words:
+            return t
+        # Take as many complete sentences as fit under the budget
+        parts = re.split(r"(?<=[.!?])\s+", t)
+        kept: list[str] = []
+        count = 0
+        for part in parts:
+            w = len(part.split())
+            if kept and count + w > max_words:
+                break
+            if not kept and w > max_words:
+                # Single long sentence — soft-cut at a comma if possible
+                chunk = " ".join(words[:max_words])
+                if "," in chunk:
+                    chunk = chunk.rsplit(",", 1)[0]
+                return chunk.rstrip(",;:") + "."
+            kept.append(part)
+            count += w
+        return " ".join(kept).strip() or " ".join(words[:max_words]) + "."
 
     def compliment(self, topic: str = "") -> str:
         lines = [

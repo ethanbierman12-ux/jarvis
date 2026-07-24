@@ -21,9 +21,9 @@ _PANEL = "#071018"
 _SCROLL_CSS = f"""
 QScrollArea {{ background: {_PANEL}; border: none; }}
 QScrollArea > QWidget > QWidget {{ background: {_PANEL}; }}
-QScrollBar:vertical {{ width: 5px; background: transparent; margin: 0; }}
+QScrollBar:vertical {{ width: 4px; background: transparent; margin: 0; }}
 QScrollBar::handle:vertical {{
-    background: rgba(0,232,255,70); min-height: 28px; border-radius: 2px;
+    background: rgba(0,232,255,55); min-height: 24px; border-radius: 2px;
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
@@ -37,7 +37,7 @@ class ControlStrip(QFrame):
         super().__init__(parent)
         self.setObjectName("GlassPanel")
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-        self.setMinimumHeight(260)
+        self.setMinimumHeight(220)
         self._force_dark(self)
 
         outer = QVBoxLayout(self)
@@ -59,11 +59,11 @@ class ControlStrip(QFrame):
         inner.setObjectName("GlassPanel")
         self._force_dark(inner)
         lay = QVBoxLayout(inner)
-        lay.setContentsMargins(10, 10, 8, 10)
-        lay.setSpacing(12)
+        lay.setContentsMargins(8, 8, 6, 8)
+        lay.setSpacing(8)
         self._buttons: list[CmdButton] = []
 
-        # Curated — one job per button, no duplicates
+        # Tighter curated set — same cmds, less chrome
         sections = (
             (
                 "CORE",
@@ -83,12 +83,25 @@ class ControlStrip(QFrame):
                 (
                     ("Site", "build a site", "ghost"),
                     ("Vibe", "start vibe coding", "ghost"),
-                    ("Find biz", "find biz", "ghost"),
+                    ("Biz", "find biz", "ghost"),
                     ("Search", "search the web for latest AI news", "ghost"),
                 ),
             ),
             (
-                "HUB AGENTS",
+                "DESK",
+                (
+                    ("Enroll", "enroll my face", "ghost"),
+                    ("Security", "security status", "ghost"),
+                    ("NV", "night vision on", "ghost"),
+                    ("NV off", "night vision off", "ghost"),
+                    ("Lock off", "auto lock off", "ghost"),
+                    ("Audit", "self audit", "ghost"),
+                    ("Router", "router status", "ghost"),
+                    ("Secure", "secure desk", "danger"),
+                ),
+            ),
+            (
+                "AGENTS",
                 (
                     ("Sarah", "sarah triage support tickets", "ghost"),
                     ("Tom", "investigate the checkout bug and open a PR", "ghost"),
@@ -97,12 +110,14 @@ class ControlStrip(QFrame):
                 ),
             ),
             (
-                "EMERGENCY",
+                "SYS",
                 (
+                    ("Quiet", "quiet mode", "ghost"),
+                    ("Ready", "desk ready", "ghost"),
+                    ("Status", "full status", "ghost"),
                     ("Lock", "lock", "danger"),
                     ("Sleep", "sleep", "danger"),
                     ("Panic", "panic", "danger"),
-                    ("Status", "status", "ghost"),
                 ),
             ),
         )
@@ -110,11 +125,15 @@ class ControlStrip(QFrame):
         for title, items in sections:
             head = QLabel(title)
             head.setObjectName("SectionTitle")
+            head.setStyleSheet(
+                "font-size:9px; letter-spacing:2px; "
+                "padding:2px 0 0 0; border:none; background:transparent;"
+            )
             lay.addWidget(head)
             grid = QGridLayout()
-            grid.setHorizontalSpacing(6)
-            grid.setVerticalSpacing(6)
-            grid.setContentsMargins(0, 0, 0, 2)
+            grid.setHorizontalSpacing(5)
+            grid.setVerticalSpacing(5)
+            grid.setContentsMargins(0, 0, 0, 0)
             for i, (label, cmd, kind) in enumerate(items):
                 b = CmdButton(label, cmd, kind=kind, compact=True)
                 b.fired.connect(self._fire)
@@ -122,11 +141,6 @@ class ControlStrip(QFrame):
                 grid.addWidget(b, i // 2, i % 2)
             lay.addLayout(grid)
 
-        tip = QLabel("Tip: type site · vibe · sarah · screen")
-        tip.setObjectName("Dim")
-        tip.setStyleSheet("font-size:9px; letter-spacing:0.5px; color:#4a6070;")
-        tip.setWordWrap(True)
-        lay.addWidget(tip)
         lay.addStretch(1)
         scroll.setWidget(inner)
 

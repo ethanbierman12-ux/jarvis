@@ -12,6 +12,7 @@ from jarvis.config import DATA_DIR
 
 PID_FILE = DATA_DIR / "jarvis.pid"
 LAUNCH_LOCK = DATA_DIR / "jarvis.launching"
+RELOAD_REQUEST = DATA_DIR / "reload.request"
 
 
 def _pid_alive(pid: int) -> bool:
@@ -84,6 +85,36 @@ def clear_launching() -> None:
         LAUNCH_LOCK.unlink(missing_ok=True)
     except Exception:
         pass
+
+
+def request_reload() -> None:
+    """Ask the running HUD to exit with code 0 (watchdog / wake-agent relaunch)."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    RELOAD_REQUEST.write_text(str(time.time()), encoding="utf-8")
+
+
+def consume_reload_request() -> bool:
+    """True once if a reload was requested (clears the flag)."""
+    if not RELOAD_REQUEST.exists():
+        return False
+    try:
+        RELOAD_REQUEST.unlink(missing_ok=True)
+    except Exception:
+        try:
+            RELOAD_REQUEST.unlink()
+        except Exception:
+            return False
+    return True
+
+
+def jarvis_pid() -> int:
+    """PID from the lock file, or 0 if missing/invalid."""
+    if not PID_FILE.exists():
+        return 0
+    try:
+        return int(PID_FILE.read_text(encoding="utf-8").strip() or "0")
+    except Exception:
+        return 0
 
 
 def claim_instance() -> bool:

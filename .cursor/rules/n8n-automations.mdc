@@ -1,0 +1,13 @@
+---
+description: Use when triggering or designing n8n / Slack / calendar automation from this repo
+globs:
+alwaysApply: false
+---
+
+# n8n + Jarvis
+
+- Prefer existing Jarvis voice/router hooks: say or route `trigger n8n <webhook-path>`.
+- Webhooks hit `{n8n_url}/webhook/<path>` with JSON `{"source":"jarvis", ...}`.
+- Credentials live in `config/settings.json` (`n8n_url`, `n8n_api_key`) — never commit real keys.
+- n8n is **not** in Cursor MCP by default (removed — local token hassle). Voice/webhook path above still works. See `docs/HANDOVER_MCP.md` for current MCP set (Buffer, Gmail, Stripe, Notion).
+- Keep heavy workflows async (Jarvis task queue) so the voice loop stays free.

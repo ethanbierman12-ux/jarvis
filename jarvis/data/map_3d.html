@@ -44,28 +44,29 @@
 <body>
 <div class="hud">
   <h1>TACTICAL MAP · 3D</h1>
-  <p id="place">Philadelphia</p>
+  <p id="place">Philadelphia, United States</p>
 </div>
-<div id="scan" class=""></div>
+<div id="scan" class="on">SCANNING SECTOR…</div>
 <div id="map"></div>
 <script>
 const center = [-75.1635262, 39.9527237];
 const markers = [];
-const placeName = "Philadelphia";
+const placeName = "Philadelphia, United States";
 const animateIntro = true;
-const startScanning = false;
+const startScanning = true;
 let markerObjs = [];
 
 const map = new maplibregl.Map({
   container: 'map',
   style: 'https://tiles.openfreemap.org/styles/dark',
   center: center,
-  zoom: animateIntro ? 3.2 : 14.3,
+  zoom: animateIntro ? 2.15 : 11.6,
   pitch: animateIntro ? 0 : 62,
   bearing: animateIntro ? 0 : -18,
   antialias: true,
   attributionControl: true
 });
+window.map = map;
 map.addControl(new maplibregl.NavigationControl({visualizePitch:true}), 'top-right');
 
 function setScan(on, text) {
@@ -146,46 +147,138 @@ map.on('load', () => {
     setScan(true, startScanning ? 'SCANNING SECTOR…' : 'ACQUIRING TARGET…');
     map.flyTo({
       center: center,
-      zoom: 14.3,
+      zoom: 11.6,
       pitch: 62,
       bearing: -18,
+      speed: 0.55,
+      curve: 1.7,
       essential: true,
-      duration: 2800
+      duration: 3200
     });
     map.once('moveend', () => {
       addMarkers(markers);
       if (!startScanning) setScan(false);
-      // Slow cinematic orbit after settle
+      window._jarvisOrbiting = true;
       let bearing = map.getBearing();
       function orbit() {
+        if (!window._jarvisOrbiting) return;
         bearing = (bearing + 0.035) % 360;
-        map.setBearing(bearing);
-        requestAnimationFrame(orbit);
+        try { map.setBearing(bearing); } catch (e) {}
+        window._jarvisOrbitRAF = requestAnimationFrame(orbit);
       }
-      requestAnimationFrame(orbit);
+      window._jarvisOrbitRAF = requestAnimationFrame(orbit);
     });
   } else {
     addMarkers(markers);
+    window._jarvisOrbiting = true;
     let bearing = map.getBearing();
     function orbit() {
+      if (!window._jarvisOrbiting) return;
       bearing = (bearing + 0.035) % 360;
-      map.setBearing(bearing);
-      requestAnimationFrame(orbit);
+      try { map.setBearing(bearing); } catch (e) {}
+      window._jarvisOrbitRAF = requestAnimationFrame(orbit);
     }
-    requestAnimationFrame(orbit);
+    window._jarvisOrbitRAF = requestAnimationFrame(orbit);
   }
+  window._jarvisMapReady = true;
 });
 
+window._jarvisOrbiting = false;
+window._jarvisOrbitRAF = null;
+window._jarvisFlying = false;
+window._jarvisMapReady = false;
+
+window.jarvisZoomBy = function(delta) {
+  try {
+    const m = window.map || map;
+    if (!m) return;
+    window._jarvisOrbiting = false;
+    if (window._jarvisOrbitRAF) {
+      try { cancelAnimationFrame(window._jarvisOrbitRAF); } catch (e) {}
+      window._jarvisOrbitRAF = null;
+    }
+    const d = Number(delta) || 0;
+    const next = Math.max(1.2, Math.min(18.5, m.getZoom() + d));
+    setScan(true, d >= 0 ? 'ZOOMING IN…' : 'PULLING BACK…');
+    m.easeTo({
+      zoom: next,
+      pitch: 62,
+      duration: 1400,
+      essential: true
+    });
+    m.once('moveend', () => {
+      setScan(false);
+      window._jarvisOrbiting = true;
+      let bearing = m.getBearing();
+      function orbit() {
+        if (!window._jarvisOrbiting) return;
+        bearing = (bearing + 0.035) % 360;
+        try { m.setBearing(bearing); } catch (e) {}
+        window._jarvisOrbitRAF = requestAnimationFrame(orbit);
+      }
+      window._jarvisOrbitRAF = requestAnimationFrame(orbit);
+    });
+  } catch (e) {}
+};
+
 window.jarvisFlyTo = function(lon, lat, place, zoom) {
-  document.getElementById('place').textContent = place || 'Target';
-  map.flyTo({
-    center: [lon, lat],
-    zoom: zoom || 14.5,
-    pitch: 62,
-    bearing: -12,
-    essential: true,
-    duration: 2200
+  const m = window.map || map;
+  if (!m) return;
+  const targetZoom = (zoom == null || zoom === undefined) ? 14.5 : Number(zoom);
+  const el = document.getElementById('place');
+  if (el) el.textContent = place || 'Target';
+  setScan(true, 'ZOOMING IN…');
+  window._jarvisOrbiting = false;
+  window._jarvisFlying = true;
+  if (window._jarvisOrbitRAF) {
+    try { cancelAnimationFrame(window._jarvisOrbitRAF); } catch (e) {}
+    window._jarvisOrbitRAF = null;
+  }
+
+  const curZoom = m.getZoom();
+  const curCenter = m.getCenter();
+  // Pull back for a clear zoom-in read, then dive to target
+  const pullBack = Math.max(2.4, Math.min(curZoom, targetZoom) - 3.2);
+
+  function dive() {
+    m.flyTo({
+      center: [lon, lat],
+      zoom: targetZoom,
+      pitch: 62,
+      bearing: -18,
+      speed: 0.45,
+      curve: 1.85,
+      essential: true,
+      duration: Math.max(2400, Math.min(4800, 900 + Math.abs(curZoom - targetZoom) * 420))
+    });
+    m.once('moveend', () => {
+      window._jarvisFlying = false;
+      setScan(false);
+      window._jarvisOrbiting = true;
+      let bearing = m.getBearing();
+      function orbit() {
+        if (!window._jarvisOrbiting) return;
+        bearing = (bearing + 0.035) % 360;
+        try { m.setBearing(bearing); } catch (e) {}
+        window._jarvisOrbitRAF = requestAnimationFrame(orbit);
+      }
+      window._jarvisOrbitRAF = requestAnimationFrame(orbit);
+    });
+  }
+
+  // Stage 1: ease toward target while pulling altitude for drama
+  m.easeTo({
+    center: [
+      curCenter.lng + (lon - curCenter.lng) * 0.35,
+      curCenter.lat + (lat - curCenter.lat) * 0.35
+    ],
+    zoom: pullBack,
+    pitch: Math.max(28, 62 - 20),
+    bearing: m.getBearing() + 25,
+    duration: 1100,
+    essential: true
   });
+  m.once('moveend', dive);
 };
 
 window.jarvisSetMarkers = function(list, scanning) {

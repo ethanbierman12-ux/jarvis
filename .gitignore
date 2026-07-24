@@ -14,7 +14,13 @@ jarvis/data/images/
 
 # Secrets / local
 config/secrets.json
+config/config.json
 .env
+*.log
+jarvis/data/vault/
+**/*.dpapi.json
+**/*.local.json
+.cursor/mcp.json
 
 # OS / IDE
 .DS_Store

@@ -1,4 +1,4 @@
-"""Iron Man HUD stylesheet — weather-mood adaptive, premium glass chrome."""
+"""Iron Man HUD stylesheet — command-center glass, weather-mood adaptive."""
 
 from __future__ import annotations
 
@@ -72,20 +72,21 @@ def mood_palette(mood: str) -> dict[str, str]:
             "label": "OVERCAST",
             "glow": "rgba(140, 160, 180, 40)",
         }
+    # Command-center clear — deep navy + cyan (matches reference dashboard)
     return {
-        "accent": "#00e8ff",
-        "accent2": "#007a99",
-        "void": "#02050a",
-        "grad0": "#02050a",
-        "grad1": "#061018",
-        "grad2": "#030810",
-        "panel": "rgba(3, 12, 22, 200)",
-        "panel2": "rgba(1, 8, 16, 235)",
-        "border": "rgba(0, 232, 255, 55)",
-        "dim": "#5a7388",
-        "white": "#eaf6ff",
+        "accent": "#00e5ff",
+        "accent2": "#0090a8",
+        "void": "#050a18",
+        "grad0": "#030712",
+        "grad1": "#071428",
+        "grad2": "#050a18",
+        "panel": "rgba(8, 16, 36, 210)",
+        "panel2": "rgba(4, 10, 24, 240)",
+        "border": "rgba(0, 229, 255, 70)",
+        "dim": "#6a8aa0",
+        "white": "#e8f4ff",
         "label": "CLEAR",
-        "glow": "rgba(0, 232, 255, 45)",
+        "glow": "rgba(0, 229, 255, 55)",
     }
 
 
@@ -99,58 +100,69 @@ def stylesheet(theme: Theme, mood: str = "clear") -> str:
         font-family: {UI_SANS};
     }}
     QWidget#Root {{
-        background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-            stop:0 {p["grad0"]}, stop:0.45 {p["grad1"]}, stop:1 {p["grad2"]});
+        background: qlineargradient(x1:0, y1:0, x2:0.55, y2:1,
+            stop:0 {p["grad0"]}, stop:0.5 {p["grad1"]}, stop:1 {p["grad2"]});
     }}
     QLabel {{ background: transparent; color: {p["white"]}; }}
     QLabel#Brand {{
         color: {accent};
-        font-size: 26px;
-        font-weight: 700;
-        letter-spacing: 10px;
-        padding-bottom: 2px;
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: 6px;
+        padding-bottom: 0px;
     }}
     QLabel#BrandSub {{
         color: {p["dim"]};
         font-size: 9px;
-        font-weight: 600;
-        letter-spacing: 3px;
+        font-weight: 700;
+        letter-spacing: 4px;
+        padding-top: 2px;
     }}
     QLabel#SectionTitle {{
         color: {accent};
-        font-size: 9px;
+        font-size: 10px;
         font-weight: 700;
         letter-spacing: 3px;
-        padding-top: 2px;
     }}
     QLabel#Dim {{ color: {p["dim"]}; font-size: 11px; }}
     QLabel#StatusPill {{
-        color: {accent};
-        background: {p["glow"]};
-        border: 1px solid {p["border"]};
+        color: #3dff9a;
+        background: rgba(61, 255, 154, 22);
+        border: 1px solid rgba(61, 255, 154, 90);
+        border-radius: 11px;
         padding: 5px 12px;
         font-size: 10px;
         font-weight: 700;
-        letter-spacing: 1.4px;
+        letter-spacing: 2px;
     }}
     QLabel#MicPill {{
-        color: {p["dim"]};
+        color: {accent};
+        background: rgba(0, 229, 255, 16);
         border: 1px solid {p["border"]};
-        padding: 5px 10px;
+        border-radius: 11px;
+        padding: 5px 12px;
         font-size: 10px;
-        letter-spacing: 1.2px;
+        font-weight: 700;
+        letter-spacing: 2px;
+    }}
+    QFrame#HeaderBar, QWidget#HeaderBar {{
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+            stop:0 rgba(0, 229, 255, 18), stop:0.4 rgba(6, 14, 28, 170),
+            stop:1 rgba(4, 10, 22, 50));
+        border: 1px solid {p["border"]};
+        border-radius: 12px;
+        padding: 4px 8px;
+    }}
+    QFrame#TalkBar {{
+        background: rgba(4, 12, 28, 220);
+        border: 1px solid {p["border"]};
+        border-radius: 22px;
+        padding: 4px 8px;
     }}
     QFrame#GlassPanel, QWidget#GlassPanel {{
         background-color: {p["panel"]};
         border: 1px solid {p["border"]};
-        border-radius: 0px;
-    }}
-    QFrame#HeaderBar, QWidget#HeaderBar {{
-        background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-            stop:0 {p["panel2"]}, stop:1 {p["void"]});
-        border: none;
-        border-bottom: 1px solid {p["border"]};
-        padding-bottom: 4px;
+        border-radius: 12px;
     }}
     QScrollArea {{
         background: transparent;
@@ -161,120 +173,147 @@ def stylesheet(theme: Theme, mood: str = "clear") -> str:
     }}
     QScrollArea > QWidget > QWidget {{
         background-color: {p["panel"]};
+        border-radius: 10px;
     }}
     QFrame#KpiCard {{
         background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-            stop:0 rgba(0, 28, 42, 160), stop:1 rgba(0, 10, 18, 190));
+            stop:0 rgba(0, 28, 48, 170), stop:1 rgba(0, 10, 22, 200));
         border: 1px solid {p["border"]};
-        border-left: 2px solid {accent};
+        border-left: 3px solid {accent};
+        border-radius: 8px;
     }}
     QPushButton#StartBtn {{
         background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
-            stop:0 rgba(0, 200, 255, 70), stop:1 rgba(0, 80, 120, 45));
+            stop:0 rgba(0, 220, 255, 90), stop:1 rgba(0, 90, 130, 55));
         border: 1px solid {accent};
+        border-radius: 8px;
         color: #f0ffff;
         padding: 9px 22px;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 800;
-        letter-spacing: 4px;
+        letter-spacing: 3px;
         min-height: 36px;
     }}
     QPushButton#StartBtn:hover {{
-        background: rgba(0, 220, 255, 110);
+        background: rgba(0, 220, 255, 120);
         color: #ffffff;
     }}
     QPushButton#StartBtn:pressed {{
         background: rgba(0, 240, 255, 160);
     }}
+    QPushButton#TalkBtn {{
+        background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
+            stop:0 rgba(0, 229, 255, 100), stop:1 rgba(0, 120, 160, 70));
+        border: 1px solid {accent};
+        border-radius: 18px;
+        color: #041018;
+        padding: 10px 28px;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        min-height: 38px;
+        min-width: 180px;
+    }}
+    QPushButton#TalkBtn:hover {{
+        background: rgba(0, 240, 255, 180);
+    }}
+    QPushButton#TalkBtn:pressed {{
+        background: rgba(0, 245, 255, 210);
+    }}
     QPushButton#GhostBtn {{
-        background: rgba(0, 36, 52, 140);
-        border: 1px solid {p["border"]};
+        background: rgba(0, 24, 42, 130);
+        border: 1px solid rgba(0, 229, 255, 45);
+        border-radius: 6px;
         color: {accent};
-        padding: 5px 8px;
+        padding: 4px 8px;
         font-size: 10px;
         font-weight: 650;
-        letter-spacing: 0.6px;
-        min-height: 30px;
+        letter-spacing: 0.8px;
+        min-height: 28px;
     }}
     QPushButton#GhostBtn:hover {{
-        background: {p["glow"]};
+        background: rgba(0, 229, 255, 28);
         border-color: {accent};
         color: #f2ffff;
     }}
     QPushButton#GhostBtn:pressed {{
-        background: rgba(0, 200, 255, 100);
+        background: rgba(0, 200, 255, 90);
     }}
     QPushButton#MediaBtn {{
-        background: rgba(0, 28, 42, 120);
-        border: 1px solid {p["border"]};
+        background: rgba(0, 22, 40, 120);
+        border: 1px solid rgba(0, 229, 255, 40);
+        border-radius: 6px;
         color: {accent};
-        padding: 6px 8px;
+        padding: 5px 7px;
         font-size: 10px;
         font-weight: 700;
         letter-spacing: 1px;
-        min-height: 30px;
+        min-height: 28px;
     }}
     QPushButton#MediaBtn:hover {{
-        background: {p["glow"]};
+        background: rgba(0, 229, 255, 28);
         border-color: {accent};
         color: #ffffff;
     }}
     QPushButton#MediaBtn:pressed {{
-        background: rgba(0, 220, 255, 120);
+        background: rgba(0, 220, 255, 100);
     }}
     QPushButton#DangerBtn {{
-        background: rgba(48, 14, 8, 150);
-        border: 1px solid rgba(255, 107, 53, 110);
+        background: rgba(40, 12, 8, 140);
+        border: 1px solid rgba(255, 107, 53, 90);
+        border-radius: 6px;
         color: #ffb089;
-        padding: 5px 8px;
+        padding: 4px 7px;
         font-size: 10px;
         font-weight: 700;
-        letter-spacing: 0.6px;
-        min-height: 30px;
+        letter-spacing: 0.8px;
+        min-height: 28px;
     }}
     QPushButton#DangerBtn:hover {{
-        background: rgba(255, 90, 40, 50);
+        background: rgba(255, 90, 40, 45);
         border-color: #ff6b35;
         color: #ffe8dc;
     }}
     QPushButton#DangerBtn:pressed {{
-        background: rgba(255, 100, 50, 100);
+        background: rgba(255, 100, 50, 90);
     }}
     QLineEdit#CmdInput {{
-        background: {p["panel2"]};
+        background: rgba(2, 8, 20, 230);
         border: 1px solid {p["border"]};
-        border-left: 3px solid {accent};
+        border-radius: 18px;
         color: {p["white"]};
-        padding: 11px 14px;
-        font-family: {UI_MONO};
-        font-size: 12px;
+        padding: 11px 16px;
+        font-family: {UI_SANS};
+        font-size: 13px;
         selection-background-color: {accent};
         selection-color: #001018;
     }}
     QLineEdit#CmdInput:focus {{
         border: 1px solid {accent};
-        border-left: 3px solid {accent};
-        background: rgba(0, 16, 28, 240);
+        background: rgba(0, 229, 255, 14);
     }}
     QTextEdit#Log {{
         background: {p["panel2"]};
         border: 1px solid {p["border"]};
+        border-radius: 10px;
         color: {p["dim"]};
         font-family: {UI_MONO};
         font-size: 10px;
-        padding: 8px;
+        padding: 6px 10px;
         selection-background-color: {accent};
         selection-color: #001018;
     }}
     QProgressBar {{
         background: rgba(0,0,0,130);
         border: 1px solid {p["border"]};
+        border-radius: 3px;
         max-height: 6px;
         text-align: center;
     }}
     QProgressBar::chunk {{
         background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
             stop:0 {accent}, stop:1 {p["accent2"]});
+        border-radius: 2px;
     }}
     QScrollBar:vertical {{
         background: transparent;
@@ -284,6 +323,7 @@ def stylesheet(theme: Theme, mood: str = "clear") -> str:
     QScrollBar::handle:vertical {{
         background: {p["border"]};
         min-height: 28px;
+        border-radius: 3px;
     }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         height: 0;

@@ -17,14 +17,75 @@ class SuggestionEngine:
         self.weather = weather
         self._last_offer = 0.0
         self._last_spoken = 0.0
-        self._cooldown = 90.0  # seconds between HUD offers
+        self._cooldown = 180.0  # seconds between ambient HUD offers
+        self._post_accept_cooldown = 300.0  # 5 min calm after yes/accept
+        self._suppress_until = 0.0
+        self._last_tip_cmd = ""
         self.pending_cmd: str = ""
         self._pending_at: float = 0.0
 
-    def pending_fresh(self, max_age: float = 25.0) -> bool:
+    @property
+    def enabled(self) -> bool:
+        try:
+            if hasattr(self.settings, "suggestions_enabled"):
+                return bool(getattr(self.settings, "suggestions_enabled", True))
+        except Exception:
+            pass
+        try:
+            return bool(getattr(self.settings, "proactive_enabled", True))
+        except Exception:
+            return True
+
+    def set_enabled(self, on: bool) -> str:
+        on = bool(on)
+        try:
+            self.settings.suggestions_enabled = on
+            if hasattr(self.settings, "save"):
+                self.settings.save()
+        except Exception:
+            pass
+        if not on:
+            self.clear_pending()
+            self._suppress_until = time.time() + 86400.0
+        else:
+            self._suppress_until = 0.0
+        return "Suggestions on." if on else "Suggestions off. Say suggestions on to restore."
+
+    def clear_pending(self) -> None:
+        self.pending_cmd = ""
+        self._pending_at = 0.0
+
+    def pending_fresh(self, max_age: float = 45.0) -> bool:
         if not self.pending_cmd:
             return False
         return (time.time() - self._pending_at) <= max_age
+
+    def suppressed(self) -> bool:
+        return time.time() < self._suppress_until
+
+    def accept(self) -> str:
+        """
+        Clear pending and start post-accept cooldown.
+        Returns the command to run (empty if nothing pending).
+        """
+        cmd = (self.pending_cmd or "").strip()
+        self.clear_pending()
+        now = time.time()
+        self._suppress_until = now + self._post_accept_cooldown
+        self._last_offer = now  # also blocks ambient offers
+        if cmd:
+            self._last_tip_cmd = cmd.lower()
+        return cmd
+
+    def can_offer(self, *, force: bool = False) -> bool:
+        if not self.enabled:
+            return False
+        if self.suppressed() and not force:
+            return False
+        now = time.time()
+        if not force and now - self._last_offer < self._cooldown:
+            return False
+        return True
 
     def now_suggestion(self, *, force: bool = False) -> Optional[dict[str, str]]:
         """
@@ -33,10 +94,10 @@ class SuggestionEngine:
         detail — longer spoken line
         cmd — utterance to run if user says yes / clicks
         """
-        now = time.time()
-        if not force and now - self._last_offer < self._cooldown:
+        if not self.can_offer(force=force):
             return None
 
+        now = time.time()
         hour = datetime.now().hour
         name = self.settings.user_name or "Sir"
         ideas: list[dict[str, str]] = []
@@ -162,17 +223,27 @@ class SuggestionEngine:
             ]
         )
 
-        pick = random.choice(ideas)
+        # Dedupe: don't re-offer the same cmd we just ran/accepted
+        last = (self._last_tip_cmd or "").lower()
+        filtered = [i for i in ideas if (i.get("cmd") or "").lower() != last]
+        if not filtered:
+            filtered = ideas
+
+        pick = random.choice(filtered)
         self._last_offer = now
         self.pending_cmd = pick["cmd"]
         self._pending_at = now
+        self._last_tip_cmd = (pick["cmd"] or "").lower()
         return pick
 
     def after_command(self, command: str, reply: str) -> Optional[dict[str, str]]:
-        """Light follow-up suggestion after certain actions."""
+        """Light follow-up — never chains immediately after accept / during suppress."""
+        if not self.enabled or self.suppressed():
+            return None
         t = (command or "").lower()
         now = time.time()
-        if now - self._last_offer < 45:
+        # Longer gap after any offer (incl. ambient) — was 45s, felt like a cascade
+        if now - self._last_offer < 120:
             return None
 
         follow: dict[str, str] | None = None
@@ -214,15 +285,21 @@ class SuggestionEngine:
             }
 
         if follow:
+            cmd = (follow.get("cmd") or "").lower()
+            if cmd and cmd == (self._last_tip_cmd or ""):
+                return None
             self._last_offer = now
             self.pending_cmd = follow["cmd"]
             self._pending_at = now
+            self._last_tip_cmd = cmd
         return follow
 
     def speak_ok(self) -> bool:
-        """Don't verbally spam — at most every 4 minutes unless asked."""
+        """Don't verbally spam — at most every 6 minutes unless asked."""
+        if not self.enabled or self.suppressed():
+            return False
         now = time.time()
-        if now - self._last_spoken < 240:
+        if now - self._last_spoken < 360:
             return False
         self._last_spoken = now
         return True

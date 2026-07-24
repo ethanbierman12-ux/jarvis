@@ -4,22 +4,34 @@ from __future__ import annotations
 
 import math
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from PyQt6.QtCore import Qt, QTimer, QPointF, QRectF
 from PyQt6.QtGui import QPainter, QColor, QPen, QFont, QRadialGradient, QBrush
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel, QWidget, QHBoxLayout, QProgressBar
 
 
+def _local_now(tz_name: str = "America/New_York") -> datetime:
+    try:
+        return datetime.now(ZoneInfo(tz_name or "America/New_York"))
+    except Exception:
+        return datetime.now()
+
+
 class DateDial(QWidget):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, *, timezone: str = "America/New_York") -> None:
         super().__init__(parent)
         self.setFixedSize(176, 176)
-        self._now = datetime.now()
+        self.timezone = timezone or "America/New_York"
+        self._now = _local_now(self.timezone)
         self._t = 0.0
         self._accent = QColor(0, 232, 255)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(200)
+        self._timer.start(500)  # dial doesn't need 5 Hz AA paint
+
+    def set_timezone(self, tz: str) -> None:
+        self.timezone = tz or "America/New_York"
 
     def set_accent(self, hex_color: str) -> None:
         c = QColor(hex_color)
@@ -28,7 +40,7 @@ class DateDial(QWidget):
             self.update()
 
     def _tick(self) -> None:
-        self._now = datetime.now()
+        self._now = _local_now(self.timezone)
         self._t += 0.08
         self.update()
 
@@ -97,25 +109,25 @@ class DateDial(QWidget):
 
         p.setPen(QColor(232, 244, 255))
         p.setFont(QFont("Cascadia Mono", 11, QFont.Weight.Bold))
-        tstr = self._now.strftime("%H:%M:%S")
+        tstr = self._now.strftime("%I:%M:%S %p").lstrip("0")
         tw = p.fontMetrics().horizontalAdvance(tstr)
         p.drawText(int(cx - tw / 2), 18, tstr)
         p.end()
 
 
 class ClockPanel(QFrame):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, *, timezone: str = "America/New_York") -> None:
         super().__init__(parent)
         self.setObjectName("GlassPanel")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 14, 14, 14)
-        lay.setSpacing(10)
+        lay.setContentsMargins(10, 10, 10, 10)
+        lay.setSpacing(8)
 
-        head = QLabel("CHRONOMETER")
+        head = QLabel("TIME")
         head.setObjectName("SectionTitle")
         lay.addWidget(head)
 
-        self.dial = DateDial()
+        self.dial = DateDial(timezone=timezone or "America/New_York")
         lay.addWidget(self.dial, 0, Qt.AlignmentFlag.AlignHCenter)
 
         self.storage = QLabel("STORAGE —")
@@ -153,6 +165,12 @@ class ClockPanel(QFrame):
         )
         self.power.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self.power)
+
+    def set_timezone(self, tz: str) -> None:
+        try:
+            self.dial.set_timezone(tz)
+        except Exception:
+            pass
 
     def set_accent(self, hex_color: str) -> None:
         self.dial.set_accent(hex_color)
