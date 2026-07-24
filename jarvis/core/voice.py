@@ -115,6 +115,17 @@ class VoiceEngine:
             target=self._listen_loop, daemon=True, name="jarvis-voice"
         )
         self._thread.start()
+        # CRITICAL: never open a second sounddevice InputStream alongside duplex.
+        # Dual WASAPI capture on the same mic caused ACCESS_VIOLATION (0xC0000005)
+        # crashes after ~1–2 minutes. Duplex already feeds on_level.
+        if self._duplex_available():
+            print("[voice] level meter via duplex (no second mic stream)")
+        else:
+            self._start_level_loop()
+
+    def _start_level_loop(self) -> None:
+        if self._level_thread and self._level_thread.is_alive():
+            return
         self._level_thread = threading.Thread(
             target=self._level_loop, daemon=True, name="jarvis-mic-level"
         )
@@ -123,6 +134,12 @@ class VoiceEngine:
     def stop(self) -> None:
         self._running = False
         self._stop_playback()
+        duplex = getattr(self, "_duplex", None)
+        if duplex is not None:
+            try:
+                duplex.stop()
+            except Exception:
+                pass
 
     def mute_mic(self, muted: bool) -> None:
         self._mute = muted
@@ -529,6 +546,7 @@ class VoiceEngine:
             if not self._running:
                 return
             print("[voice] duplex offline — classic STT engaged")
+            self._start_level_loop()
 
         try:
             import speech_recognition as sr
@@ -770,6 +788,12 @@ class VoiceEngine:
         return True
 
     def _on_duplex_final(self, text: str) -> None:
+        try:
+            self._on_duplex_final_inner(text)
+        except Exception as e:
+            print(f"[voice] duplex final: {e}")
+
+    def _on_duplex_final_inner(self, text: str) -> None:
         text = re.sub(r"\s+", " ", (text or "").lower().strip())
         if not text:
             return
@@ -795,6 +819,12 @@ class VoiceEngine:
             print(f"[voice] on_heard: {e}")
 
     def _on_duplex_interim(self, text: str) -> None:
+        try:
+            self._on_duplex_interim_inner(text)
+        except Exception as e:
+            print(f"[voice] duplex interim: {e}")
+
+    def _on_duplex_interim_inner(self, text: str) -> None:
         # Strict interim barge — requires growing phrase + loud mic + not echo
         if not self._speaking or not self._barge_armed:
             self._interim_barge_hits = 0

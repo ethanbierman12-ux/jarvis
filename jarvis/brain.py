@@ -2966,11 +2966,24 @@ class Brain:
         if re.search(r"\b(crew|agent\s*crew)\s+(health|diagnostics)\b", t):
             return self._flavor("ok", crew.guardian.report())
 
-        m = re.search(r"^crew\s+debate\s+(.+)$", t.strip(), re.I)
+        # Soft STT variants: "crude debate", "crew debates", "ask crew to debate"
+        m = re.search(
+            r"(?:^|\b)(?:ask\s+(?:the\s+)?crew\s+to\s+)?(?:crew|crude)\s+debates?\s+(.+)$",
+            t.strip(),
+            re.I,
+        )
+        if not m:
+            m = re.search(r"^crew\s+debate\s+(.+)$", t.strip(), re.I)
         if m:
             question = m.group(1).strip(" .,!?")
             if not question:
                 return self._flavor("clarify", "What shall the crew debate, sir?")
+            # Keep mic armed while the debate runs (can take 30–60s)
+            try:
+                arm = float(getattr(self.settings, "wake_arm_sec", 8.0) or 8.0)
+                self._armed_until = time.time() + max(arm, 90.0)
+            except Exception:
+                pass
 
             def _debate_job(q: str = question) -> str:
                 try:
