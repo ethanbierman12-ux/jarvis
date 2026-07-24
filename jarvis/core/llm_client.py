@@ -21,6 +21,8 @@ _ANTHROPIC_MODEL = "claude-sonnet-4-5"
 _OPENAI_MODEL = "gpt-4.1-mini"
 
 _ollama_model_cache: str | None = None
+_ollama_cache_at: float = 0.0
+_OLLAMA_RETRY_SEC = 60.0  # re-probe a down/empty Ollama once a minute
 
 
 def _post_json(url: str, payload: dict, headers: dict | None = None, timeout: float = 60.0) -> dict:
@@ -35,20 +37,27 @@ def _post_json(url: str, payload: dict, headers: dict | None = None, timeout: fl
 
 
 def ollama_model(host: str = _OLLAMA_HOST) -> str:
-    """First installed Ollama model (cached), or '' when Ollama is down."""
-    global _ollama_model_cache
-    if _ollama_model_cache is not None:
+    """Best installed Ollama model, or '' when Ollama is down.
+
+    Successful lookups are cached for the session; failures are re-probed
+    every minute so an Ollama started mid-session is picked up.
+    """
+    global _ollama_model_cache, _ollama_cache_at
+    import time
+
+    if _ollama_model_cache:
         return _ollama_model_cache
+    if _ollama_model_cache == "" and time.time() - _ollama_cache_at < _OLLAMA_RETRY_SEC:
+        return ""
+    _ollama_cache_at = time.time()
     try:
         with urllib.request.urlopen(f"{host}/api/tags", timeout=2.5) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
         models = [m.get("name", "") for m in data.get("models", []) if m.get("name")]
-        # Prefer general chat models over embed/vision-only tags
-        for m in models:
-            if not any(k in m.lower() for k in ("embed", "clip")):
-                _ollama_model_cache = m
-                return m
-        _ollama_model_cache = models[0] if models else ""
+        # Prefer general chat models; vision/embed tags only as a last resort
+        deprioritized = ("embed", "clip", "llava", "moondream", "vision")
+        text_models = [m for m in models if not any(k in m.lower() for k in deprioritized)]
+        _ollama_model_cache = (text_models or models or [""])[0]
     except Exception:
         _ollama_model_cache = ""
     return _ollama_model_cache
@@ -72,7 +81,8 @@ def _complete_ollama(
             timeout=90.0,
         )
         return (data.get("response") or "").strip()
-    except Exception:
+    except Exception as e:
+        print(f"[llm] ollama ({m}): {_err(e)}")
         return ""
 
 
@@ -99,7 +109,8 @@ def _complete_anthropic(
         return "".join(
             p.get("text", "") for p in parts if p.get("type") == "text"
         ).strip()
-    except Exception:
+    except Exception as e:
+        print(f"[llm] anthropic: {_err(e)}")
         return ""
 
 
@@ -126,9 +137,20 @@ def _complete_openai(
         choices = data.get("choices") or []
         if choices:
             return (choices[0].get("message", {}).get("content") or "").strip()
+    except Exception as e:
+        print(f"[llm] openai: {_err(e)}")
+    return ""
+
+
+def _err(e: Exception) -> str:
+    """Compact error line — surfaces HTTP body (API error message) when present."""
+    try:
+        if isinstance(e, urllib.error.HTTPError):
+            body = e.read().decode("utf-8", errors="replace")[:200]
+            return f"HTTP {e.code} {body}"
     except Exception:
         pass
-    return ""
+    return str(e)[:200]
 
 
 def _vault_key(name: str) -> str:
