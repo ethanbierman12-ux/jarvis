@@ -1,4 +1,4 @@
-"""Date / time dial + vitals — left HUD chronometer."""
+"""Date / time dial + circular vitals — left HUD chronometer."""
 
 from __future__ import annotations
 
@@ -8,7 +8,9 @@ from zoneinfo import ZoneInfo
 
 from PyQt6.QtCore import Qt, QTimer, QPointF, QRectF
 from PyQt6.QtGui import QPainter, QColor, QPen, QFont, QRadialGradient, QBrush
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel, QWidget, QHBoxLayout, QProgressBar
+from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel, QWidget, QHBoxLayout
+
+from jarvis.ui.widgets.stat_gauge import StatGauge
 
 
 def _local_now(tz_name: str = "America/New_York") -> datetime:
@@ -28,7 +30,7 @@ class DateDial(QWidget):
         self._accent = QColor(0, 232, 255)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(500)  # dial doesn't need 5 Hz AA paint
+        self._timer.start(500)
 
     def set_timezone(self, tz: str) -> None:
         self.timezone = tz or "America/New_York"
@@ -51,7 +53,6 @@ class DateDial(QWidget):
         cx, cy, r = self.width() / 2, self.height() / 2, 74
         a = self._accent
 
-        # Soft outer bloom
         bloom = QRadialGradient(cx, cy, r * 1.35)
         bloom.setColorAt(0.0, QColor(a.red(), a.green(), a.blue(), 28))
         bloom.setColorAt(1.0, QColor(0, 0, 0, 0))
@@ -123,12 +124,23 @@ class ClockPanel(QFrame):
         lay.setContentsMargins(10, 10, 10, 10)
         lay.setSpacing(8)
 
-        head = QLabel("TIME")
+        head = QLabel("TIME  ·  VITALS")
         head.setObjectName("SectionTitle")
         lay.addWidget(head)
 
         self.dial = DateDial(timezone=timezone or "America/New_York")
         lay.addWidget(self.dial, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        # Circular gauges row (mockup-style)
+        gauges = QHBoxLayout()
+        gauges.setSpacing(4)
+        self.cpu_gauge = StatGauge("CPU", accent="#00e5ff")
+        self.ram_gauge = StatGauge("RAM", accent="#ff9a3c")
+        self.net_gauge = StatGauge("DSK", accent="#3dff9a")
+        gauges.addWidget(self.cpu_gauge)
+        gauges.addWidget(self.ram_gauge)
+        gauges.addWidget(self.net_gauge)
+        lay.addLayout(gauges)
 
         self.storage = QLabel("STORAGE —")
         self.storage.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -136,28 +148,6 @@ class ClockPanel(QFrame):
             "color:#7a9ab0; font-family:'Cascadia Mono', Consolas; font-size:10px;"
         )
         lay.addWidget(self.storage)
-
-        for name, attr in (("CPU", "cpu"), ("RAM", "ram")):
-            row = QHBoxLayout()
-            lab = QLabel(name)
-            lab.setObjectName("Dim")
-            lab.setFixedWidth(32)
-            bar = QProgressBar()
-            bar.setRange(0, 100)
-            bar.setTextVisible(False)
-            bar.setFixedHeight(6)
-            pct = QLabel("0%")
-            pct.setStyleSheet(
-                "color:#7a9ab0; font-family:'Cascadia Mono', Consolas; font-size:10px;"
-            )
-            pct.setFixedWidth(34)
-            pct.setAlignment(Qt.AlignmentFlag.AlignRight)
-            row.addWidget(lab)
-            row.addWidget(bar, 1)
-            row.addWidget(pct)
-            lay.addLayout(row)
-            setattr(self, f"{attr}_bar", bar)
-            setattr(self, f"{attr}_pct", pct)
 
         self.power = QLabel("POWER  —")
         self.power.setStyleSheet(
@@ -174,16 +164,18 @@ class ClockPanel(QFrame):
 
     def set_accent(self, hex_color: str) -> None:
         self.dial.set_accent(hex_color)
+        self.cpu_gauge.set_accent(hex_color)
         self.power.setStyleSheet(
             f"color:{hex_color}; font-family:'Cascadia Mono', Consolas; font-size:11px; letter-spacing:1px;"
         )
 
     def set_vitals(self, cpu: float, ram: float, battery=None, total_g=0.0, free_g=0.0) -> None:
-        self.cpu_bar.setValue(int(cpu))
-        self.ram_bar.setValue(int(ram))
-        self.cpu_pct.setText(f"{int(cpu)}%")
-        self.ram_pct.setText(f"{int(ram)}%")
+        self.cpu_gauge.set_value(cpu)
+        self.ram_gauge.set_value(ram)
+        # Disk used % into the third ring
         if total_g > 0:
+            used_pct = max(0.0, min(100.0, (1.0 - free_g / total_g) * 100.0))
+            self.net_gauge.set_value(used_pct)
             self.storage.setText(
                 f"CAPACITY  {total_g:.0f} G    FREE  {free_g:.0f} G"
             )

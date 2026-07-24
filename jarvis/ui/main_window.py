@@ -38,6 +38,7 @@ from jarvis.ui.widgets.voice_waveform import VoiceWaveform
 from jarvis.ui.widgets.news_overlay import NewsOverlay
 from jarvis.ui.widgets.cmd_button import CmdButton
 from jarvis.ui.widgets.hitl_gate import HitlGate
+from jarvis.ui.widgets.quick_toggles import QuickToggleGrid
 
 
 class MainWindow(QMainWindow):
@@ -130,6 +131,8 @@ class MainWindow(QMainWindow):
             timezone=getattr(settings, "timezone", "America/New_York")
             or "America/New_York"
         )
+        self.toggles = QuickToggleGrid()
+        self.toggles.toggled.connect(self._on_quick_toggle)
         self.controls = ControlStrip()
         self.controls.action.connect(self._cmd)
         self.media = MediaPanel(
@@ -138,6 +141,7 @@ class MainWindow(QMainWindow):
         )
         self.media.action.connect(self._media_action)
         left.addWidget(self.clock, 0)
+        left.addWidget(self.toggles, 0)
         left.addWidget(self.controls, 1)  # stretch — scrollable, not squashed
         left.addWidget(self.media, 0)
         left_w = QWidget()
@@ -165,11 +169,11 @@ class MainWindow(QMainWindow):
         self.log = QTextEdit()
         self.log.setObjectName("Log")
         self.log.setReadOnly(True)
-        self.log.setFixedHeight(56)
-        self.log.setPlaceholderText("Log")
+        self.log.setFixedHeight(140)
+        self.log.setPlaceholderText("MISSION LOG  ·  terminal feed")
         try:
             # Cap growth — unbounded append() was a long-session lag source
-            self.log.document().setMaximumBlockCount(280)
+            self.log.document().setMaximumBlockCount(400)
         except Exception:
             pass
         center.addWidget(self.log)
@@ -1020,6 +1024,10 @@ class MainWindow(QMainWindow):
         """Keep the amber core alive for the full TTS playback window."""
         try:
             self._tts_active = bool(active)
+            try:
+                self.wave.set_speaking(bool(active))
+            except Exception:
+                pass
             if active:
                 self.reactor.set_speaking(True)
                 self._reactor_activity("speak")
@@ -1031,6 +1039,76 @@ class MainWindow(QMainWindow):
                     self._reactor_activity("idle")
         except Exception:
             pass
+
+    def _on_quick_toggle(self, key: str, on: bool) -> None:
+        """QUICK · RELAYS grid — lamp / night / quiet / smooth / mini / listen."""
+        key = (key or "").lower()
+        try:
+            if key == "lamp":
+                self._cmd("turn on the lamp" if on else "turn off the lamp")
+            elif key == "night":
+                self._cmd("night vision on" if on else "night vision off")
+            elif key == "quiet":
+                self._cmd("quiet mode" if on else "leave quiet mode")
+            elif key == "smooth":
+                self._cmd("smooth mode" if on else "smooth mode off")
+            elif key == "mini":
+                self._set_mini_mode(on)
+            elif key == "listen":
+                # Arm / disarm wake-required loosely via quiet opposite
+                if self.brain and hasattr(self.brain.settings, "wake_required"):
+                    self.brain.settings.wake_required = not on
+                    self.append_log(
+                        "VOICE › open listen" if on else "VOICE › wake required"
+                    )
+            self.append_log(f"RELAY › {key.upper()} {'ON' if on else 'OFF'}")
+        except Exception as e:
+            self.append_log(f"RELAY › {key} failed: {e}")
+
+    def _set_mini_mode(self, on: bool) -> None:
+        """Collapse HUD into a small always-on-top corner widget."""
+        try:
+            if on:
+                if not hasattr(self, "_full_geometry"):
+                    self._full_geometry = self.geometry()
+                self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+                # Hide dense columns — keep reactor + log + wave + talk
+                if getattr(self, "_hud", None):
+                    lay = self._hud.layout()
+                    if lay and lay.count() >= 3:
+                        left = lay.itemAt(0).widget()
+                        right = lay.itemAt(2).widget()
+                        if left:
+                            left.hide()
+                        if right:
+                            right.hide()
+                self.resize(520, 640)
+                # Park bottom-right
+                screen = self.screen()
+                if screen:
+                    geo = screen.availableGeometry()
+                    self.move(geo.right() - self.width() - 16, geo.bottom() - self.height() - 16)
+                self.show()
+                self.append_log("HUD › mini mode — corner widget")
+            else:
+                self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+                if getattr(self, "_hud", None):
+                    lay = self._hud.layout()
+                    if lay and lay.count() >= 3:
+                        left = lay.itemAt(0).widget()
+                        right = lay.itemAt(2).widget()
+                        if left:
+                            left.show()
+                        if right:
+                            right.show()
+                if hasattr(self, "_full_geometry") and self._full_geometry:
+                    self.setGeometry(self._full_geometry)
+                else:
+                    self.resize(1560, 940)
+                self.show()
+                self.append_log("HUD › full command center")
+        except Exception as e:
+            self.append_log(f"HUD › mini failed: {e}")
 
     def _set_listen(self, active: bool) -> None:
         self.listen.setText("● LISTENING" if active else "MIC STANDBY")

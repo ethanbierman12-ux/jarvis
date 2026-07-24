@@ -1,171 +1,148 @@
-"""Voice waveform HUD — neon bars driven by mic amplitude (UI thread only)."""
-
-
+"""Voice waveform HUD — dense dual-tone canvas (cyan + amber), pauses when quiet."""
 
 from __future__ import annotations
 
-
-
 import math
 
-
-
-from PyQt6.QtCore import Qt, QTimer
-
-from PyQt6.QtGui import QPainter, QColor, QPen
-
+from PyQt6.QtCore import Qt, QTimer, QPointF
+from PyQt6.QtGui import QPainter, QColor, QPen, QLinearGradient, QBrush
 from PyQt6.QtWidgets import QWidget
 
 
-
-
-
 class VoiceWaveform(QWidget):
+    """Animated multi-trace waveform + bar field for speak/listen feedback."""
 
-    """Simple translucent audio bars for speak/listen feedback."""
-
-
-
-    _ACTIVE_MS = 50  # ~20 FPS while speaking / hot mic
-
-    _IDLE_MS = 120  # chill when quiet — was always 33ms
-
-
+    _ACTIVE_MS = 40
+    _IDLE_MS = 140
 
     def __init__(self, parent=None) -> None:
-
         super().__init__(parent)
-
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-
-        self.setFixedHeight(36)
-
+        self.setFixedHeight(64)
+        self.setMinimumHeight(48)
         self._amp = 0.0
-
-        self._levels = [0.08] * 24
-
+        self._speaking = False
+        self._levels = [0.08] * 40
+        self._trace_a = [0.0] * 80
+        self._trace_b = [0.0] * 80
         self._phase = 0
-
         self._eco = False
-
         self._timer = QTimer(self)
-
         self._timer.timeout.connect(self._tick)
-
         self._timer.start(self._IDLE_MS)
 
-
-
     def set_amplitude(self, amp: float) -> None:
-
         self._amp = max(0.0, min(1.0, float(amp)))
-
-        # Snap to active rate when voice energy arrives
-
         if self._amp > 0.06 and self._timer.interval() > self._ACTIVE_MS:
-
             self._timer.setInterval(self._ACTIVE_MS if not self._eco else 80)
 
-
+    def set_speaking(self, on: bool) -> None:
+        """While Jarvis speaks, keep the wave lively even if mic is muted."""
+        self._speaking = bool(on)
+        if self._speaking:
+            self._timer.setInterval(self._ACTIVE_MS if not self._eco else 80)
 
     def set_eco(self, on: bool) -> None:
-
         self._eco = bool(on)
-
         if self._eco:
-
             self._timer.setInterval(max(self._IDLE_MS, 100))
-
-        elif self._amp > 0.06:
-
+        elif self._amp > 0.06 or self._speaking:
             self._timer.setInterval(self._ACTIVE_MS)
 
-
-
     def _tick(self) -> None:
-
-        self._phase = (self._phase + 1) % 1000
-
-        target = 0.12 + self._amp * 0.88
-
+        self._phase = (self._phase + 1) % 10000
+        base = 0.10 + self._amp * 0.85
+        if self._speaking and self._amp < 0.2:
+            base = 0.35 + 0.25 * abs(math.sin(self._phase * 0.12))
         quiet = True
 
         for i in range(len(self._levels)):
-
-            wiggle = 0.5 + 0.5 * math.sin((self._phase + i * 7) * 0.18)
-
-            goal = target * (0.45 + 0.55 * wiggle)
-
-            self._levels[i] += (goal - self._levels[i]) * 0.35
-
-            if self._levels[i] > 0.14:
-
+            wiggle = 0.5 + 0.5 * math.sin((self._phase + i * 5) * 0.22)
+            goal = base * (0.4 + 0.6 * wiggle)
+            self._levels[i] += (goal - self._levels[i]) * 0.38
+            if self._levels[i] > 0.12:
                 quiet = False
 
-        # Drop back to idle cadence when settled
+        # Scroll traces
+        self._trace_a = self._trace_a[1:] + [
+            base * (0.55 + 0.45 * math.sin(self._phase * 0.31))
+        ]
+        self._trace_b = self._trace_b[1:] + [
+            base * (0.4 + 0.6 * math.sin(self._phase * 0.19 + 1.7))
+        ]
 
-        if quiet and self._amp < 0.04:
-
-            want = self._IDLE_MS if not self._eco else 150
-
+        if quiet and self._amp < 0.04 and not self._speaking:
+            want = self._IDLE_MS if not self._eco else 160
             if self._timer.interval() != want:
-
                 self._timer.setInterval(want)
-
-            # Skip paint when fully flat — saves compositor work
-
             if max(self._levels) < 0.10:
-
                 return
-
         self.update()
 
-
-
     def paintEvent(self, _event) -> None:
-
         p = QPainter(self)
-
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
         w, h = self.width(), self.height()
 
-        p.fillRect(0, 0, w, h, QColor(2, 8, 14, 120))
+        # Panel fill with top/bottom bracket lines
+        p.fillRect(0, 0, w, h, QColor(2, 10, 18, 160))
+        p.setPen(QPen(QColor(0, 229, 255, 70), 1))
+        p.drawLine(8, 1, w - 8, 1)
+        p.drawLine(8, h - 2, w - 8, h - 2)
+        # Corner ticks
+        for x0, y0, dx, dy in (
+            (4, 4, 10, 0),
+            (4, 4, 0, 8),
+            (w - 14, 4, 10, 0),
+            (w - 4, 4, 0, 8),
+            (4, h - 4, 10, 0),
+            (4, h - 12, 0, 8),
+            (w - 14, h - 4, 10, 0),
+            (w - 4, h - 12, 0, 8),
+        ):
+            p.drawLine(x0, y0, x0 + dx, y0 + dy)
 
+        mid = h / 2
+        # Dual traces
+        self._draw_trace(p, self._trace_a, QColor(0, 229, 255, 200), mid, h * 0.32)
+        self._draw_trace(p, self._trace_b, QColor(255, 154, 60, 160), mid, h * 0.22)
+
+        # Bar field along the bottom third
         n = len(self._levels)
-
-        gap = 3
-
+        gap = 2
         bar_w = max(2, (w - gap * (n + 1)) // n)
-
         x = gap
-
+        base_y = h - 6
         for lvl in self._levels:
-
-            bh = max(2, int((h - 8) * lvl))
-
-            y = (h - bh) // 2
-
-            color = QColor(0, 232, 255, 200)
-
-            if lvl > 0.7:
-
-                color = QColor(0, 255, 160, 220)
-
+            bh = max(1, int((h * 0.42) * lvl))
+            color = QColor(0, 229, 255, 180)
+            if lvl > 0.65:
+                color = QColor(61, 255, 154, 210)
             p.setPen(Qt.PenStyle.NoPen)
-
             p.setBrush(color)
-
-            p.drawRoundedRect(x, y, bar_w, bh, 1, 1)
-
-            p.setPen(QPen(QColor(0, 232, 255, 60), 1))
-
-            p.setBrush(Qt.BrushStyle.NoBrush)
-
-            p.drawRoundedRect(x, y, bar_w, bh, 1, 1)
-
+            p.drawRect(x, base_y - bh, bar_w, bh)
             x += bar_w + gap
 
+        # Label
+        p.setPen(QColor(0, 229, 255, 140))
+        p.setFont(p.font())
+        from PyQt6.QtGui import QFont
+
+        p.setFont(QFont("Cascadia Mono", 8))
+        tag = "AUDIO · LIVE" if (self._amp > 0.08 or self._speaking) else "AUDIO · STANDBY"
+        p.drawText(10, 14, tag)
         p.end()
 
-
+    def _draw_trace(self, p: QPainter, data: list[float], color: QColor, mid: float, amp_h: float) -> None:
+        if len(data) < 2:
+            return
+        pen = QPen(color, 1.4)
+        pen.setCosmetic(True)
+        p.setPen(pen)
+        w = self.width()
+        step = w / max(1, len(data) - 1)
+        prev = QPointF(0, mid - data[0] * amp_h)
+        for i, v in enumerate(data[1:], 1):
+            pt = QPointF(i * step, mid - v * amp_h)
+            p.drawLine(prev, pt)
+            prev = pt

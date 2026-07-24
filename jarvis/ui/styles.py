@@ -295,13 +295,37 @@ def stylesheet(theme: Theme, mood: str = "clear") -> str:
     QTextEdit#Log {{
         background: {p["panel2"]};
         border: 1px solid {p["border"]};
-        border-radius: 10px;
-        color: {p["dim"]};
+        border-left: 3px solid {accent};
+        border-radius: 4px;
+        color: #9ec8d8;
         font-family: {UI_MONO};
         font-size: 10px;
-        padding: 6px 10px;
+        padding: 8px 10px;
         selection-background-color: {accent};
         selection-color: #001018;
+    }}
+    QPushButton#QuickToggle {{
+        background: rgba(4, 14, 28, 200);
+        border: 1px solid {p["border"]};
+        border-radius: 4px;
+        color: {p["dim"]};
+        font-family: {UI_MONO};
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        padding: 8px 4px;
+        min-height: 40px;
+    }}
+    QPushButton#QuickToggle:hover {{
+        border-color: {accent};
+        color: {p["white"]};
+        background: rgba(0, 229, 255, 18);
+    }}
+    QPushButton#QuickToggle[on="true"] {{
+        background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
+            stop:0 rgba(0, 229, 255, 55), stop:1 rgba(0, 80, 110, 40));
+        border: 1px solid {accent};
+        color: {accent};
     }}
     QProgressBar {{
         background: rgba(0,0,0,130);

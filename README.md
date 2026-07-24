@@ -22,6 +22,10 @@ Voice: **reload core** / **reboot jarvis** → reload · **go offline** / **powe
 
 Boot shows **INITIATING SYSTEM 1…** with loading % → 100 and boot sound, then blooms into the main HUD.
 
+### HUD (PyQt6 cyberpunk)
+
+Native high-performance desktop shell — not Streamlit/Electron. Left column: time dial + circular CPU/RAM/disk gauges + **QUICK · RELAYS** toggle grid (lamp / night / quiet / smooth / mini / listen). Center: arc reactor, mission-log terminal, dual-tone waveform. **MINI** collapses to an always-on-top corner widget.
+
 ## Voice / commands
 
 | You say | Jarvis does |
