@@ -721,7 +721,8 @@ class VoiceEngine:
             self.barge_in()
         elif self._mute or self._busy:
             return
-        elif time.time() < self._speak_until and self._sounds_like_echo(text):
+        elif time.time() < self._speak_until + 3.0 and self._sounds_like_echo(text):
+            # Deepgram finals can lag past the 0.85s echo-guard — drop late echoes
             return
         if self._should_ignore(text):
             print(f"[voice] ignored echo/dup: {text[:60]}")
@@ -749,14 +750,20 @@ class VoiceEngine:
         print(f"[voice] barge-in via transcript: {t[:50]}")
         self.barge_in()
 
+    @staticmethod
+    def _norm_speech(s: str) -> str:
+        """Lowercase and strip punctuation — Deepgram adds commas/periods that
+        must not defeat echo matching ('welcome,' vs 'welcome')."""
+        return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", " ", (s or "").lower())).strip()
+
     def _sounds_like_echo(self, text: str) -> bool:
         """Does this transcript look like the mic hearing Jarvis's own TTS?"""
         if not self._last_spoken:
             return False
         if time.time() - self._last_spoken_at > 25.0:
             return False
-        spoken = self._last_spoken.lower()
-        t = (text or "").lower().strip()
+        spoken = self._norm_speech(self._last_spoken)
+        t = self._norm_speech(text)
         if not t:
             return True
         if len(t) >= 8 and t in spoken:
@@ -767,7 +774,8 @@ class VoiceEngine:
         # Fragment echo — most words of the heard text appear in the reply
         words = [w for w in t.split() if len(w) > 2]
         if words:
-            hits = sum(1 for w in words if w in spoken)
+            spoken_words = set(spoken.split())
+            hits = sum(1 for w in words if w in spoken_words or w in spoken)
             if hits / len(words) >= 0.7:
                 return True
         return False
