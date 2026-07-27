@@ -57,12 +57,13 @@ class HitlResult:
     note: str = ""
 
 
-# Structural change thresholds — above this → HITL permission
-MASSIVE_FILE_COUNT = 4
-MASSIVE_BYTES = 60_000
+# Structural change thresholds — only rebuilds / extreme scaffolds ask
+MASSIVE_FILE_COUNT = 80
+MASSIVE_BYTES = 500_000
 
 
 def is_massive_structure(*, file_count: int = 0, total_bytes: int = 0, rebuild: bool = False) -> bool:
+    """HITL for wipe/rebuild or truly huge trees — not normal sandbox scaffolds."""
     if rebuild:
         return True
     if file_count >= MASSIVE_FILE_COUNT:

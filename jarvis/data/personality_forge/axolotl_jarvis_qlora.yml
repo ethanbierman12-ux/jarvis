@@ -1,0 +1,58 @@
+# Jarvis personality — Axolotl QLoRA (LoRA / low-rank adaptation)
+# Install: https://github.com/axolotl-ai-cloud/axolotl
+# Train: accelerate launch -m axolotl.cli.train C:/Users/ethan/jarvis/jarvis/data/personality_forge/axolotl_jarvis_qlora.yml
+
+base_model: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+model_type: LlamaForCausalLM
+tokenizer_type: LlamaTokenizer
+
+load_in_8bit: false
+load_in_4bit: true
+strict: false
+
+datasets:
+  - path: C:/Users/ethan/jarvis/jarvis/data/personality_forge/sft_sharegpt.jsonl
+    type: sharegpt
+    conversation: chatml
+
+dataset_prepared_path: C:/Users/ethan/jarvis/jarvis/data/personality_forge/prepared
+val_set_size: 0.02
+output_dir: C:/Users/ethan/jarvis/jarvis/data/personality_forge/axolotl_output
+
+adapter: qlora
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - v_proj
+  - k_proj
+  - o_proj
+
+sequence_len: 1024
+sample_packing: true
+pad_to_sequence_len: true
+
+gradient_accumulation_steps: 4
+micro_batch_size: 2
+num_epochs: 2
+optimizer: adamw_bnb_8bit
+lr_scheduler: cosine
+learning_rate: 0.0002
+
+train_on_inputs: false
+group_by_length: false
+bf16: auto
+fp16: false
+tf32: false
+
+gradient_checkpointing: true
+logging_steps: 10
+warmup_ratio: 0.03
+evals_per_epoch: 1
+saves_per_epoch: 1
+weight_decay: 0.0
+special_tokens:
+  pad_token: "<|endoftext|>"
+
+# Personality intent baked into data: British diction, address user as Sir.

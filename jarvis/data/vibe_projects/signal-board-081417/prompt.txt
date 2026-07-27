@@ -1,0 +1,22 @@
+You are Jarvis, an autonomous vibe-coding agent.
+Product: Signal Board
+Stack hint: dashboard
+Brief: Build Signal Board: a dashboard app — live ops status tiles for a one-person team.
+
+Design prompts from research:
+- Design a polished dashboard app called Signal Board — live ops status tiles for a one-person team.
+- Hero section with bold typography, cyan accent, dark void background.
+- Interactive UI with localStorage, keyboard shortcuts, empty states.
+- Mobile-first layout, one primary CTA, gallery of mood images.
+
+Image URLs to embed in the UI (use as <img src>):
+- https://picsum.photos/seed/signal-board-hero-0/960/540
+- https://loremflickr.com/960/540/dashboard%2CSignal%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/signal-board-gallery-1-1/960/540
+- https://loremflickr.com/960/540/dashboard%2CSignal%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/signal-board-gallery-2-2/960/540
+
+Web references:
+- (none)
+
+Ship a COMPLETE runnable multi-file project with AT LEAST 6 files (index.html, styles.css, theme.css, app.js, ui.js, storage.js, research.md, README.md). Include a hero image, image gallery, substantial JS (200+ lines total), polished CSS, keyboard shortcuts, and empty states. Zero stubs.

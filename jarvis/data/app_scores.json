@@ -1,0 +1,75 @@
+{
+  "updated_at": 1785108945.3927307,
+  "apps": {
+    "pulse-arena": {
+      "title": "Pulse Arena",
+      "total_points": 102,
+      "visits": 0,
+      "searches": 0,
+      "actions": 2,
+      "events": [
+        {
+          "t": 1784928506.2579894,
+          "kind": "action",
+          "points": 10,
+          "label": "scaffold",
+          "meta": {}
+        },
+        {
+          "t": 1784928511.2321253,
+          "kind": "publish",
+          "points": 50,
+          "label": "Published",
+          "meta": {
+            "path": "C:\\Users\\ethan\\jarvis-projects\\pulse-arena"
+          }
+        },
+        {
+          "t": 1784928531.690043,
+          "kind": "score",
+          "points": 42,
+          "label": "shower-test",
+          "meta": {}
+        }
+      ],
+      "last_at": 1784928531.690043,
+      "publish_url": "http://127.0.0.1:4173",
+      "high_score": 102
+    },
+    "react-app-8925": {
+      "title": "React App 8925",
+      "total_points": 16,
+      "visits": 1,
+      "searches": 0,
+      "actions": 2,
+      "events": [
+        {
+          "t": 1785108933.1014454,
+          "kind": "action",
+          "points": 10,
+          "label": "scaffold",
+          "meta": {}
+        },
+        {
+          "t": 1785108937.2090352,
+          "kind": "visit",
+          "points": 5,
+          "label": "session",
+          "meta": {}
+        },
+        {
+          "t": 1785108945.3639934,
+          "kind": "action",
+          "points": 1,
+          "label": "filter",
+          "meta": {
+            "tag": "Memory"
+          }
+        }
+      ],
+      "last_at": 1785108945.3639934,
+      "publish_url": "http://127.0.0.1:5173",
+      "high_score": 16
+    }
+  }
+}

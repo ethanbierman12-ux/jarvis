@@ -33,6 +33,7 @@ from jarvis.ui.widgets.quick_action import QuickActionChip, AlertBanner
 from jarvis.ui.widgets.weather_fx import WeatherAtmosphere
 from jarvis.ui.widgets.site_preview import SitePreview
 from jarvis.ui.widgets.code_preview import CodePreview
+from jarvis.ui.widgets.build_theater import BuildTheater
 from jarvis.ui.widgets.away_theater import AwayTheater
 from jarvis.ui.widgets.map_view import MapView
 from jarvis.ui.widgets.command_monitor import CommandMonitor
@@ -320,6 +321,10 @@ class MainWindow(QMainWindow):
         self.code_preview.open_ide.connect(self._open_vibe_ide)
         self.code_preview.hide()
 
+        self.build_theater = BuildTheater(root)
+        self.build_theater.closed.connect(self._on_build_theater_closed)
+        self.build_theater.hide()
+
         self.away_theater = AwayTheater(root)
         self.away_theater.closed.connect(
             lambda: self.append_log("AWAY › theater closed")
@@ -384,6 +389,12 @@ class MainWindow(QMainWindow):
                     self.camera.raise_()
             except Exception:
                 pass
+            try:
+                if getattr(self, "build_theater", None) and self.build_theater.isVisible():
+                    self.build_theater.setGeometry(self._root.rect())
+                    self.build_theater.raise_()
+            except Exception:
+                pass
         return super().eventFilter(obj, event)
 
     def _on_boot_done(self) -> None:
@@ -407,6 +418,13 @@ class MainWindow(QMainWindow):
         self.boot_ready.emit()
 
     def _on_escape(self) -> None:
+        if getattr(self, "build_theater", None) and self.build_theater.isVisible():
+            try:
+                self.build_theater._close()
+            except Exception:
+                self.build_theater.hide()
+                self._on_build_theater_closed()
+            return
         if getattr(self, "camera", None) and self.camera.isVisible():
             self.camera.hide_feed(emit=True)
             return
@@ -491,30 +509,15 @@ class MainWindow(QMainWindow):
                 "registry_ui": lambda payload: self.request_ui.emit("registry_ui", payload),
                 "monitor_ui": lambda payload: self.request_ui.emit("monitor_ui", payload),
                 "camera_ui": lambda a: self.request_camera.emit(bool(a)),
-                "map_ui": lambda payload: QTimer.singleShot(
-                    0, lambda: self._toggle_map(payload)
-                ),
-                "news_ui": lambda payload: QTimer.singleShot(
-                    0, lambda: self._toggle_news(payload)
-                ),
-                "site_ui": lambda payload: QTimer.singleShot(
-                    0, lambda: self._toggle_site(payload)
-                ),
-                "site_progress": lambda msg: QTimer.singleShot(
-                    0, lambda m=msg: self._site_progress(m)
-                ),
-                "code_ui": lambda payload: QTimer.singleShot(
-                    0, lambda: self._toggle_code(payload)
-                ),
-                "code_progress": lambda msg: QTimer.singleShot(
-                    0, lambda m=msg: self._code_progress(m)
-                ),
-                "away_ui": lambda payload: QTimer.singleShot(
-                    0, lambda: self._toggle_away(payload)
-                ),
-                "away_progress": lambda msg: QTimer.singleShot(
-                    0, lambda m=msg: self._away_progress(m)
-                ),
+                # Thread-safe: voice/worker threads must use signals, not QTimer alone
+                "map_ui": lambda payload: self.request_ui.emit("map_ui", payload),
+                "news_ui": lambda payload: self.request_ui.emit("news_ui", payload),
+                "site_ui": lambda payload: self.request_ui.emit("site_ui", payload),
+                "site_progress": lambda msg: self.request_ui.emit("site_progress", msg),
+                "code_ui": lambda payload: self.request_ui.emit("code_ui", payload),
+                "code_progress": lambda msg: self.request_ui.emit("code_progress", msg),
+                "away_ui": lambda payload: self.request_ui.emit("away_ui", payload),
+                "away_progress": lambda msg: self.request_ui.emit("away_progress", msg),
                 "bond": lambda h: QTimer.singleShot(0, lambda: self._bond(h)),
                 "bedtime": lambda d: QTimer.singleShot(0, lambda: self._bedtime(d)),
                 "state": lambda s: QTimer.singleShot(
@@ -544,8 +547,8 @@ class MainWindow(QMainWindow):
                 "start_pulse": lambda _: QTimer.singleShot(0, self._on_start_pulse),
                 "hud_alert": lambda t: QTimer.singleShot(0, lambda: self._hud_alert(str(t))),
                 "quick_action": lambda t: QTimer.singleShot(0, lambda: self._offer_quick(str(t))),
-                "hitl_ask": lambda p: QTimer.singleShot(0, lambda: self._offer_hitl(p)),
-                "hitl_clear": lambda _: QTimer.singleShot(0, self.hitl_gate.hide_gate),
+                "hitl_ask": lambda p: self.request_ui.emit("hitl_ask", p),
+                "hitl_clear": lambda _: self.request_ui.emit("hitl_clear", None),
                 "stats": lambda s: QTimer.singleShot(0, lambda: self._apply_stats(s)),
                 "feed": lambda lines: QTimer.singleShot(0, lambda: self._apply_feed(lines)),
                 "place_hud": lambda pref: QTimer.singleShot(
@@ -697,11 +700,22 @@ class MainWindow(QMainWindow):
     def _offer_hitl(self, payload) -> None:
         if not isinstance(payload, dict):
             return
+        # Always sit above Build Theater / other overlays
+        try:
+            root = self.centralWidget() or getattr(self, "_root", None)
+            if root is not None:
+                self.hitl_gate.setParent(root)
+        except Exception:
+            pass
         self.hitl_gate.offer(payload)
+        parent = self.hitl_gate.parentWidget() or self
+        pw = parent.width() if hasattr(parent, "width") else self.width()
+        ph = parent.height() if hasattr(parent, "height") else self.height()
         self.hitl_gate.move(
-            max(20, (self.width() - self.hitl_gate.width()) // 2),
-            max(48, self.height() // 6),
+            max(20, (pw - self.hitl_gate.width()) // 2),
+            max(48, ph // 6),
         )
+        self.hitl_gate.show()
         self.hitl_gate.raise_()
         self.hitl_gate.activateWindow()
         title = payload.get("title") or "permission"
@@ -836,6 +850,7 @@ class MainWindow(QMainWindow):
                 self.news,
                 self.site_preview,
                 self.code_preview,
+                self.build_theater,
                 self.away_theater,
                 self.countdown,
                 self.artifact,
@@ -1301,6 +1316,29 @@ class MainWindow(QMainWindow):
                     self.cmd_monitor.raise_()
             except Exception:
                 pass
+        elif key == "map_ui":
+            self._toggle_map(payload)
+        elif key == "news_ui":
+            self._toggle_news(payload)
+        elif key == "site_ui":
+            self._toggle_site(payload)
+        elif key == "site_progress":
+            self._site_progress(payload)
+        elif key == "code_ui":
+            self._toggle_code(payload)
+        elif key == "code_progress":
+            self._code_progress(payload)
+        elif key == "away_ui":
+            self._toggle_away(payload)
+        elif key == "away_progress":
+            self._away_progress(payload)
+        elif key == "hitl_ask":
+            self._offer_hitl(payload)
+        elif key == "hitl_clear":
+            try:
+                self.hitl_gate.hide_gate()
+            except Exception:
+                pass
 
     def _command_ui(self, payload) -> None:
         try:
@@ -1482,6 +1520,19 @@ class MainWindow(QMainWindow):
         self.append_log("NEWS › ABC Live top-left on camera")
         self.status.setText("● CAMERA · ABC LIVE")
 
+    def _on_build_theater_closed(self) -> None:
+        self.append_log("BUILD › theater closed")
+        try:
+            self.code_preview.hide()
+        except Exception:
+            pass
+        try:
+            self.site_preview.hide()
+        except Exception:
+            pass
+        self.status.setText("● OPTIMAL")
+        self._reactor_activity("idle")
+
     def _on_news_closed(self) -> None:
         self.append_log("NEWS › closed")
         self.status.setText("● OPTIMAL")
@@ -1489,6 +1540,10 @@ class MainWindow(QMainWindow):
     def _toggle_site(self, payload) -> None:
         if payload is False or payload == 0 or payload == "close":
             self.site_preview.hide()
+            try:
+                self.build_theater.hide()
+            except Exception:
+                pass
             self.append_log("SITE › preview closed")
             self.status.setText("● OPTIMAL")
             self._reactor_activity("idle")
@@ -1497,8 +1552,12 @@ class MainWindow(QMainWindow):
             return
         if payload.get("building"):
             hint = payload.get("hint") or "new venture"
-            self.site_preview.show_building(str(hint))
-            self.site_preview.raise_()
+            try:
+                self._open_build_theater(mode="site", hint=str(hint))
+            except Exception as e:
+                self.append_log(f"SITE › theater failed: {e}")
+                self.site_preview.show_building(str(hint))
+                self.site_preview.raise_()
             self.append_log(f"SITE › agentic coding — {hint}")
             self.status.setText("● AGENTIC CODING")
             self._reactor_activity("build")
@@ -1508,6 +1567,10 @@ class MainWindow(QMainWindow):
         prompt = str(payload.get("prompt") or "")
         if url:
             self.site_preview.show_url(url, brand=brand or "scaffold", prompt=prompt or url)
+            try:
+                self.build_theater.show_done(path=url, name=brand or "scaffold")
+            except Exception:
+                pass
             self.append_log(f"SITE › preview tab — {url}")
             self.status.setText("● PREVIEW")
             self._reactor_activity("idle")
@@ -1524,6 +1587,10 @@ class MainWindow(QMainWindow):
             brand=brand,
             prompt=prompt,
         )
+        try:
+            self.build_theater.show_done(path=str(p), name=brand or p.parent.name)
+        except Exception:
+            pass
         self.append_log(f"SITE › live preview — {brand or p.parent.name}")
         self.status.setText("● SITE READY")
         self._reactor_activity("idle")
@@ -1542,10 +1609,26 @@ class MainWindow(QMainWindow):
                 self.site_preview.apply_progress(msg)
         except Exception:
             pass
+        try:
+            theater = getattr(self, "build_theater", None)
+            if theater is not None and (
+                theater.isVisible() or getattr(theater, "_active", False)
+            ):
+                if not theater.isVisible():
+                    theater._fill_parent()
+                    theater.show()
+                    theater.raise_()
+                theater.apply_progress(msg)
+        except Exception:
+            pass
 
     def _toggle_code(self, payload) -> None:
         if payload is False or payload == 0 or payload == "close":
             self.code_preview.hide()
+            try:
+                self.build_theater.hide()
+            except Exception:
+                pass
             self.append_log("VIBE › panel closed")
             self.status.setText("● OPTIMAL")
             self._reactor_activity("idle")
@@ -1554,7 +1637,15 @@ class MainWindow(QMainWindow):
             return
         if payload.get("building"):
             hint = payload.get("hint") or "new app"
-            self.code_preview.show_building(str(hint))
+            try:
+                self._open_build_theater(mode="vibe", hint=str(hint))
+            except Exception as e:
+                self.append_log(f"VIBE › theater failed: {e}")
+                try:
+                    self.code_preview.show_building(str(hint))
+                    self.code_preview.raise_()
+                except Exception:
+                    pass
             self.append_log(f"VIBE › autonomous agent — {hint}")
             self.status.setText("● VIBE CODING")
             self._reactor_activity("vibe")
@@ -1566,6 +1657,13 @@ class MainWindow(QMainWindow):
         from pathlib import Path
 
         p = Path(path)
+        try:
+            self.build_theater.show_done(
+                path=str(p), name=str(payload.get("name") or p.name)
+            )
+            self.build_theater.raise_()
+        except Exception:
+            pass
         self.code_preview.show_project(
             p,
             name=str(payload.get("name") or ""),
@@ -1577,12 +1675,28 @@ class MainWindow(QMainWindow):
         self.status.setText("● VIBE READY")
         self._reactor_activity("idle")
 
-    def _code_progress(self, msg: str) -> None:
-        self.append_log(f"VIBE › {msg}")
+    def _code_progress(self, msg) -> None:
+        text = str(msg.get("msg") or msg) if isinstance(msg, dict) else str(msg)
+        if text:
+            self.append_log(f"VIBE › {text}")
         self._reactor_activity("vibe")
+        # Always drive the theater while a vibe session is active (don't require
+        # a prior isVisible race — first progress can arrive before show paints).
+        try:
+            theater = getattr(self, "build_theater", None)
+            if theater is not None and (
+                theater.isVisible() or getattr(theater, "_active", False)
+            ):
+                if not theater.isVisible():
+                    theater._fill_parent()
+                    theater.show()
+                    theater.raise_()
+                theater.apply_progress(msg)
+        except Exception as e:
+            self.append_log(f"VIBE › theater progress failed: {e}")
         try:
             if self.code_preview.isVisible():
-                self.code_preview.set_progress(msg)
+                self.code_preview.set_progress(text)
         except Exception:
             pass
 
@@ -2075,7 +2189,6 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         self.status.setText("● EXECUTING")
-        QTimer.singleShot(900, lambda: self.status.setText("● OPTIMAL"))
 
         low = text.lower().strip()
         # Build site button → agentic coding workbench every time
@@ -2090,6 +2203,24 @@ class MainWindow(QMainWindow):
             self._launch_agentic_site()
             return
 
+        # Vibe button / command → open Build Theater on the GUI thread first
+        if (
+            low
+            in (
+                "start vibe coding",
+                "start vibe",
+                "vibe coding",
+                "vibe",
+                "start vibe code",
+                "do vibe coding",
+                "run vibe coding",
+            )
+            or low.startswith("start vibe coding")
+            or low.startswith("vibe coding")
+        ):
+            self._launch_vibe_coding(brief="")
+            return
+
         # Away button → live away agent theater
         if low in (
             "away mode",
@@ -2100,6 +2231,8 @@ class MainWindow(QMainWindow):
         ):
             self._launch_away_agent()
             return
+
+        QTimer.singleShot(900, lambda: self.status.setText("● OPTIMAL"))
 
         if self.brain:
             # Never run the brain on the Qt GUI thread — HITL / network / healer
@@ -2123,23 +2256,92 @@ class MainWindow(QMainWindow):
             name="jarvis-hud-cmd",
         ).start()
 
+    def _open_build_theater(self, *, mode: str, hint: str) -> None:
+        """Force the live Build Theater onto the HUD (GUI thread only)."""
+        try:
+            self.show()
+            self.raise_()
+            self.activateWindow()
+        except Exception:
+            pass
+        try:
+            if getattr(self, "_center_stack", None) and self._center_stack.currentIndex() == 1:
+                self._close_map_mode()
+        except Exception:
+            pass
+        for w in (
+            getattr(self, "atmosphere", None),
+            getattr(self, "typing", None),
+            getattr(self, "startup", None),
+            getattr(self, "site_preview", None),
+            getattr(self, "code_preview", None),
+            getattr(self, "away_theater", None),
+            getattr(self, "news", None),
+        ):
+            try:
+                if w is not None and w.isVisible():
+                    w.hide()
+            except Exception:
+                pass
+        root = self.centralWidget() or getattr(self, "_root", None)
+        if root is not None:
+            self.build_theater.setParent(root)
+            self.build_theater.setGeometry(root.rect())
+        self.build_theater.show_session(mode=mode, hint=hint)
+        self.build_theater.raise_()
+        self.build_theater.activateWindow()
+        self.append_log(f"BUILD › theater open · {mode} · {hint}")
+
+    def _launch_vibe_coding(self, brief: str = "") -> None:
+        """Open Build Theater immediately, then run vibe agent on a worker."""
+        hint = (brief or "").strip() or "invented app"
+        self.append_log(f"VIBE › opening live theater — {hint}")
+        self.status.setText("● VIBE CODING")
+        self._reactor_activity("vibe")
+        try:
+            self._open_build_theater(mode="vibe", hint=hint)
+        except Exception as e:
+            self.append_log(f"VIBE › theater open failed: {e}")
+            try:
+                self.code_preview.show_building(hint)
+                self.code_preview.raise_()
+            except Exception:
+                pass
+
+        if not self.brain:
+            self.append_log("VIBE › brain not ready")
+            return
+
+        def _go() -> None:
+            try:
+                reply = self.brain._run_vibe_code(brief=brief or "")
+                # Opening line already spoken/returned by handle path; avoid double-say
+                if reply and "Opening Build Theater" not in reply:
+                    self.brain.say(reply)
+            except Exception as e:
+                self.append_log(f"VIBE › agent failed: {e}")
+                try:
+                    self.request_ui.emit("code_ui", False)
+                except Exception:
+                    pass
+
+        threading.Thread(target=_go, daemon=True, name="jarvis-vibe-code").start()
+
     def _launch_agentic_site(self) -> None:
         """Open the agentic workbench immediately, then run the site agent."""
         self.append_log("SITE › agentic coding workbench")
         self.status.setText("● AGENTIC CODING")
         self._reactor_activity("build")
         try:
-            # Close map so the workbench is visible
-            if getattr(self, "_center_stack", None) and self._center_stack.currentIndex() == 1:
-                self._close_map_mode()
-        except Exception:
-            pass
-        try:
-            self.site_preview.show_building("agentic build")
-            self.site_preview.raise_()
-            self.site_preview.activateWindow()
+            self._open_build_theater(mode="site", hint="agentic build")
         except Exception as e:
-            self.append_log(f"SITE › workbench open failed: {e}")
+            self.append_log(f"SITE › theater open failed: {e}")
+            try:
+                self.site_preview.show_building("agentic build")
+                self.site_preview.raise_()
+                self.site_preview.activateWindow()
+            except Exception as e2:
+                self.append_log(f"SITE › workbench open failed: {e2}")
 
         if not self.brain:
             self.append_log("SITE › brain not ready")
@@ -2149,7 +2351,7 @@ class MainWindow(QMainWindow):
         def _go() -> None:
             try:
                 reply = self.brain._run_site_build(brief="")
-                if reply:
+                if reply and "Opening Build Theater" not in str(reply):
                     self.brain.say(reply)
             except Exception as e:
                 self.append_log(f"SITE › agent failed: {e}")

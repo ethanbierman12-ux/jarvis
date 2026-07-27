@@ -63,6 +63,46 @@
       "engine": "template",
       "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\signal-board-070038",
       "created": "2026-07-19T07:00:39"
+    },
+    {
+      "slug": "lattice-calc",
+      "name": "Lattice Calc",
+      "stack": "python",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\lattice-calc",
+      "created": "2026-07-27T07:45:50"
+    },
+    {
+      "slug": "lattice-calc-074943",
+      "name": "Lattice Calc",
+      "stack": "python",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\lattice-calc-074943",
+      "created": "2026-07-27T07:49:58"
+    },
+    {
+      "slug": "echo-timer",
+      "name": "Echo Timer",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\echo-timer",
+      "created": "2026-07-27T08:01:03"
+    },
+    {
+      "slug": "forge-notes",
+      "name": "Forge Notes",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\forge-notes",
+      "created": "2026-07-27T08:08:40"
+    },
+    {
+      "slug": "signal-board-081417",
+      "name": "Signal Board",
+      "stack": "dashboard",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\signal-board-081417",
+      "created": "2026-07-27T08:14:48"
     }
   ]
 }

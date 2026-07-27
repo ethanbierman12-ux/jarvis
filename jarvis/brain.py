@@ -37,6 +37,8 @@ from jarvis.core.rlhf import RLHFEngine
 from jarvis.core.soundscape import Soundscape
 from jarvis.core.diary import Diary, VisualMemory
 from jarvis.core.memory import VectorMemory
+from jarvis.core.pinecone_memory import PineconeMemory
+from jarvis.core.live_voice import LiveVoiceBridge
 from jarvis.core.audio_devices import AudioRouter
 from jarvis.core.home_assistant import HomeAssistant
 from jarvis.core.macro_gateway import MacroGateway
@@ -44,6 +46,15 @@ from jarvis.core.doorbell_bridge import DoorbellBridge
 from jarvis.core.healer import PcHealer
 from jarvis.core.scaffolder import ProjectScaffolder
 from jarvis.core import app_scores
+from jarvis.core.progress_report import ProgressReport
+from jarvis.core.personality_forge import PersonalityForge
+from jarvis.core.cognitive import CognitiveCore
+from jarvis.core.briefing_protocols import BriefingProtocols
+from jarvis.core.protocols import ProtocolEngine
+from jarvis.core.workshop import WorkshopInventory
+from jarvis.core.package_tracker import PackageTracker
+from jarvis.core.advanced_ai import AdvancedAIPack
+from jarvis.core.cron_jobs import CronRegistry
 from jarvis.core.memory_consolidate import MemoryConsolidator
 from jarvis.core.clipboard_insight import ClipboardInsight
 from jarvis.core.iot_bridge import IoTBridge
@@ -212,7 +223,21 @@ class Brain:
         self.soundscape = Soundscape()
         self.diary = Diary()
         self.vmemory = VisualMemory()
-        self.vstore = VectorMemory()
+        self.pinecone = PineconeMemory(
+            getattr(settings, "pinecone_api_key", "") or "",
+            index_host=getattr(settings, "pinecone_index_host", "") or "",
+            namespace=getattr(settings, "pinecone_namespace", "") or "jarvis",
+        )
+        self.vstore = VectorMemory(pinecone=self.pinecone)
+        self.live_voice = LiveVoiceBridge(
+            elevenlabs_api_key=getattr(settings, "elevenlabs_api_key", "") or "",
+            elevenlabs_voice_id=getattr(settings, "elevenlabs_voice_id", "") or "",
+            elevenlabs_model=getattr(settings, "elevenlabs_model", "")
+            or "eleven_turbo_v2_5",
+            livekit_url=getattr(settings, "livekit_url", "") or "",
+            livekit_api_key=getattr(settings, "livekit_api_key", "") or "",
+            livekit_api_secret=getattr(settings, "livekit_api_secret", "") or "",
+        )
         self.audio = AudioRouter()
         self.tasks = TaskQueue(workers=2)
         self.ha = HomeAssistant(
@@ -334,6 +359,41 @@ class Brain:
         self.feed = DataFeed()
         self.steward = AwaySteward()
         self.away_agent = AwayAgent()
+        self.progress = ProgressReport(
+            spend=self.spend,
+            habits=self.habits,
+            brief=self.brief,
+            steward=self.steward,
+            cloud=getattr(self, "cloud", None),
+        )
+        self.forge = PersonalityForge()
+        self.cognitive = CognitiveCore("executive")
+        self.workshop = WorkshopInventory()
+        self.packages = PackageTracker()
+        self.protocols = ProtocolEngine(
+            settings=settings,
+            apps=self.apps,
+            lamp=getattr(self, "lamp", None),
+            system=self.system,
+        )
+        self.briefings = BriefingProtocols(
+            brief=self.brief,
+            spend=self.spend,
+            habits=self.habits,
+            news_fn=lambda: (
+                self.topics.headlines("tech", limit=2)
+                if getattr(self, "topics", None)
+                else ""
+            ),
+            mail_fn=lambda: (
+                self.cloud.gmail_inbox(3)
+                if getattr(self, "cloud", None)
+                and getattr(self.cloud, "gmail_access_token", "")
+                else ""
+            ),
+        )
+        self.cron = CronRegistry(on_report=self._cron_report)
+        self._wire_cron_handlers()
         self.wake_brief = WakeBrief(
             spend=self.spend,
             steward=self.steward,
@@ -433,6 +493,17 @@ class Brain:
             getattr(settings, "travis_mode", "off") or "off"
         )
         self.persona.bind_travis(self.travis)
+        try:
+            self.persona._cognitive = self.cognitive  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        try:
+            self.advanced = AdvancedAIPack(self)
+            if bool(getattr(settings, "guest_mode_default", False)):
+                self.advanced.guest.enable()
+        except Exception as e:
+            print(f"[advanced_ai] init: {e}")
+            self.advanced = None  # type: ignore[assignment]
         try:
             self.router = SemanticRouter()
         except Exception:
@@ -662,6 +733,17 @@ class Brain:
             pass
         threading.Timer(0.4, self._wake_command_center).start()
         threading.Timer(3.2, self._morning_weather_nudge).start()
+        # Background micro-agents (sys monitor / horizon / packages)
+        try:
+            if getattr(self, "cron", None):
+                # Refresh lamp handle if it was created later
+                try:
+                    self.protocols.lamp = getattr(self, "lamp", None)
+                except Exception:
+                    pass
+                self.cron.start()
+        except Exception as e:
+            print(f"[cron] {e}")
         # Do NOT auto-apply Windows theme (was turning the taskbar white in daytime).
         # Optional one-shot repair if a prior build forced light system theme.
         try:
@@ -1192,6 +1274,14 @@ class Brain:
         snap = getattr(ev, "snapshot", "") or ""
         self._emit("heard", f"[security] {kind}: {msg}")
         if kind == "intruder":
+            adv = getattr(self, "advanced", None)
+            if adv is not None and getattr(adv.guest, "on", False):
+                self._emit("hud_alert", "GUEST MODE · alert suppressed")
+                self.say(
+                    "Guest detected, Sir. Privileged macros stay locked — "
+                    "do try not to let them break anything expensive."
+                )
+                return
             self._emit("hud_alert", "INTRUDER ALERT")
             self._emit("panic_ui", True)
             try:
@@ -1294,6 +1384,86 @@ class Brain:
         self._emit("stats", packet["stats"])
         self._emit("feed", self.feed.lines_for_ui(18) or packet["feed_lines"])
 
+    def _cron_report(self, msg: str) -> None:
+        """Quiet micro-agent callback — HUD feed, speak only if notable."""
+        if not msg:
+            return
+        try:
+            self.feed.push("cron", msg[:200])
+            self._emit("feed", self.feed.lines_for_ui(18))
+            self._emit("hud_alert", msg[:80])
+        except Exception:
+            pass
+
+    def _wire_cron_handlers(self) -> None:
+        cron = getattr(self, "cron", None)
+        if not cron:
+            return
+
+        def sys_monitor(job) -> str | None:
+            try:
+                import psutil
+
+                cpu = psutil.cpu_percent(interval=0.15)
+                ram = psutil.virtual_memory().percent
+                if cpu >= 88 or ram >= 90:
+                    return f"Systems watch: CPU {cpu:.0f}% · RAM {ram:.0f}% — pressure rising, Sir."
+            except Exception:
+                return None
+            return None
+
+        def horizon(job) -> str | None:
+            try:
+                if getattr(self, "topics", None):
+                    return self.topics.latest_blurb()
+            except Exception:
+                return None
+            return None
+
+        def packages(job) -> str | None:
+            try:
+                pkgs = self.packages._load().get("packages") or []
+                active = [p for p in pkgs if p.get("status") != "done"]
+                if active:
+                    return f"Shipment watch: {len(active)} active package(s) on the ledger."
+            except Exception:
+                return None
+            return None
+
+        cron.register_handler("sys_monitor", sys_monitor)
+        cron.register_handler("horizon", horizon)
+        cron.register_handler("packages", packages)
+
+    def _icloud_mail(self):
+        from jarvis.core.icloud_mail import IcloudMail
+
+        return IcloudMail(
+            getattr(self.settings, "icloud_email", "") or "",
+            getattr(self.settings, "icloud_app_password", "") or "",
+        )
+
+    def _sync_cash_app_spend(self) -> str:
+        """Prefer iCloud Mail (where Cash App receipts live), fall back to Gmail."""
+        icloud = self._icloud_mail()
+        if icloud.configured():
+            return self.spend.sync_cash_app_from_icloud(icloud.fetch_cash_app)
+
+        cloud = getattr(self, "cloud", None)
+        if cloud and getattr(cloud, "gmail_access_token", ""):
+            # Gmail is linked but Cash App is often on iCloud — hint that path
+            line = self.spend.sync_cash_app_from_gmail(cloud.gmail_search_messages)
+            if "No Cash App emails" in line:
+                return (
+                    line
+                    + " Your Cash App mail is probably on iCloud — say link icloud mail."
+                )
+            return line
+
+        return (
+            "Cash App receipts need iCloud Mail. Say link icloud mail, "
+            "set your Apple ID email and app-specific password, then sync cash app."
+        )
+
     def _suggest_timer_start(self) -> None:
         def _tick():
             if not getattr(self, "_stopped", False):
@@ -1389,8 +1559,8 @@ class Brain:
 
         threading.Thread(target=_job, daemon=True, name="site-build").start()
         return (
-            "Understood. Opening the agentic coding workbench — "
-            "watch the agent plan, write files, run the terminal, and hot-reload the browser."
+            "Understood. Opening Build Theater — Working, Coding, and Building tabs live. "
+            "Watch the agent plan, write files, run the terminal, and hot-reload the browser."
         )
 
     def _run_vibe_code(self, brief: str = "") -> str:
@@ -1402,9 +1572,22 @@ class Brain:
 
         def _job() -> None:
             try:
-                def progress(msg: str) -> None:
+                def progress(msg) -> None:
                     self._emit("code_progress", msg)
-                    self.feed.push("vibe", msg[:160], meta={"status": "building"})
+                    text = (
+                        str(msg.get("msg") or "")
+                        if isinstance(msg, dict)
+                        else str(msg)
+                    )
+                    if text:
+                        self.feed.push(
+                            "vibe", text[:160], meta={"status": "building"}
+                        )
+                    if isinstance(msg, dict) and msg.get("speak"):
+                        try:
+                            self.say(str(msg["speak"]))
+                        except Exception:
+                            pass
 
                 reply = self.vibe.build(
                     brief or "",
@@ -1435,7 +1618,7 @@ class Brain:
 
         threading.Thread(target=_job, daemon=True, name="vibe-code").start()
         return (
-            "Understood. Starting autonomous AI agent development — "
+            "Understood. Opening Build Theater — watch Working, Coding, and Building tabs live. "
             "I will invent the product if needed, write the brief, generate the code, "
             "and open the project. Watch the vibe panel."
         )
@@ -1896,8 +2079,17 @@ class Brain:
             on_score=lambda data: app_scores.ingest(
                 data if isinstance(data, dict) else {}
             ),
+            on_presence=self._companion_presence,
         )
         self.companion.start()
+
+    def _companion_presence(self, data: dict) -> dict:
+        """BLE / mmWave / phone → room targeting for voice lead."""
+        adv = getattr(self, "advanced", None)
+        if adv is None:
+            return {"reply": "Advanced AI pack offline."}
+        msg = adv.presence.ingest_sensor(data if isinstance(data, dict) else {})
+        return {"reply": msg, "room": adv.presence.current_room()}
 
     def _companion_handoff(self, data: dict) -> dict:
         """PC shutdown / sleep → save context for iPad companion."""
@@ -3332,6 +3524,208 @@ class Brain:
         ).start()
         return f"Running: {cmd}"
 
+    def _try_stark_cmd(self, t: str) -> str | None:
+        """Cognitive roles, protocols, workshop, packages, briefings, cron."""
+        if not t:
+            return None
+
+        # DUME / pushback easter eggs (before normal routing)
+        cog = getattr(self, "cognitive", None)
+        push = None
+        if cog:
+            dume = cog.dume_if_ridiculous(t)
+            if dume:
+                return self._flavor("ok", dume)
+            push = cog.maybe_pushback(t)
+
+        # Named protocols / lore triggers
+        proto = getattr(self, "protocols", None)
+        if proto:
+            hit = proto.try_handle(t)
+            if hit:
+                # Late-night quieter flavor
+                try:
+                    if proto.late_night_style() == "quiet" and len(hit) > 160:
+                        hit = hit[:160].rstrip() + "…"
+                except Exception:
+                    pass
+                return self._flavor("ok", hit)
+
+        if cog and re.search(r"\bcognitive (status|role|core)\b", t):
+            return self._flavor("ok", cog.status())
+        m = re.search(
+            r"\b(?:set|use|switch to)\s+(?:cognitive\s+)?role\s+(?:to\s+)?(\w+)",
+            t,
+        )
+        if m and cog:
+            return self._flavor("ok", cog.set_role(m.group(1)))
+        if cog and push:
+            # Soft challenge only — return pushback as the reply for reckless asks
+            if re.search(
+                r"\b(force push|no tests|skip backup|yolo|hardcode the password|delete everything)\b",
+                t,
+            ):
+                return self._flavor("ok", push)
+
+        if re.search(
+            r"\b(tactical briefing|casual briefing|blind\s*spot briefing|"
+            r"risk briefing)\b",
+            t,
+        ):
+            mode = "tactical"
+            if "casual" in t:
+                mode = "casual"
+            elif "blind" in t or "risk" in t:
+                mode = "blindspot"
+            line = self.briefings.compose(force_mode=mode)
+            self.feed.push("brief", line[:180])
+            return self._flavor("ok", line)
+        if re.search(r"\bbriefing (protocol )?status\b", t):
+            return self._flavor("ok", self.briefings.status())
+
+        if re.search(r"\b(cron status|micro[- ]?agents?|background agents?)\b", t):
+            return self._flavor("ok", self.cron.status())
+
+        # Hologram HUD / LiveKit / Pinecone / Anthropic CU
+        if re.search(
+            r"\b(open (the )?hologram|hologram (hud|dashboard)|open hub dashboard)\b",
+            t,
+        ):
+            url = getattr(self.settings, "hologram_url", "") or "http://127.0.0.1:3000"
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                f"Opening hologram HUD at {url}. Run npm run dev in hub/dashboard if offline.",
+            )
+        if re.search(r"\b(live ?voice status|livekit status|elevenlabs turbo)\b", t):
+            return self._flavor("ok", self.live_voice.status())
+        if re.search(r"\b(pinecone status|hybrid memory status)\b", t):
+            return self._flavor("ok", self.pinecone.status())
+        m = re.search(
+            r"\bset\s+pinecone\s+(?:api\s+)?key\s+to\s+(\S.+)$", t, re.I
+        )
+        if m:
+            key = self._capture_secret(
+                r"\bset\s+pinecone\s+(?:api\s+)?key\s+to\s+(\S.+)$", m.group(1)
+            )
+            self.settings.pinecone_api_key = key
+            self.pinecone.api_key = key
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Pinecone API key vaulted.")
+        m = re.search(
+            r"\bset\s+pinecone\s+(?:index\s+)?host\s+to\s+(\S+)\s*$", t, re.I
+        )
+        if m:
+            host = m.group(1).strip().rstrip(".,")
+            self.settings.pinecone_index_host = host
+            self.pinecone.index_host = host.rstrip("/")
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", f"Pinecone index host set to {host}.")
+        if re.search(
+            r"\b(computer use anthropic|use anthropic computer use|"
+            r"anthropic computer use)\b",
+            t,
+        ):
+            try:
+                self.settings.computer_use_provider = "anthropic"
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Computer-use provider set to Anthropic (computer + editor + bash parity). "
+                "Say computer use: <goal> when ready.",
+            )
+        if re.search(r"\b(enable elevenlabs turbo|prefer elevenlabs)\b", t):
+            self.settings.tts_prefer_elevenlabs = True
+            self.settings.elevenlabs_model = "eleven_turbo_v2_5"
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            self.live_voice.model = "eleven_turbo_v2_5"
+            return self._flavor(
+                "ok",
+                "ElevenLabs turbo preferred for low-latency speech. "
+                + self.live_voice.status(),
+            )
+
+        # Packages
+        if re.search(
+            r"\b(where'?s my (package|parcel|tech|order)|package status|"
+            r"shipment status|tracking status)\b",
+            t,
+        ):
+            return self._flavor("ok", self.packages.where_is_my_package())
+        m = re.search(
+            r"\b(?:track(?:ing)?(?:\s+package)?|add package)\s+([A-Za-z0-9]{8,})\b",
+            t,
+            re.I,
+        )
+        if m:
+            return self._flavor("ok", self.packages.add(m.group(1)))
+        parsed = self.packages.parse_and_add(t)
+        if parsed and re.search(r"\b(track|package|shipping|ups|fedex|usps|tba)\b", t):
+            return self._flavor("ok", parsed)
+
+        # Workshop inventory
+        if re.search(
+            r"\b(workshop stock|what(?:'s| is) in (the )?workshop|"
+            r"what do we have in stock|inventory status)\b",
+            t,
+        ):
+            q = ""
+            m = re.search(r"\b(?:stock|inventory)\s+(?:for\s+)?(.+)$", t)
+            if m:
+                q = m.group(1).strip(" .,!?")
+            return self._flavor("ok", self.workshop.stock(q))
+        m = re.search(
+            r"\b(?:register|log)\s+(?:part|component|item)\s+(.+)$",
+            t,
+        )
+        if m:
+            return self._flavor("ok", self.workshop.register(m.group(1).strip(" .,!?")))
+        if re.search(r"\b(register (this |the )?scan|log (this )?part|add to workshop)\b", t):
+            # Use last vision/scan blurb if any
+            note = ""
+            try:
+                note = getattr(self, "_last_scan_text", "") or ""
+            except Exception:
+                note = ""
+            if not note:
+                return self._flavor(
+                    "ok",
+                    "Show me the part on camera and scan it first, then say register this scan.",
+                )
+            return self._flavor("ok", self.workshop.register_from_scan(note))
+        if re.search(r"\b(synergy check|compatibility check)\b", t):
+            msg = self.workshop.synergy_check() or "No conflicting parts in this session yet."
+            return self._flavor("ok", msg)
+        m = re.search(r"\b(?:source|price|buy)\s+(?:part\s+)?(.+)$", t)
+        if m and re.search(r"\b(source|market|buy|price)\b", t):
+            return self._flavor("ok", self.workshop.market_hint(m.group(1).strip(" .,!?")))
+        if re.search(r"\b(clear workshop session)\b", t):
+            return self._flavor("ok", self.workshop.clear_session())
+
+        # Solar / horizon easter injection
+        if re.search(r"\b(solar (flare|radiation)|space weather)\b", t):
+            return self._flavor(
+                "ok",
+                "Sir, solar radiation chatter is elevated on the open feeds — "
+                "do not be alarmed if local networks experience light latency.",
+            )
+
+        return None
+
     def _try_autonomy_cmd(self, t: str) -> str | None:
         """Healer, scaffold, research jobs, git safety, whisper, IoT, memory."""
         if not t:
@@ -3437,6 +3831,51 @@ class Brain:
         m = re.search(r"\b(?:scores? for|app score)\s+(.+)$", t)
         if m:
             return self._flavor("ok", app_scores.app_detail(m.group(1).strip(" .,!?")))
+
+        # Personality forge — synthetic data, Axolotl LoRA, TRL DPO
+        forge = getattr(self, "forge", None)
+        if forge and re.search(
+            r"\b(personality forge status|forge status|training data status)\b", t
+        ):
+            return self._flavor("ok", forge.status())
+        if forge and re.search(
+            r"\b(generate personality (data(set)?|training data)|"
+            r"forge personality (data|dataset)|build (a )?personality dataset|"
+            r"create (synthetic )?training (data|conversations))\b",
+            t,
+        ):
+            # Default 2000; allow "generate personality dataset 5000"
+            count = 2000
+            mcount = re.search(r"\b(\d{3,5})\b", t)
+            if mcount:
+                count = int(mcount.group(1))
+            line = forge.generate(
+                count=count,
+                honorific=getattr(self.settings, "user_name", None) or "Sir",
+                british=True,
+            )
+            self.feed.push("forge", line[:200])
+            return self._flavor("ok", line)
+        if forge and re.search(
+            r"\b(harvest (rlhf|feedback)( for training)?|pull rlhf into (the )?forge)\b",
+            t,
+        ):
+            return self._flavor("ok", forge.harvest_from_rlhf())
+        if forge and re.search(
+            r"\b(export (axolotl|training) config|refresh (axolotl|dpo) config)\b",
+            t,
+        ):
+            return self._flavor("ok", forge.ensure_configs())
+        if forge and re.search(
+            r"\b(start dpo( training)?|train (with )?dpo|run dpo|trl dpo)\b", t
+        ):
+            return self._flavor("ok", forge.try_launch_trl())
+        if forge and re.search(
+            r"\b(train personality|fine[- ]?tune (jarvis|personality)|"
+            r"start (lora|axolotl|qlora)( training)?)\b",
+            t,
+        ):
+            return self._flavor("ok", forge.train_hint(backend="axolotl"))
 
         # Background web research (explicit only)
         m = re.search(r"\bbackground research\s+(.+)$", t)
@@ -3553,6 +3992,27 @@ class Brain:
             "I'll notify you when it's done."
         )
 
+    def _refresh_cloud_tokens(self) -> None:
+        """Pull vaulted keys into the live CloudIntegrations object (survives mid-session saves)."""
+        cloud = getattr(self, "cloud", None)
+        if cloud is None:
+            return
+        try:
+            from jarvis.core.secrets_vault import get_vault
+
+            get_vault().merge_into(self.settings)
+        except Exception:
+            pass
+        for attr in (
+            "stripe_secret_key",
+            "notion_token",
+            "buffer_access_token",
+            "gmail_access_token",
+        ):
+            val = (getattr(self.settings, attr, "") or "").strip()
+            if val:
+                setattr(cloud, attr, val)
+
     def _try_cloud_cmd(self, t: str) -> str | None:
         """Stripe / Notion / Buffer / Gmail voice intents."""
         if not t:
@@ -3560,6 +4020,7 @@ class Brain:
         cloud = getattr(self, "cloud", None)
         if cloud is None:
             return None
+        self._refresh_cloud_tokens()
 
         if re.search(
             r"\b(integrations?\s+status|cloud\s+status|cloud\s+integrations?)\b",
@@ -3623,6 +4084,43 @@ class Brain:
             except Exception:
                 pass
             return self._flavor("ok", "Gmail token saved to the vault.")
+
+        m = re.search(
+            r"\bset\s+icloud\s+(?:mail\s+)?(?:e-?mail|address)\s+to\s+(\S+@\S+)\s*$",
+            t,
+            re.I,
+        )
+        if m:
+            addr = m.group(1).strip().rstrip(".,")
+            self.settings.icloud_email = addr
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                f"iCloud email set to {addr}. Next: set icloud password to your app-specific password.",
+            )
+
+        m = re.search(
+            r"\bset\s+icloud\s+(?:app[- ]?)?password\s+to\s+(\S.+)$",
+            t,
+            re.I,
+        )
+        if m:
+            key = self._capture_secret(
+                r"\bset\s+icloud\s+(?:app[- ]?)?password\s+to\s+(\S.+)$",
+                m.group(1),
+            )
+            self.settings.icloud_app_password = key
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "iCloud app password saved to the vault. Say icloud status, then sync cash app.",
+            )
 
         # --- link / setup guides ---
         if re.search(r"\b(link|connect|setup)\s+stripe\b|\bstripe\s+setup\b", t):
@@ -3708,6 +4206,33 @@ class Brain:
             return self._flavor(
                 "ok",
                 "Gmail setup is on screen. Prefer Cursor OAuth; or set gmail token for Jarvis voice.",
+            )
+
+        if re.search(
+            r"\b(link|connect|setup)\s+icloud(\s+mail)?\b|\bicloud\s+(mail\s+)?setup\b",
+            t,
+        ):
+            self._emit(
+                "artifact",
+                {
+                    "title": "ICLOUD MAIL · CASH APP",
+                    "text": (
+                        "Cash App receipts on iCloud need an app-specific password:\n"
+                        "1) Open https://appleid.apple.com → Sign-In and Security\n"
+                        "2) App-Specific Passwords → Generate (label: Jarvis)\n"
+                        "3) Say: set icloud email to you@icloud.com\n"
+                        "4) Say: set icloud password to xxxx-xxxx-xxxx-xxxx\n"
+                        "5) Say: icloud status · sync cash app\n"
+                    ),
+                },
+            )
+            try:
+                webbrowser.open("https://appleid.apple.com/account/manage")
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "iCloud Mail setup is on screen. You need an Apple app-specific password, then sync cash app.",
             )
 
         # --- actions ---
@@ -4745,6 +5270,22 @@ class Brain:
         except Exception as e:
             print(f"[autonomy] route: {e}")
 
+        try:
+            adv = getattr(self, "advanced", None)
+            if adv is not None:
+                hit = adv.try_command(t)
+                if hit is not None:
+                    return self._flavor("ok", hit)
+        except Exception as e:
+            print(f"[advanced_ai] route: {e}")
+
+        try:
+            stark = self._try_stark_cmd(t)
+            if stark is not None:
+                return stark
+        except Exception as e:
+            print(f"[stark] route: {e}")
+
         # Vague command → multi-choice HUD chips (non-blocking)
         if bool(getattr(self.settings, "ambiguity_clarify", True)):
             try:
@@ -4927,45 +5468,50 @@ class Brain:
             if self.bedtime.active:
                 self.states.set(JarvisState.ACTIVE)
                 self.bedtime.exit()
-            # Prefer structured daily standup when saying good morning
-            if "good morning" in t or re.search(r"\b(morning brief|daily brief|standup)\b", t):
-                cache = Path(__file__).resolve().parent / "data" / "morning_standup.txt"
-                if cache.exists():
+            # Dynamic mood briefings — never the same style twice in a row
+            if "good morning" in t or re.search(
+                r"\b(morning brief|daily brief|standup|brief me|"
+                r"cinematic (morning )?brief|morning status)\b",
+                t,
+            ):
+                if re.search(r"\b(cinematic|morning status)\b", t):
                     try:
-                        age = time.time() - cache.stat().st_mtime
-                        if age < 14 * 3600:  # same-day-ish precache from Task Scheduler
-                            text = cache.read_text(encoding="utf-8").strip()
-                            if text:
-                                try:
-                                    self.ha.on_jarvis_state("brief")
-                                except Exception:
-                                    pass
-                                self._emit("hud_alert", "Morning standup ready")
-                                self.feed.push("brief", text[:180])
-                                return self._flavor("ok", text)
-                    except Exception:
-                        pass
-                wx = ""
+                        cinematic = getattr(self, "advanced", None)
+                        if cinematic is not None:
+                            spoken = cinematic.morning.run()
+                            self._emit("hud_alert", "Cinematic morning briefing")
+                            self.feed.push("brief", spoken[:180])
+                            return self._flavor("ok", spoken)
+                    except Exception as e:
+                        print(f"[advanced_ai] morning: {e}")
+                force = ""
+                if "tactical" in t:
+                    force = "tactical"
+                elif "casual" in t:
+                    force = "casual"
+                elif "blind" in t or "risk" in t:
+                    force = "blindspot"
                 try:
-                    wx = self.weather.speak_brief()
+                    spoken = self.briefings.compose(mode="auto", force_mode=force)
                 except Exception:
+                    spoken = ""
+                if not spoken:
                     wx = ""
-                weather_line = f"Weather: {wx}." if wx else ""
-                try:
-                    if getattr(self, "live", None):
-                        weather_line = self.live.briefing_prefix()
-                except Exception:
-                    pass
-                brief = self.brief.morning_standup(
-                    weather_line=weather_line, open_inbox=False
-                )
+                    try:
+                        wx = self.weather.speak_brief()
+                    except Exception:
+                        wx = ""
+                    weather_line = f"Weather: {wx}." if wx else ""
+                    spoken = self.brief.morning_standup(
+                        weather_line=weather_line, open_inbox=False
+                    )
                 try:
                     self.ha.on_jarvis_state("brief")
                 except Exception:
                     pass
-                self._emit("hud_alert", "Morning standup ready")
-                self.feed.push("brief", brief[:180])
-                return self._flavor("ok", brief)
+                self._emit("hud_alert", "Morning briefing ready")
+                self.feed.push("brief", spoken[:180])
+                return self._flavor("ok", spoken)
             packet = self.wake_brief.compose(mode="return" if "back" in t else "wake")
             self._emit("stats", packet["stats"])
             self._emit("feed", self.feed.lines_for_ui(18) or packet["feed_lines"])
@@ -4985,7 +5531,7 @@ class Brain:
                 pass
             return self._flavor("ok", packet["speak"])
 
-        # Spend tracking
+        # Spend tracking (+ Cash App)
         spent = self.spend.parse_and_add(t)
         if spent:
             self.habits.log("spend", spent[:40])
@@ -4993,14 +5539,56 @@ class Brain:
             self._push_stats_ui()
             return self._flavor("ok", spent)
         if re.search(
-            r"\b(how much (did|have) i spend|how much (have )?i spent|"
-            r"(what(?:'s| is)|show) my (spend(ing)?|expenses?)|"
-            r"spending (today|this week)|expense (report|summary))\b",
+            r"\b(sync cash\s*app|import cash\s*app|cash\s*app (from )?email|"
+            r"pull cash\s*app (receipts?|spend(ing)?))\b",
             t,
         ):
-            period = "week" if "week" in t else "today"
+            line = self._sync_cash_app_spend()
+            self.feed.push("spend", line)
+            self._push_stats_ui()
+            return self._flavor("ok", line)
+        if re.search(r"\bicloud\s+(mail\s+)?status\b", t):
+            return self._flavor("ok", self._icloud_mail().status())
+        if re.search(
+            r"\b(cash\s*app spend(ing)?|how much (on|via|with) cash\s*app|"
+            r"what(?:'s| is) my cash\s*app|"
+            r"cash\s*app (today|this week|this month|summary|report))\b",
+            t,
+        ):
+            period = "today"
+            if "month" in t:
+                period = "month"
+            elif "week" in t:
+                period = "week"
+            line = self.spend.speak_cash_app(period=period)
+            self.feed.push("spend", line)
+            self._push_stats_ui()
+            return self._flavor("ok", line)
+        if re.search(
+            r"\b(how much (did|have) i spend|how much (have )?i spent|"
+            r"(what(?:'s| is)|show) my (spend(ing)?|expenses?)|"
+            r"spending (today|this week|this month)|expense (report|summary))\b",
+            t,
+        ):
+            period = "today"
+            if "month" in t:
+                period = "month"
+            elif "week" in t:
+                period = "week"
             line = self.spend.speak_summary(period=period)
             self.feed.push("spend", line)
+            self._push_stats_ui()
+            return self._flavor("ok", line)
+
+        # Progress brief (spend + Cash App + tasks + habits + scores)
+        if re.search(
+            r"\b(summarize my progress|my progress|progress (report|brief|update)|"
+            r"how am i doing|status report|give me (a |my )?progress)\b",
+            t,
+        ):
+            line = self.progress.speak()
+            self.habits.log("progress")
+            self.feed.push("progress", line[:220])
             self._push_stats_ui()
             return self._flavor("ok", line)
 
@@ -5149,6 +5737,34 @@ class Brain:
             # Don't steal "coding mode" lights command — already handled elsewhere
             self.habits.log("vibe_code", (brief or "autonomous")[:40])
             return self._flavor("ok", self._run_vibe_code(brief=brief))
+
+        if re.search(r"\b(publish (the )?(vibe|app|project)|ship (the )?vibe|open (the )?vibe in (cursor|ide|code))\b", t):
+            path = self.vibe.last_project
+            if path and path.exists():
+                ide = getattr(self.settings, "work_ide", None) or "code"
+                try:
+                    if not self.vibe.open_in_ide(path, ide=ide):
+                        return self._flavor(
+                            "error",
+                            "Could not open Cursor/VS Code. Install Cursor or say the path aloud.",
+                        )
+                except Exception as e:
+                    return self._flavor("error", f"Publish failed: {e}")
+                self._emit(
+                    "code_ui",
+                    {
+                        "path": str(path),
+                        "name": (self.vibe.last_meta or {}).get("name") or path.name,
+                        "engine": (self.vibe.last_meta or {}).get("engine") or "",
+                        "files": (self.vibe.last_meta or {}).get("files") or [],
+                        "entry": (self.vibe.last_meta or {}).get("entry") or "",
+                    },
+                )
+                return self._flavor(
+                    "ok",
+                    f"Published — opening {path.name} in {ide}. Preview stays in Build Theater.",
+                )
+            return self._flavor("error", "No vibe project to publish yet.")
 
         if re.search(r"\b(open (the |my )?(vibe|project|code) you (built|made)|show (the )?vibe)\b", t):
             path = self.vibe.last_project
@@ -5833,6 +6449,38 @@ class Brain:
                 "ok",
                 f"Switching camera to device index {nxt}.",
             )
+        m = re.search(
+            r"\b(?:use|set|prefer)\s+(?:my\s+)?mic(?:rophone)?\s+(?:to\s+|prefer\s+)?(.+)$",
+            t,
+        )
+        if m:
+            name = m.group(1).strip(" .,!?")
+            name = re.sub(r"^(the|my)\s+", "", name, flags=re.I)
+            if name.lower() in ("default", "windows default", "system"):
+                name = ""
+            self.settings.mic_prefer = name
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            try:
+                self.voice.mic_prefer = name
+            except Exception:
+                pass
+            label = name or "Windows default"
+            return self._flavor(
+                "ok",
+                f"Microphone preference set to {label}. Restart voice or say mic test, Sir.",
+            )
+        if re.search(
+            r"\b(use my mic|listen on my mic|microphone (preference|status))\b", t
+        ):
+            prefer = getattr(self.settings, "mic_prefer", "") or "Windows default"
+            return self._flavor(
+                "ok",
+                f"I'm bound to mic prefer “{prefer}”. "
+                "Say set mic to EMEET or set mic to default to change it.",
+            )
         if re.search(r"\b(test (the )?mic(rophone)?|mic(rophone)? test|can you hear me)\b", t):
             lvl = 0.0
             try:
@@ -6246,12 +6894,29 @@ class Brain:
             r"thumbs up|prefer that)\b",
             t,
         ) and not self.hitl.pending:
-            return self._flavor("ok", self.rlhf.approve())
+            msg = self.rlhf.approve()
+            # Feed approved mic/voice turns into personality forge harvest
+            try:
+                forge = getattr(self, "forge", None)
+                if forge and self.rlhf.last_prompt and self.rlhf.last_reply:
+                    forge.harvest_turn(
+                        self.rlhf.last_prompt,
+                        self.rlhf.last_reply,
+                        source="mic_rlhf",
+                    )
+            except Exception:
+                pass
+            return self._flavor("ok", msg)
         if re.search(
             r"\b(reject( that| this| it)?|that was (wrong|bad|incorrect)|thumbs down|"
-            r"don'?t do that|prefer not)\b",
+            r"don'?t do that|prefer not|fix (that|it|your answer))\b",
             t,
         ) and not self.hitl.pending:
+            adv = getattr(self, "advanced", None)
+            if adv is not None and re.search(
+                r"\b(that was (wrong|bad|incorrect)|fix (that|it|your answer))\b", t
+            ):
+                return self._flavor("ok", adv.correct.fix_last())
             return self._flavor("ok", self.rlhf.reject())
         if re.search(r"\b(digest (rlhf|feedback)|run (rlhf )?digest)\b", t):
             return self._flavor("ok", self.rlhf.digest(apply=True))
@@ -7071,6 +7736,10 @@ class Brain:
             full = f"{spoken} {detail}".strip()
             if open_browser:
                 full = f"{full} Opening Google Lens.".strip()
+            try:
+                self._last_scan_text = f"{query}. {detail}".strip()
+            except Exception:
+                pass
             self._emit("scan_result", full)
             self._emit(
                 "artifact",

@@ -10,9 +10,34 @@ const CFG = JSON.parse(
   fs.readFileSync(path.join(ROOT, "config", "default.json"), "utf8")
 ) as { haltKeywords: string[]; maxOrchestrationSteps: number };
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Halt match:
+ * - multi-word phrases → substring ("stop agents")
+ * - single tokens → whole utterance only ("standby", "exit") so
+ *   "please exit chrome" does not kill the agent chain
+ */
 export function isHalt(text: string): boolean {
-  const low = text.toLowerCase();
-  return (CFG.haltKeywords || []).some((k) => low.includes(k.toLowerCase()));
+  const low = (text || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[.!?]+$/g, "")
+    .trim();
+  if (!low) return false;
+  return (CFG.haltKeywords || []).some((k) => {
+    const kw = (k || "").toLowerCase().trim();
+    if (!kw) return false;
+    if (kw.includes(" ")) {
+      return low.includes(kw);
+    }
+    return (
+      low === kw ||
+      new RegExp(`^(?:jarvis[,:]?\\s+)?${escapeRegExp(kw)}$`, "i").test(low)
+    );
+  });
 }
 
 /**

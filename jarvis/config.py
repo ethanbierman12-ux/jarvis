@@ -107,8 +107,17 @@ class Settings:
     # ElevenLabs TTS (optional — Edge en-GB-ThomasNeural is the Jarvis default)
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = "pNInz6obpgDQ51uIfY1H"
-    elevenlabs_model: str = "eleven_monolingual_v1"
+    elevenlabs_model: str = "eleven_turbo_v2_5"
     tts_prefer_elevenlabs: bool = False  # keep False for classic British Jarvis
+    # LiveKit duplex (optional ultra-low-latency streaming)
+    livekit_url: str = ""
+    livekit_api_key: str = ""
+    livekit_api_secret: str = ""  # vaulted
+    # Pinecone hybrid memory (optional cloud RAG)
+    pinecone_api_key: str = ""  # vaulted
+    pinecone_index_host: str = ""  # https://xxx.svc....pinecone.io
+    pinecone_namespace: str = "jarvis"
+    hologram_url: str = "http://127.0.0.1:3000"
     # Duplex voice — Deepgram streaming STT (<300ms finals, transcript barge-in).
     # Engaged only when a key is set; classic chunked STT remains the fallback.
     duplex_voice: bool = True
@@ -141,6 +150,9 @@ class Settings:
     notion_token: str = ""
     buffer_access_token: str = ""
     gmail_access_token: str = ""
+    # iCloud Mail (IMAP) — Cash App receipts often land here, not Gmail
+    icloud_email: str = ""
+    icloud_app_password: str = ""  # vaulted app-specific password
     # Manus AI agent API (https://manus.im / api.manus.ai)
     manus_enabled: bool = True
     manus_api_key: str = ""
@@ -208,6 +220,14 @@ class Settings:
     # Keep alerts on but security_gate enforces long cooldown + mismatch streak
     intruder_alert: bool = True
     intruder_alert_cooldown_sec: int = 720  # 12 min between spoken intruder alerts
+    # Advanced AI pack
+    chat_memory_turns: int = 8  # short-term STM window for ask-me-anything
+    ambient_duck_steps: int = 6  # Spotify/media vol steps while TTS speaks
+    energy_limit_w: float = 3500.0  # HA power ceiling before cutting non-essentials
+    guest_mode_default: bool = False
+    # Smart-plug clap AC recovery (BIOS Restore AC Power → Power On)
+    clap_smart_plug_entity: str = ""  # e.g. switch.pc_plug via Home Assistant
+    clap_smart_plug_enabled: bool = False
     theme: Theme = field(default_factory=Theme)
     # Never touch Windows taskbar/app light-dark unless user opts in
     theme_sync_windows: bool = False

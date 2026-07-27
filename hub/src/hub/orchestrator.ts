@@ -39,8 +39,8 @@ export class JarvisHub {
 
     ephemeral.push(session.id, { role: "user", content: text });
 
-    // Native infinite-loop / chain break
-    if (isHalt(text) || session.halted) {
+    // Native infinite-loop / chain break (halt keywords only — not sticky halt)
+    if (isHalt(text)) {
       ephemeral.setHalted(session.id, true);
       bus.halt(text, session.id);
       const reply = "Standing by. All agent operations halted.";
@@ -55,8 +55,8 @@ export class JarvisHub {
       };
     }
 
-    // Resume from standby if user continues without halt words
-    if (session.status === "halted") {
+    // Resume from standby on the next real command
+    if (session.halted || session.status === "halted") {
       ephemeral.setHalted(session.id, false);
       ephemeral.setStatus(session.id, "idle");
     }

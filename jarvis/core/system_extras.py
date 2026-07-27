@@ -213,13 +213,13 @@ class ChromeHistory:
             from jarvis.core.screen_context import ScreenContext
 
             sc = ScreenContext()
-            tabs = sc.chrome_open_tabs() or []
-            wins = sc.browser_window_titles()
+            tabs = sc.visible_browser_tabs(history_limit=limit) or []
             if tabs:
                 names = [t.get("title") or t.get("url") or "" for t in tabs[:limit]]
                 names = [n for n in names if n]
                 if names:
                     return "Open tabs right now: " + "; ".join(names)
+            wins = sc.browser_window_titles()
             if wins:
                 return "Browser windows: " + "; ".join(wins[:limit])
         except Exception:

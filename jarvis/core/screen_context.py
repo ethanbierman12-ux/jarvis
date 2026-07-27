@@ -43,8 +43,10 @@ class ScreenContext:
         snap = ScreenSnapshot()
         snap.active_window = self.active_window_title()
         snap.browser_windows = self.browser_window_titles()
-        snap.open_tabs = self.chrome_open_tabs()
         snap.recent_history = self.recent_history_titles(limit=history_limit)
+        snap.open_tabs = self.visible_browser_tabs(
+            history_limit=history_limit, history=snap.recent_history
+        )
         if ocr:
             # Prefer focused window text — more relevant for "look at this"
             snap.ocr_text = self.ocr_active_window(max_chars=1200) or self.ocr_screen(
@@ -126,19 +128,22 @@ class ScreenContext:
             return ""
 
     def browser_window_titles(self) -> list[str]:
+        """Active tab title per visible browser window (no CDP required)."""
         titles: list[str] = []
         try:
             import ctypes
             from ctypes import wintypes
 
             user32 = ctypes.windll.user32
-            EnumWindows = user32.EnumWindows
+            kernel32 = ctypes.windll.kernel32
+            # BOOL is 32-bit; c_bool can abort EnumWindows early on Win32.
             EnumWindowsProc = ctypes.WINFUNCTYPE(
-                ctypes.c_bool, wintypes.HWND, wintypes.LPARAM
+                ctypes.c_int, wintypes.HWND, wintypes.LPARAM
             )
             IsWindowVisible = user32.IsWindowVisible
             GetWindowTextLengthW = user32.GetWindowTextLengthW
             GetWindowTextW = user32.GetWindowTextW
+            GetWindowThreadProcessId = user32.GetWindowThreadProcessId
 
             markers = (
                 "google chrome",
@@ -147,37 +152,75 @@ class ScreenContext:
                 "firefox",
                 "opera",
                 "arc",
+                " - chrome",
+                " - edge",
             )
+            browser_exes = (
+                "chrome.exe",
+                "msedge.exe",
+                "brave.exe",
+                "firefox.exe",
+                "opera.exe",
+            )
+            exe_cache: dict[int, str] = {}
+
+            def _exe_name(pid: int) -> str:
+                if pid in exe_cache:
+                    return exe_cache[pid]
+                name = ""
+                try:
+                    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                    h = kernel32.OpenProcess(
+                        PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+                    )
+                    if h:
+                        try:
+                            buf = ctypes.create_unicode_buffer(260)
+                            size = wintypes.DWORD(260)
+                            if kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                                name = Path(buf.value).name.lower()
+                        finally:
+                            kernel32.CloseHandle(h)
+                except Exception:
+                    name = ""
+                exe_cache[pid] = name
+                return name
 
             def _cb(hwnd, _lp):
                 if not IsWindowVisible(hwnd):
-                    return True
+                    return 1
                 n = GetWindowTextLengthW(hwnd)
-                if n < 3:
-                    return True
+                if n < 2:
+                    return 1
                 buf = ctypes.create_unicode_buffer(n + 1)
                 GetWindowTextW(hwnd, buf, n + 1)
                 title = (buf.value or "").strip()
+                if not title:
+                    return 1
                 low = title.lower()
-                if any(m in low for m in markers):
-                    # Strip browser suffix for cleaner tab name
-                    clean = re.sub(
-                        r"\s*[-—|]\s*(Google Chrome|Microsoft Edge|Brave|Firefox|Opera|Arc)\s*$",
-                        "",
-                        title,
-                        flags=re.I,
-                    ).strip()
-                    if clean and clean not in titles:
-                        titles.append(clean[:120])
-                return True
+                pid = wintypes.DWORD()
+                GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                exe = _exe_name(int(pid.value)) if pid.value else ""
+                is_browser = any(m in low for m in markers) or exe in browser_exes
+                if not is_browser:
+                    return 1
+                clean = re.sub(
+                    r"\s*[-—|]\s*(Google Chrome|Microsoft Edge|Brave|Firefox|Opera|Arc|Chrome)\s*$",
+                    "",
+                    title,
+                    flags=re.I,
+                ).strip()
+                if clean and clean.lower() not in {t.lower() for t in titles}:
+                    titles.append(clean[:120])
+                return 1
 
-            EnumWindows(EnumWindowsProc(_cb), 0)
+            user32.EnumWindows(EnumWindowsProc(_cb), 0)
         except Exception:
             pass
         return titles[:12]
 
     def chrome_open_tabs(self) -> list[dict[str, str]]:
-        """Best-effort live tabs via Chrome DevTools HTTP if enabled."""
+        """Live tabs via Chrome DevTools HTTP if remote debugging is enabled."""
         tabs: list[dict[str, str]] = []
         for port in self.CDP_PORTS:
             try:
@@ -204,6 +247,79 @@ class ScreenContext:
             except Exception:
                 continue
         return tabs
+
+    def visible_browser_tabs(
+        self,
+        *,
+        history_limit: int = 8,
+        history: list[str] | None = None,
+    ) -> list[dict[str, str]]:
+        """Tabs for roasting / context — CDP first, then window titles + history.
+
+        Normal Chrome does not expose DevTools unless started with
+        ``--remote-debugging-port=9222``. Without that we still see the active
+        tab title per window and recent History DB visits.
+        """
+        seen: set[str] = set()
+        out: list[dict[str, str]] = []
+
+        def _add(title: str, url: str = "", source: str = "") -> None:
+            t = (title or "").strip()
+            if not t:
+                return
+            key = t.lower()[:80]
+            if key in seen:
+                return
+            # Skip junk / browser chrome pages
+            low = key
+            if low in {"new tab", "new tab page", "google chrome", "microsoft edge"}:
+                return
+            if low.startswith(("chrome://", "edge://", "about:")):
+                return
+            seen.add(key)
+            row: dict[str, str] = {"title": t[:100], "url": (url or "")[:200]}
+            if source:
+                row["source"] = source
+            out.append(row)
+
+        for tab in self.chrome_open_tabs():
+            _add(str(tab.get("title") or ""), str(tab.get("url") or ""), "cdp")
+
+        for title in self.browser_window_titles():
+            _add(title, "", "window")
+
+        # Active window may be a browser tab without the usual suffix
+        active = self.active_window_title()
+        if active:
+            low = active.lower()
+            if any(
+                m in low
+                for m in (
+                    "google chrome",
+                    "microsoft edge",
+                    "brave",
+                    "firefox",
+                    " - google search",
+                    "youtube",
+                )
+            ):
+                clean = re.sub(
+                    r"\s*[-—|]\s*(Google Chrome|Microsoft Edge|Brave|Firefox|Opera|Arc|Chrome)\s*$",
+                    "",
+                    active,
+                    flags=re.I,
+                ).strip()
+                _add(clean or active, "", "active")
+
+        hist = history if history is not None else self.recent_history_titles(
+            limit=history_limit
+        )
+        # Prefer fresh search / page titles when CDP is empty
+        if not any(t.get("source") == "cdp" for t in out):
+            for title in hist[:history_limit]:
+                _add(title, "", "history")
+
+        return out[:20]
 
     def recent_history_titles(self, limit: int = 8, hours: int = 12) -> list[str]:
         roots = [

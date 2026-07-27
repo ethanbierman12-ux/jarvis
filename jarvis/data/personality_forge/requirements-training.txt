@@ -1,0 +1,9 @@
+# Optional GPU training stack for Personality Forge
+torch>=2.2.0
+transformers>=4.43.0
+datasets>=2.19.0
+accelerate>=0.33.0
+peft>=0.12.0
+trl>=0.9.0
+bitsandbytes>=0.43.0; platform_system != 'Darwin'
+# Axolotl (separate env recommended): pip install axolotl

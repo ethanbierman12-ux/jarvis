@@ -1,0 +1,22 @@
+:root { --cyan:#00e8ff; --void:#05070c; --text:#e8f4ff; --dim:#7a93a8; }
+* { box-sizing:border-box; }
+body {
+  margin:0; min-height:100vh; padding:36px; color:var(--text);
+  font-family:Bahnschrift,Segoe UI,sans-serif;
+  background:
+    radial-gradient(800px 400px at 0% 0%, rgba(0,232,255,.14), transparent 50%),
+    linear-gradient(165deg,#05070c,#0b1520 55%,#05070c);
+}
+header { display:flex; justify-content:space-between; gap:24px; align-items:end; margin-bottom:28px; }
+.eyebrow { margin:0; letter-spacing:.28em; color:var(--cyan); font-size:11px; }
+h1 { margin:8px 0 0; font-size:clamp(2rem,5vw,3rem); letter-spacing:.06em; text-transform:uppercase; }
+.lead { color:var(--dim); max-width:40ch; }
+.clock { font-size:28px; letter-spacing:.12em; color:var(--cyan); }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; }
+.tile {
+  background:rgba(8,16,24,.9); border:1px solid rgba(0,232,255,.22);
+  border-left:3px solid var(--cyan); padding:18px;
+}
+.tile h3 { margin:0; font-size:12px; letter-spacing:.18em; color:var(--dim); }
+.tile .val { margin-top:10px; font-size:2rem; color:var(--cyan); }
+.tile .sub { margin-top:6px; color:var(--dim); font-size:13px; }

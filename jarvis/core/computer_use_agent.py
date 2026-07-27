@@ -457,6 +457,94 @@ def apply_action(surface: ActionSurface, action: dict[str, Any]) -> str:
     return f"unknown action: {act}"
 
 
+def apply_anthropic_tool(name: str, inp: dict[str, Any], surface: ActionSurface) -> str:
+    """Dispatch computer / bash / text_editor tool_use blocks."""
+    n = (name or "computer").strip().lower()
+    if n in ("computer", "computer_20250124"):
+        return apply_action(surface, inp)
+
+    if n in ("bash", "bash_20250124"):
+        cmd = str(inp.get("command") or inp.get("cmd") or "").strip()
+        if not cmd:
+            return "bash: empty command"
+        # Hard deny destructive patterns
+        low = cmd.lower()
+        if any(
+            x in low
+            for x in (
+                "rm -rf /",
+                "format ",
+                "mkfs",
+                "del /s",
+                "rd /s",
+                "force push",
+                "shutdown",
+                "remove-item -recurse",
+            )
+        ):
+            return "bash blocked: destructive command refused"
+        try:
+            import subprocess
+
+            p = subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=45,
+            )
+            out = ((p.stdout or "") + (p.stderr or ""))[-4000:]
+            return f"exit {p.returncode}\n{out}" or f"exit {p.returncode}"
+        except Exception as e:
+            return f"bash error: {e}"
+
+    if n in ("str_replace_editor", "text_editor", "str_replace_based_edit_tool"):
+        cmd = str(inp.get("command") or "").strip().lower()
+        path = str(inp.get("path") or "").strip()
+        if not path:
+            return "editor: missing path"
+        # Confine to home / jarvis trees
+        try:
+            from pathlib import Path
+
+            p = Path(path).expanduser().resolve()
+            home = Path.home().resolve()
+            root = Path(__file__).resolve().parents[2]
+            if not (str(p).startswith(str(home)) or str(p).startswith(str(root))):
+                return "editor blocked: path outside home/jarvis"
+            if cmd in ("view", "read"):
+                if not p.exists():
+                    return f"editor: missing {p}"
+                data = p.read_text(encoding="utf-8", errors="replace")
+                return data[:8000]
+            if cmd in ("create",):
+                file_text = str(inp.get("file_text") or "")
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(file_text, encoding="utf-8")
+                return f"created {p}"
+            if cmd in ("str_replace", "replace"):
+                old = str(inp.get("old_str") or "")
+                new = str(inp.get("new_str") or "")
+                raw = p.read_text(encoding="utf-8", errors="replace")
+                if old not in raw:
+                    return "editor: old_str not found"
+                p.write_text(raw.replace(old, new, 1), encoding="utf-8")
+                return f"replaced in {p}"
+            if cmd in ("insert",):
+                insert = str(inp.get("new_str") or inp.get("insert_text") or "")
+                line = int(inp.get("insert_line") or 1)
+                lines = p.read_text(encoding="utf-8", errors="replace").splitlines(True)
+                idx = max(0, min(len(lines), line - 1))
+                lines.insert(idx, insert if insert.endswith("\n") else insert + "\n")
+                p.write_text("".join(lines), encoding="utf-8")
+                return f"inserted at line {line} in {p}"
+            return f"editor: unsupported command {cmd}"
+        except Exception as e:
+            return f"editor error: {e}"
+
+    return f"unknown tool: {name}"
+
+
 # ---------------------------------------------------------------------------
 # HTTP helpers (no hard deps on anthropic/openai SDKs)
 # ---------------------------------------------------------------------------
@@ -729,21 +817,33 @@ class AnthropicComputerUseProvider(BaseProvider):
         if w > max_w or h > max_h:
             scale = min(max_w / w, max_h / h)
 
+        disp_w = int(w * scale) if scale < 1 else w
+        disp_h = int(h * scale) if scale < 1 else h
         tools = [
             {
                 "type": self.tool_type,
                 "name": "computer",
-                "display_width_px": int(w * scale) if scale < 1 else w,
-                "display_height_px": int(h * scale) if scale < 1 else h,
+                "display_width_px": disp_w,
+                "display_height_px": disp_h,
                 "display_number": 1,
-            }
+            },
+            # Anthropic computer-use suite parity (desktop maps these carefully)
+            {
+                "type": "text_editor_20250124",
+                "name": "str_replace_editor",
+            },
+            {
+                "type": "bash_20250124",
+                "name": "bash",
+            },
         ]
         system = (
-            "You are Jarvis computer-use. Drive the real display to complete the user's goal. "
-            "Prefer Google Maps / browser UIs when researching local businesses. "
-            "When building a site, navigate to lovable.dev (or similar) and use the UI. "
-            "Call the computer tool; finish with a short text summary when done. "
-            "Be careful with payments, deletes, and sending messages — stop and report instead."
+            "You are Jarvis computer-use with full Anthropic tool parity "
+            "(computer + text editor + bash). Drive the real display to complete the goal. "
+            "Use the computer tool for GUI; str_replace_editor for local file edits under the "
+            "user project; bash for read-only diagnostics and careful scripted commands. "
+            "Never destroy data, never force-push, never spend money. "
+            "Finish with a short text summary when done."
         )
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": goal.strip()},
@@ -805,28 +905,31 @@ class AnthropicComputerUseProvider(BaseProvider):
                 for key in ("coordinate", "start_coordinate"):
                     if key in inp and isinstance(inp[key], (list, tuple)) and scale < 1:
                         inp[key] = [int(inp[key][0] / scale), int(inp[key][1] / scale)]
-                note = apply_action(surface, inp)
+                note = apply_anthropic_tool(str(name), inp, surface)
                 if on_step:
-                    on_step(step, note)
-                # Always return a fresh screenshot after computer actions
-                png = surface.screenshot_png()
-                if scale < 1:
-                    png = _resize_png(png, int(w * scale), int(h * scale))
+                    on_step(step, f"{name}: {note[:70]}")
+                content_blocks: list[dict[str, Any]] = [{"type": "text", "text": note}]
+                # Screenshot after GUI tools; text-only for bash/editor
+                if str(name).lower() in ("computer", "computer_20250124"):
+                    png = surface.screenshot_png()
+                    if scale < 1:
+                        png = _resize_png(png, int(w * scale), int(h * scale))
+                    content_blocks.insert(
+                        0,
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": _b64_png(png),
+                            },
+                        },
+                    )
                 results.append(
                     {
                         "type": "tool_result",
                         "tool_use_id": tu.get("id"),
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/png",
-                                    "data": _b64_png(png),
-                                },
-                            },
-                            {"type": "text", "text": note},
-                        ],
+                        "content": content_blocks,
                     }
                 )
                 if str(inp.get("action") or "").lower() in ("done", "finish", "complete"):

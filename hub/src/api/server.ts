@@ -3,21 +3,37 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import fs from "node:fs";
 import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { hub } from "../hub/orchestrator.js";
 import { ephemeral } from "../memory/ephemeral.js";
 import { bus } from "../messaging/bus.js";
 import { transcribeDeepgram, deepgramBrowserHint } from "../voice/deepgram.js";
 import { synthesizeElevenLabs, elevenLabsWidgetConfig } from "../voice/elevenlabs.js";
+import { mintLiveKitToken, liveKitConfigured, elevenTurboModel } from "../voice/livekit.js";
 import type { HealthSnapshot, SpokeId } from "../types.js";
+
+const HUB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const COMMAND_SEQ_PATH = path.resolve(
+  HUB_ROOT,
+  "../jarvis/data/command_sequences.json"
+);
 
 const started = Date.now();
 const PORT = Number(process.env.JARVIS_PORT || 8787);
+const HOLOGRAM_URL = process.env.HOLOGRAM_URL || "http://127.0.0.1:3000";
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "4mb" }));
+
+/** Browser hit on Hub root → send people to the hologram HUD */
+app.get("/", (_req, res) => {
+  res.redirect(302, HOLOGRAM_URL);
+});
 
 app.get("/health", (_req, res) => {
   const snap: HealthSnapshot = {
@@ -78,6 +94,50 @@ app.get("/v1/session/:id", (req, res) => {
   res.json(s);
 });
 
+/** Ethan's learned Jarvis phrases — for hologram command autocomplete */
+app.get("/v1/commands", (_req, res) => {
+  const counts = new Map<string, number>();
+  const bump = (raw: string, n = 1) => {
+    const c = raw.trim().replace(/\s+/g, " ");
+    if (c.length < 3 || c.length > 120) return;
+    const key = c.toLowerCase();
+    counts.set(key, (counts.get(key) || 0) + n);
+  };
+  try {
+    if (fs.existsSync(COMMAND_SEQ_PATH)) {
+      const data = JSON.parse(fs.readFileSync(COMMAND_SEQ_PATH, "utf8")) as Record<
+        string,
+        number
+      >;
+      for (const [seq, n] of Object.entries(data)) {
+        const weight = typeof n === "number" ? n : 1;
+        for (const part of seq.split(/\u2192|->/)) {
+          bump(part, weight);
+        }
+      }
+    }
+  } catch {
+    /* ignore corrupt file */
+  }
+  // Always include Hub spoke demos
+  for (const demo of [
+    "Schedule a meeting with the client who complained in support",
+    "Draft a reply to the open support ticket",
+    "Investigate the checkout bug and open a PR",
+    "Approve and merge the PR",
+    "surprise me",
+    "standby",
+    "hub status",
+  ]) {
+    bump(demo, 50);
+  }
+  const commands = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 80)
+    .map(([text, score]) => ({ text, score }));
+  res.json({ commands, source: COMMAND_SEQ_PATH });
+});
+
 app.get("/v1/sessions", (_req, res) => {
   res.json(ephemeral.list().map((s) => ({
     id: s.id,
@@ -115,7 +175,20 @@ app.get("/v1/voice/config", (_req, res) => {
   res.json({
     deepgram: deepgramBrowserHint,
     elevenlabs: elevenLabsWidgetConfig(),
+    livekit: { configured: liveKitConfigured(), model: elevenTurboModel() },
   });
+});
+
+/** LiveKit room token for hologram duplex (<500ms path when infra is up) */
+app.post("/v1/livekit/token", async (req, res) => {
+  try {
+    const identity = String(req.body?.identity || "jarvis-hologram");
+    const room = String(req.body?.room || "jarvis-ops");
+    const out = await mintLiveKitToken({ identity, room });
+    res.status(out.ok ? 200 : 503).json(out);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
 });
 
 /** Inbound webhook — e.g. Slack slash / n8n → Hub */
@@ -165,6 +238,8 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 
 server.listen(PORT, () => {
   console.log(`JARVIS Hub listening on http://127.0.0.1:${PORT}`);
+  console.log(`  GET  /           → redirect hologram ${HOLOGRAM_URL}`);
   console.log(`  POST /v1/chat   GET /health   WS /v1/events`);
+  console.log(`  POST /v1/livekit/token`);
   console.log(`  MOCK_LLM=${process.env.MOCK_LLM ?? "true"}`);
 });

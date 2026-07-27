@@ -79,9 +79,19 @@ class WeatherGuard:
         if rainy:
             self._warned_day = day
             return (
-                "Don't forget your umbrella — rain is likely. "
-                "Consider leaving about ten minutes earlier."
+                "Sir, rain is expected — take the umbrella, and leave about ten minutes earlier. "
+                "If any windows are open, close them before the house becomes a terrarium."
             )
+        # Mild heat / stale-air nudge (no open-window sensor required)
+        try:
+            temp = ctx.get("temp") or ctx.get("temperature") or ctx.get("feels_like")
+            if temp is not None and float(temp) >= 82 and hour >= 7:
+                self._warned_day = day
+                return (
+                    "It's already warm out, Sir. Crack a window now, or enjoy the sauna you call an office."
+                )
+        except Exception:
+            pass
         return None
 
 

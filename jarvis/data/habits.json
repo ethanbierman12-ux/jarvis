@@ -1133,6 +1133,34 @@
       "weekday": "Thursday",
       "kind": "music",
       "detail": ""
+    },
+    {
+      "ts": "2026-07-27T07:31:18",
+      "hour": 7,
+      "weekday": "Monday",
+      "kind": "vibe_code",
+      "detail": "coding"
+    },
+    {
+      "ts": "2026-07-27T07:33:26",
+      "hour": 7,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "chrome"
+    },
+    {
+      "ts": "2026-07-27T07:45:28",
+      "hour": 7,
+      "weekday": "Monday",
+      "kind": "vibe_code",
+      "detail": "coding"
+    },
+    {
+      "ts": "2026-07-27T07:49:43",
+      "hour": 7,
+      "weekday": "Monday",
+      "kind": "vibe_code",
+      "detail": "coding"
     }
   ],
   "priorities": []

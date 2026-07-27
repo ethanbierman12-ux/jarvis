@@ -1,0 +1,2 @@
+Veronica protocol snapshot 20260725_100456
+files=7

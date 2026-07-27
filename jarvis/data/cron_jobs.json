@@ -1,0 +1,31 @@
+{
+  "jobs": [
+    {
+      "id": "sys_monitor",
+      "every_sec": 300,
+      "label": "CPU/RAM pulse",
+      "kind": "sys_monitor",
+      "enabled": true,
+      "last_run": 1785111518.0331187,
+      "meta": {}
+    },
+    {
+      "id": "horizon_scan",
+      "every_sec": 3600,
+      "label": "Tech horizon blip",
+      "kind": "horizon",
+      "enabled": true,
+      "last_run": 1785109764.417657,
+      "meta": {}
+    },
+    {
+      "id": "package_watch",
+      "every_sec": 1800,
+      "label": "Shipment ledger nudge",
+      "kind": "packages",
+      "enabled": true,
+      "last_run": 1785111578.1882265,
+      "meta": {}
+    }
+  ]
+}

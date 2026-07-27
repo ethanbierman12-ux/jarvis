@@ -18,12 +18,14 @@ class VectorMemory:
     Lightweight persistent semantic memory.
     Stores free-text facts; recalls nearest neighbors for vague queries.
     Degrades gracefully if chromadb is missing.
+    Optional Pinecone hybrid when pinecone_* settings are provided.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, pinecone=None) -> None:
         self._col = None
         self._ok = False
         self._init_error = ""
+        self.pinecone = pinecone
         MEMORY_DIR.mkdir(parents=True, exist_ok=True)
 
     def _ensure(self) -> bool:
@@ -75,7 +77,16 @@ class VectorMemory:
                 documents=[text],
                 metadatas=[meta],
             )
-            return f"Stored in long-term memory: {text[:120]}"
+            pine_msg = ""
+            if self.pinecone and getattr(self.pinecone, "configured", lambda: False)():
+                try:
+                    pine_msg = self.pinecone.remember(text, kind=kind)
+                except Exception as e:
+                    pine_msg = f"Pinecone sync skipped: {e}"
+            base = f"Stored in long-term memory: {text[:120]}"
+            if pine_msg and "Stored in Pinecone" in pine_msg:
+                return base + " (synced to Pinecone)."
+            return base
         except Exception as e:
             # Fallback unique id
             try:
@@ -90,19 +101,28 @@ class VectorMemory:
 
     def recall(self, query: str, n: int = 4) -> list[str]:
         query = " ".join((query or "").split()).strip()
-        if not query or not self._ensure() or self._col is None:
+        if not query:
             return []
-        try:
-            count = self._col.count()
-            if count <= 0:
-                return []
-            k = max(1, min(n, count))
-            res = self._col.query(query_texts=[query], n_results=k)
-            docs = (res.get("documents") or [[]])[0] or []
-            return [d for d in docs if d]
-        except Exception as e:
-            print(f"[memory] recall failed: {e}")
-            return []
+        hits: list[str] = []
+        # Prefer merging Chroma + Pinecone (dedupe)
+        if self._ensure() and self._col is not None:
+            try:
+                count = self._col.count()
+                if count > 0:
+                    k = max(1, min(n, count))
+                    res = self._col.query(query_texts=[query], n_results=k)
+                    docs = (res.get("documents") or [[]])[0] or []
+                    hits.extend([d for d in docs if d])
+            except Exception as e:
+                print(f"[memory] recall failed: {e}")
+        if self.pinecone and getattr(self.pinecone, "configured", lambda: False)():
+            try:
+                for h in self.pinecone.recall(query, n=n) or []:
+                    if h and h not in hits:
+                        hits.append(h)
+            except Exception as e:
+                print(f"[memory] pinecone recall: {e}")
+        return hits[: max(1, n)]
 
     def context_block(self, query: str, n: int = 4) -> str:
         hits = self.recall(query, n=n)
@@ -130,10 +150,21 @@ class VectorMemory:
             return f"Forget failed: {e}"
 
     def status(self) -> str:
+        chroma = ""
         if not self._ensure() or self._col is None:
-            return f"Memory offline ({self._init_error or 'chromadb missing'})."
-        try:
-            n = self._col.count()
-            return f"Long-term memory online — {n} facts on disk."
-        except Exception:
-            return "Memory online."
+            chroma = f"Chroma offline ({self._init_error or 'chromadb missing'})"
+        else:
+            try:
+                n = self._col.count()
+                chroma = f"Chroma online — {n} facts"
+            except Exception:
+                chroma = "Chroma online"
+        pine = ""
+        if self.pinecone:
+            try:
+                pine = self.pinecone.status()
+            except Exception as e:
+                pine = f"Pinecone error: {e}"
+        else:
+            pine = "Pinecone not attached"
+        return f"{chroma}. {pine}."

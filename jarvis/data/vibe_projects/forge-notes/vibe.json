@@ -1,0 +1,20 @@
+{
+  "name": "Forge Notes",
+  "stack": "web",
+  "pitch": "minimal markdown notes that feel like a terminal",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "theme.css",
+    "styles.css",
+    "storage.js",
+    "ui.js",
+    "app.js",
+    "research.md",
+    "preview.html",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\forge-notes",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\forge-notes\\index.html",
+  "zero_setup": true
+}

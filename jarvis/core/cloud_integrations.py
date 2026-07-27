@@ -195,49 +195,116 @@ class CloudIntegrations:
         kind = obj.get("object") or "item"
         return f"{kind}:{str(obj.get('id') or '')[:8]}"
 
-    # --- Buffer ---
+    # --- Buffer (GraphQL personal API key — Bearer) ---
+    def _buffer_graphql(self, query: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
+        if not self.buffer_access_token:
+            raise RuntimeError("Buffer not linked")
+        data = _http_json(
+            "POST",
+            "https://api.buffer.com",
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Authorization": f"Bearer {self.buffer_access_token}",
+            },
+            body={"query": query, "variables": variables or {}},
+        )
+        errs = data.get("errors") if isinstance(data, dict) else None
+        if errs:
+            msg = errs[0].get("message") if isinstance(errs[0], dict) else str(errs[0])
+            raise RuntimeError(msg or "Buffer GraphQL error")
+        return (data.get("data") if isinstance(data, dict) else {}) or {}
+
     def buffer_status(self) -> str:
         if not self.buffer_access_token:
             return (
-                "Buffer not linked. Create an access token in Buffer developer settings, "
-                "then say set buffer token to YOUR_TOKEN."
+                "Buffer not linked. In Buffer → Settings → API, create a personal API key, "
+                "then say set buffer token to YOUR_KEY."
             )
         try:
-            url = (
-                "https://api.bufferapp.com/1/user.json?"
-                + urllib.parse.urlencode({"access_token": self.buffer_access_token})
+            data = self._buffer_graphql(
+                "{ account { id name email organizations { id name } } }"
             )
-            data = _http_json("GET", url, headers={"Accept": "application/json"})
-            name = data.get("name") or data.get("id") or "account"
-            return f"Buffer linked ({name}). Say buffer channels for profiles."
+            acct = data.get("account") or {}
+            name = acct.get("name") or acct.get("email") or acct.get("id") or "account"
+            orgs = acct.get("organizations") or []
+            org_bit = ""
+            if isinstance(orgs, list) and orgs:
+                first = orgs[0] if isinstance(orgs[0], dict) else {}
+                org_bit = f" Org: {first.get('name') or first.get('id')}."
+            return f"Buffer linked ({name}).{org_bit} Say buffer channels for profiles."
         except Exception as e:
-            return f"Buffer status failed: {e}"
+            # Legacy REST fallback (old OAuth access tokens)
+            try:
+                url = (
+                    "https://api.bufferapp.com/1/user.json?"
+                    + urllib.parse.urlencode({"access_token": self.buffer_access_token})
+                )
+                legacy = _http_json("GET", url, headers={"Accept": "application/json"})
+                name = legacy.get("name") or legacy.get("id") or "account"
+                return f"Buffer linked via legacy REST ({name}). Prefer a personal API key."
+            except Exception:
+                return f"Buffer status failed: {e}"
 
     def buffer_channels(self) -> str:
         if not self.buffer_access_token:
             return self.buffer_status()
         try:
-            url = (
-                "https://api.bufferapp.com/1/profiles.json?"
-                + urllib.parse.urlencode({"access_token": self.buffer_access_token})
-            )
-            data = _http_json("GET", url, headers={"Accept": "application/json"})
-            rows = data.get("data") if isinstance(data.get("data"), list) else []
-            if not rows:
-                return "No Buffer channels found."
-            labels = []
-            for p in rows[:8]:
-                if not isinstance(p, dict):
+            acct = self._buffer_graphql(
+                "{ account { organizations { id name } } }"
+            ).get("account") or {}
+            orgs = acct.get("organizations") or []
+            labels: list[str] = []
+            for org in orgs:
+                if not isinstance(org, dict) or not org.get("id"):
                     continue
-                svc = p.get("service") or p.get("service_type") or "?"
-                who = (
-                    p.get("formatted_username")
-                    or p.get("service_username")
-                    or p.get("id")
+                ch_data = self._buffer_graphql(
+                    """
+                    query($input: ChannelsInput!) {
+                      channels(input: $input) {
+                        id
+                        name
+                        service
+                        displayName
+                      }
+                    }
+                    """,
+                    {"input": {"organizationId": org["id"]}},
                 )
-                labels.append(f"{svc}:{who}")
-            return "Buffer channels: " + ", ".join(labels) + "."
+                for ch in ch_data.get("channels") or []:
+                    if not isinstance(ch, dict):
+                        continue
+                    svc = ch.get("service") or "?"
+                    who = ch.get("displayName") or ch.get("name") or ch.get("id")
+                    labels.append(f"{svc}:{who}")
+                    if len(labels) >= 10:
+                        break
+            if labels:
+                return "Buffer channels: " + ", ".join(labels) + "."
+            return "No Buffer channels found on this API key."
         except Exception as e:
+            try:
+                url = (
+                    "https://api.bufferapp.com/1/profiles.json?"
+                    + urllib.parse.urlencode({"access_token": self.buffer_access_token})
+                )
+                legacy = _http_json("GET", url, headers={"Accept": "application/json"})
+                rows = legacy.get("data") if isinstance(legacy.get("data"), list) else []
+                labels = []
+                for p in rows[:8]:
+                    if not isinstance(p, dict):
+                        continue
+                    svc = p.get("service") or p.get("service_type") or "?"
+                    who = (
+                        p.get("formatted_username")
+                        or p.get("service_username")
+                        or p.get("id")
+                    )
+                    labels.append(f"{svc}:{who}")
+                if labels:
+                    return "Buffer channels (legacy): " + ", ".join(labels) + "."
+            except Exception:
+                pass
             return f"Buffer channels failed: {e}"
 
     # --- Gmail ---
@@ -264,37 +331,66 @@ class CloudIntegrations:
             return self.gmail_status()
         lim = max(1, min(10, int(limit)))
         try:
-            q = urllib.parse.urlencode({"maxResults": str(lim), "labelIds": "INBOX"})
-            listing = _http_json(
-                "GET",
-                f"https://gmail.googleapis.com/gmail/v1/users/me/messages?{q}",
-                headers=self._gmail_headers(),
-            )
-            msgs = listing.get("messages") or []
+            msgs = self.gmail_search_messages("", lim, inbox_only=True)
             if not msgs:
                 return "Inbox is empty."
             subjects = []
             for m in msgs[:lim]:
-                mid = m.get("id")
-                if not mid:
-                    continue
-                detail = _http_json(
-                    "GET",
-                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{mid}"
-                    f"?format=metadata&metadataHeaders=Subject&metadataHeaders=From",
-                    headers=self._gmail_headers(),
-                )
-                headers = {
-                    h.get("name", "").lower(): h.get("value", "")
-                    for h in ((detail.get("payload") or {}).get("headers") or [])
-                    if isinstance(h, dict)
-                }
-                subj = headers.get("subject") or "(no subject)"
-                fr = headers.get("from") or ""
+                subj = m.get("subject") or "(no subject)"
+                fr = m.get("from") or ""
                 subjects.append(f"{subj}" + (f" — {fr}" if fr else ""))
             return "Inbox: " + " | ".join(subjects) + "."
         except Exception as e:
             return f"Gmail inbox failed: {e}"
+
+    def gmail_search_messages(
+        self,
+        query: str,
+        limit: int = 20,
+        *,
+        inbox_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Return message dicts: id, subject, from, snippet, internalDate."""
+        if not self.gmail_access_token:
+            raise RuntimeError(self.gmail_status())
+        lim = max(1, min(40, int(limit)))
+        params: dict[str, str] = {"maxResults": str(lim)}
+        if inbox_only:
+            params["labelIds"] = "INBOX"
+        if (query or "").strip():
+            params["q"] = query.strip()
+        listing = _http_json(
+            "GET",
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages?"
+            + urllib.parse.urlencode(params),
+            headers=self._gmail_headers(),
+        )
+        out: list[dict[str, Any]] = []
+        for m in listing.get("messages") or []:
+            mid = m.get("id")
+            if not mid:
+                continue
+            detail = _http_json(
+                "GET",
+                f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{mid}"
+                f"?format=metadata&metadataHeaders=Subject&metadataHeaders=From",
+                headers=self._gmail_headers(),
+            )
+            headers = {
+                h.get("name", "").lower(): h.get("value", "")
+                for h in ((detail.get("payload") or {}).get("headers") or [])
+                if isinstance(h, dict)
+            }
+            out.append(
+                {
+                    "id": mid,
+                    "subject": headers.get("subject") or "",
+                    "from": headers.get("from") or "",
+                    "snippet": detail.get("snippet") or "",
+                    "internalDate": detail.get("internalDate") or m.get("internalDate") or "0",
+                }
+            )
+        return out
 
     def _gmail_headers(self) -> dict[str, str]:
         return {

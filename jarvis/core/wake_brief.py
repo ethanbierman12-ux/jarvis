@@ -74,6 +74,11 @@ class WakeBrief:
             f"You have spent {cur} {stats['spent_today']:.2f} today, "
             f"and {cur} {stats['spent_week']:.2f} this week."
         )
+        cash_week = float(spend_card.get("cash_app_week") or 0)
+        if cash_week:
+            speak_parts.append(
+                f"Cash App this week is {cur} {cash_week:.2f}."
+            )
         if open_tasks:
             speak_parts.append(
                 f"There {'are' if open_tasks != 1 else 'is'} {open_tasks} open "

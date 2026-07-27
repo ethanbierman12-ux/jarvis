@@ -66,3 +66,7 @@ class TopicMonitor:
             return f"No headlines in {key}."
         tops = "; ".join(f"{i+1}. {it['title'][:90]}" for i, it in enumerate(items[:limit]))
         return f"{key.title()} pulse — {tops}."
+
+    def latest_blurb(self) -> str:
+        """One-liner for grid / horizon scanners."""
+        return self.headlines("tech", limit=2)

@@ -1,0 +1,14 @@
+{
+  "name": "Lattice Calc",
+  "stack": "python",
+  "pitch": "CLI unit converter and quick math helper",
+  "engine": "template",
+  "files": [
+    "main.py",
+    "requirements.txt",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\lattice-calc",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\lattice-calc\\main.py",
+  "zero_setup": true
+}

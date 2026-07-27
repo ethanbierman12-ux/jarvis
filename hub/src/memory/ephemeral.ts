@@ -65,7 +65,7 @@ export class EphemeralMemory {
   setHalted(sessionId: string, halted = true) {
     const s = this.getOrCreate(sessionId);
     s.halted = halted;
-    s.status = halted ? "halted" : s.status;
+    s.status = halted ? "halted" : "idle";
     s.updatedAt = Date.now();
   }
 

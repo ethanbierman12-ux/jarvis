@@ -1,0 +1,13 @@
+{
+  "counts": {
+    "approve": 1
+  },
+  "last": {
+    "ts": 1784483915.8780458,
+    "verdict": "approve",
+    "prompt": "open camera",
+    "action": "open camera",
+    "reply": "ok",
+    "note": ""
+  }
+}

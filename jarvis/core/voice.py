@@ -213,8 +213,26 @@ class VoiceEngine:
             ).ratio() >= 0.85:
                 return
         threading.Thread(
-            target=self._tts, args=(text,), daemon=True, name="jarvis-tts"
+            target=self._tts_with_duck, args=(text,), daemon=True, name="jarvis-tts"
         ).start()
+
+    def _tts_with_duck(self, text: str) -> None:
+        """Duck ambience/Spotify while speaking, then restore."""
+        before = getattr(self, "on_before_tts", None)
+        after = getattr(self, "on_after_tts", None)
+        try:
+            if callable(before):
+                before()
+        except Exception:
+            pass
+        try:
+            self._tts(text)
+        finally:
+            try:
+                if callable(after):
+                    after()
+            except Exception:
+                pass
 
     def say_wait(self, text: str, *, polish: bool = False) -> None:
         """Block until TTS finishes — used for Alexa Echo voice relay."""

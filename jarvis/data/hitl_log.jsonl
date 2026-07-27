@@ -20,3 +20,12 @@
 {"event": "ask", "id": "31cab2c468c2", "kind": "clarify", "action": "clarify", "agent": "ambiguity"}
 {"event": "ask", "id": "a3daf201527b", "kind": "clarify", "action": "clarify", "agent": "ambiguity"}
 {"event": "ask", "id": "2a1d3d0eed8b", "kind": "clarify", "action": "clarify", "agent": "ambiguity"}
+{"event": "ask", "id": "bfd9a6652ae3", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "a61c9b41a045", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "386d228b38d7", "kind": "permission", "action": "structure", "agent": "vibe"}
+{"event": "ask", "id": "a9762b5e4f9c", "kind": "permission", "action": "deploy", "agent": "vibe"}
+{"event": "ask", "id": "629ab0f7cbed", "kind": "permission", "action": "deploy", "agent": "vibe"}
+{"event": "ask", "id": "2e2a70231a26", "kind": "permission", "action": "structure", "agent": "vibe"}
+{"event": "ask", "id": "22ca6243d9ca", "kind": "permission", "action": "deploy", "agent": "vibe"}
+{"event": "resolve", "id": "22ca6243d9ca", "approve": true, "answer": "Approve"}
+{"event": "ask", "id": "7c72f9ef1c80", "kind": "clarify", "action": "clarify", "agent": "healer"}

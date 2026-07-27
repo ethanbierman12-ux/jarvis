@@ -27,7 +27,8 @@ export async function transcribeDeepgram(
       Authorization: `Token ${key}`,
       "Content-Type": mime,
     },
-    body: audio,
+    // Node 22 fetch typings reject Buffer — Uint8Array is accepted BodyInit
+    body: new Uint8Array(audio),
   });
   if (!res.ok) {
     const err = await res.text();

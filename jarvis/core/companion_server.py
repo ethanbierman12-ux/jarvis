@@ -41,11 +41,13 @@ class CompanionServer:
         on_status: Callable[[], dict] | None = None,
         on_handoff: Callable[[dict], dict] | None = None,
         on_score: Callable[[dict], dict] | None = None,
+        on_presence: Callable[[dict], dict] | None = None,
     ) -> None:
         self.on_chat = on_chat
         self.on_status = on_status
         self.on_handoff = on_handoff
         self.on_score = on_score
+        self.on_presence = on_presence
         self.token = (token or "").strip()
         self.host = host
         self.port = int(port)
@@ -165,7 +167,7 @@ class CompanionServer:
             def do_POST(self) -> None:  # noqa: N802
                 parsed = urlparse(self.path)
                 path = parsed.path or "/"
-                if path not in ("/api/chat", "/api/handoff", "/api/scores"):
+                if path not in ("/api/chat", "/api/handoff", "/api/scores", "/api/presence"):
                     self._json(404, {"ok": False, "error": "not found"})
                     return
                 length = int(self.headers.get("Content-Length") or 0)
@@ -176,6 +178,27 @@ class CompanionServer:
                     data = json.loads(raw.decode("utf-8") or "{}")
                 except Exception:
                     data = {}
+
+                if path == "/api/presence":
+                    if not self._auth_ok():
+                        self._json(401, {"ok": False, "error": "unauthorized"})
+                        return
+                    try:
+                        if server.on_presence:
+                            payload = server.on_presence(
+                                data if isinstance(data, dict) else {}
+                            )
+                        else:
+                            payload = {
+                                "ok": True,
+                                "note": "presence accepted (no handler)",
+                            }
+                        if not isinstance(payload, dict):
+                            payload = {"ok": True, "reply": str(payload)}
+                        self._json(200, {"ok": True, **payload})
+                    except Exception as e:
+                        self._json(500, {"ok": False, "error": str(e)})
+                    return
 
                 if path == "/api/scores":
                     try:

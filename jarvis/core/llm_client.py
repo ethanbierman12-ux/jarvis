@@ -173,6 +173,39 @@ def backend_name() -> str:
     return "none"
 
 
+def diagnose_failure() -> str:
+    """Human-readable reason when complete() returns empty (billing / offline)."""
+    if ollama_model():
+        return (
+            f"Ollama ({ollama_model()}) is listed but returned nothing. "
+            "Try: ollama run llama3"
+        )
+    # Probe why cloud failed without burning a full completion
+    ant = _vault_key("anthropic_api_key")
+    oai = _vault_key("openai_api_key")
+    bits: list[str] = []
+    if ant:
+        probe = _complete_anthropic(
+            "ping", system="Reply with OK only.", key=ant, temperature=0, max_tokens=4
+        )
+        if not probe:
+            bits.append("Anthropic key is set but rejected (usually no credits / billing).")
+    else:
+        bits.append("No Anthropic key.")
+    if oai:
+        probe = _complete_openai(
+            "ping", system="Reply with OK only.", key=oai, temperature=0, max_tokens=4
+        )
+        if not probe:
+            bits.append("OpenAI key is set but rejected (quota / billing).")
+    else:
+        bits.append("No OpenAI key.")
+    bits.append(
+        "Free fix: install Ollama from ollama.com, then run: ollama pull llama3"
+    )
+    return "No LLM reply, Sir. " + " ".join(bits)
+
+
 def complete(
     prompt: str,
     *,
@@ -204,4 +237,65 @@ def complete(
         key=_vault_key("openai_api_key"),
         temperature=temperature,
         max_tokens=max_tokens,
+    )
+
+
+def complete_stream(
+    prompt: str,
+    *,
+    system: str = "",
+    model: str = "",
+    temperature: float = 0.4,
+    max_tokens: int = 700,
+    on_token: Any = None,
+) -> str:
+    """
+    Stream tokens when Ollama is available (feels instant on HUD).
+    Falls back to complete() for cloud backends. on_token(str) optional.
+    """
+    if not (prompt or "").strip():
+        return ""
+    m = model or ollama_model()
+    if m:
+        try:
+            body = {
+                "model": m,
+                "prompt": (f"{system}\n\n{prompt}" if system else prompt),
+                "stream": True,
+                "options": {"temperature": temperature, "num_predict": max_tokens},
+            }
+            req = urllib.request.Request(
+                f"{_OLLAMA_HOST}/api/generate",
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            chunks: list[str] = []
+            with urllib.request.urlopen(req, timeout=120.0) as resp:
+                for raw in resp:
+                    try:
+                        line = raw.decode("utf-8", errors="replace").strip()
+                        if not line:
+                            continue
+                        data = json.loads(line)
+                    except Exception:
+                        continue
+                    piece = data.get("response") or ""
+                    if piece:
+                        chunks.append(piece)
+                        if callable(on_token):
+                            try:
+                                on_token(piece)
+                            except Exception:
+                                pass
+                    if data.get("done"):
+                        break
+            out = "".join(chunks).strip()
+            if out:
+                return out
+        except Exception as e:
+            print(f"[llm] ollama stream: {_err(e)}")
+    # Cloud fallback — full buffer (no native stream without SDKs)
+    return complete(
+        prompt, system=system, model=model, temperature=temperature, max_tokens=max_tokens
     )

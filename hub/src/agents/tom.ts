@@ -42,6 +42,11 @@ function writeSimFile(rel: string, content: string) {
   fs.writeFileSync(p, content, "utf8");
 }
 
+function emit(result: SpokeResult): SpokeResult {
+  bus.spokeResult(result);
+  return result;
+}
+
 export async function runTom(
   input: string,
   intent = "investigate",
@@ -49,10 +54,26 @@ export async function runTom(
 ): Promise<SpokeResult> {
   const repro = String(prior?.repro || input || "");
   const buggy = readSimFile("src/checkout.ts");
+  const low = (input || "").toLowerCase();
+  // Prefer explicit plan intent over input keywords — otherwise a "fix" step
+  // still matches /bug|fix/ and re-runs investigate with the same summary.
+  const resolved =
+    intent === "investigate" ||
+    intent === "fix" ||
+    intent === "open_pr" ||
+    intent === "approve_pr"
+      ? intent
+      : /approve|merge/.test(low)
+        ? "approve_pr"
+        : /fix|patch|pr\b|pull request/.test(low)
+          ? "fix"
+          : /bug|investigate|crash/.test(low)
+            ? "investigate"
+            : intent;
 
-  if (intent === "investigate" || /bug|fix|investigate|crash/.test(input.toLowerCase())) {
+  if (resolved === "investigate") {
     const hasBug = buggy.includes("BUG") || buggy.includes("throw new Error");
-    const result: SpokeResult = {
+    return emit({
       spoke: "tom",
       ok: true,
       summary: hasBug
@@ -63,16 +84,18 @@ export async function runTom(
         repro: repro.slice(0, 400),
         ticketId: prior?.ticketId,
       },
-    };
-    bus.spokeResult(result);
-    return result;
+    });
   }
 
-  if (intent === "fix" || intent === "open_pr" || /fix|patch|pr|pull request/.test(input.toLowerCase())) {
+  if (resolved === "fix" || resolved === "open_pr") {
     const fixed = buggy
-      .replace("throw new Error(\"BUG: cart total is null\");", "return Number(cart?.total ?? 0);")
+      .replace('throw new Error("BUG: cart total is null");', "return Number(cart?.total ?? 0);")
       .replace("// BUG", "// fixed");
-    writeSimFile("src/checkout.ts", fixed || `export function total(cart: { total?: number } | null) {\n  return Number(cart?.total ?? 0);\n}\n`);
+    writeSimFile(
+      "src/checkout.ts",
+      fixed ||
+        `export function total(cart: { total?: number } | null) {\n  return Number(cart?.total ?? 0);\n}\n`
+    );
 
     const pr: PR = {
       id: `pr-${nanoid(6)}`,
@@ -86,42 +109,34 @@ export async function runTom(
     prs.push(pr);
     savePrs(prs);
 
-    const result: SpokeResult = {
+    return emit({
       spoke: "tom",
       ok: true,
       summary: `Opened mock PR ${pr.id} — awaiting HITL approval before merge.`,
       needsHitl: true,
       data: { pr },
-    };
-    bus.spokeResult(result);
-    return result;
+    });
   }
 
-  if (intent === "approve_pr" || /approve|merge/.test(input.toLowerCase())) {
+  if (resolved === "approve_pr") {
     const prs = loadPrs();
     const open = prs.filter((p) => p.status === "open").at(-1);
     if (!open) {
-      const result: SpokeResult = { spoke: "tom", ok: false, summary: "No open PRs." };
-      bus.spokeResult(result);
-      return result;
+      return emit({ spoke: "tom", ok: false, summary: "No open PRs." });
     }
     open.status = "merged";
     savePrs(prs);
-    const result: SpokeResult = {
+    return emit({
       spoke: "tom",
       ok: true,
       summary: `Merged ${open.id} after HITL approval.`,
       data: { pr: open },
-    };
-    bus.spokeResult(result);
-    return result;
+    });
   }
 
-  const result: SpokeResult = {
+  return emit({
     spoke: "tom",
     ok: true,
     summary: "Tom standing by — investigate, fix, or approve_pr.",
-  };
-  bus.spokeResult(result);
-  return result;
+  });
 }

@@ -1,0 +1,75 @@
+{
+  "parts": [
+    {
+      "id": "p3590747",
+      "name": "AMD Ryzen 7 7700X CPU",
+      "category": "cpu",
+      "notes": "AM5 desktop",
+      "socket": "AM5",
+      "qty": 1,
+      "ts": 1784943590.7472672,
+      "source": "vision"
+    },
+    {
+      "id": "p3590758",
+      "name": "ASUS B650 motherboard",
+      "category": "motherboard",
+      "notes": "",
+      "socket": "",
+      "qty": 1,
+      "ts": 1784943590.7584019,
+      "source": "vision"
+    },
+    {
+      "id": "p4842292",
+      "name": "AMD Ryzen 5 7600",
+      "category": "cpu",
+      "notes": "",
+      "socket": "AM5",
+      "qty": 3,
+      "ts": 1784944842.2926803,
+      "source": "vision"
+    },
+    {
+      "id": "p4842304",
+      "name": "Gigabyte B650 AORUS",
+      "category": "motherboard",
+      "notes": "",
+      "socket": "AM5",
+      "qty": 1,
+      "ts": 1784944842.3046632,
+      "source": "vision"
+    },
+    {
+      "id": "p4893297",
+      "name": "ASRock B550 board",
+      "category": "component",
+      "notes": "",
+      "socket": "AM4",
+      "qty": 2,
+      "ts": 1784944893.2971282,
+      "source": "vision"
+    },
+    {
+      "id": "p5264574",
+      "name": "Test Ryzen 5 7600 CPU",
+      "category": "cpu",
+      "notes": "",
+      "socket": "AM5",
+      "qty": 1,
+      "ts": 1784945264.5747213,
+      "source": "vision"
+    },
+    {
+      "id": "p5264585",
+      "name": "Test ASRock B550 motherboard",
+      "category": "motherboard",
+      "notes": "",
+      "socket": "AM4",
+      "qty": 1,
+      "ts": 1784945264.5857604,
+      "source": "vision"
+    }
+  ],
+  "session": []
+}
