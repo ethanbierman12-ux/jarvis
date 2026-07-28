@@ -80,5 +80,17 @@ function formatSlack(ev: BusEvent): string {
 }
 
 export function spokeChannel(spoke: SpokeId): string {
-  return ({ sarah: "support", tom: "engineering", admin: "ops" } as const)[spoke];
+  const channels: Record<SpokeId, string> = {
+    sarah: "support",
+    tom: "engineering",
+    admin: "ops",
+    manager: "work-crew",
+    scholar: "work-crew",
+    stitch: "work-crew",
+    reel: "work-crew",
+    flip: "work-crew",
+    ledger: "work-crew",
+    muse: "work-crew",
+  };
+  return channels[spoke] ?? "work-crew";
 }

@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>JARVIS — Agent Ops</title>
+  <style>
+    :root {
+      --cyan: #00f0ff;
+      --void: #05060a;
+      --panel: #0a121c;
+      --panel-hi: #0e1a2a;
+      --white: #e8f4ff;
+      --dim: #4a6070;
+      --ok: #7cf7a0;
+      --warn: #ffd166;
+      --err: #ff6b6b;
+      --hitl: #b28dff;
+      --shadow: 0 0 32px rgba(0, 240, 255, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      background: radial-gradient(ellipse at top, #0b1626 0%, var(--void) 60%);
+      color: var(--white);
+      font-family: "SF Mono", "Fira Code", Consolas, monospace;
+      margin: 0;
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 22px 34px 8px;
+      border-bottom: 1px solid rgba(0, 240, 255, 0.15);
+    }
+    header h1 {
+      font-size: 20px;
+      letter-spacing: 0.28em;
+      margin: 0;
+      color: var(--cyan);
+      text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+    }
+    header .meta { color: var(--dim); font-size: 12px; }
+    main { padding: 22px 34px 48px; }
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+      color: var(--dim);
+      font-size: 12px;
+    }
+    .toolbar button, .toolbar label.file {
+      background: var(--panel);
+      color: var(--white);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+    }
+    .toolbar button:hover, .toolbar label.file:hover { background: var(--panel-hi); }
+    .toolbar input[type="file"] { display: none; }
+    .status-line { flex: 1; text-align: right; }
+    .status-line.ok { color: var(--ok); }
+    .status-line.warn { color: var(--warn); }
+    .status-line.err { color: var(--err); }
+
+    .tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .tile {
+      background: var(--panel);
+      border: 1px solid rgba(0, 240, 255, 0.2);
+      border-radius: 6px;
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .tile::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(0, 240, 255, 0.08), transparent 40%);
+      pointer-events: none;
+    }
+    .tile h2 {
+      font-size: 13px;
+      letter-spacing: 0.28em;
+      margin: 0 0 8px;
+      color: var(--cyan);
+    }
+    .tile .role {
+      color: var(--dim);
+      font-size: 11px;
+      margin-bottom: 12px;
+      min-height: 26px;
+    }
+    .metrics {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    .metrics .num {
+      font-size: 26px;
+      color: var(--white);
+      text-shadow: 0 0 6px rgba(0, 240, 255, 0.4);
+    }
+    .metrics .lbl {
+      font-size: 10px;
+      color: var(--dim);
+      letter-spacing: 0.16em;
+      display: block;
+      margin-top: 2px;
+    }
+    .last {
+      font-size: 11px;
+      color: var(--dim);
+      border-top: 1px dashed rgba(0, 240, 255, 0.15);
+      margin-top: 10px;
+      padding-top: 8px;
+      min-height: 30px;
+    }
+    .last strong { color: var(--white); font-weight: 600; }
+    .last.ok strong { color: var(--ok); }
+    .last.fail strong { color: var(--err); }
+    .last.hitl strong { color: var(--hitl); }
+
+    .feed {
+      background: var(--panel);
+      border: 1px solid rgba(0, 240, 255, 0.15);
+      border-radius: 6px;
+      padding: 12px 18px;
+      max-height: 55vh;
+      overflow: auto;
+      font-size: 12px;
+    }
+    .feed h3 {
+      color: var(--cyan);
+      font-size: 12px;
+      margin: 0 0 8px;
+      letter-spacing: 0.28em;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 90px 100px 60px 1fr;
+      gap: 10px;
+      padding: 4px 0;
+      border-bottom: 1px dotted rgba(0, 240, 255, 0.08);
+    }
+    .row .t { color: var(--dim); }
+    .row .a { color: var(--cyan); letter-spacing: 0.12em; }
+    .row .k { color: var(--white); }
+    .row.ok .k { color: var(--ok); }
+    .row.fail .k { color: var(--err); }
+    .row.hitl .k { color: var(--hitl); }
+    .row .s { color: var(--white); }
+    .empty { color: var(--dim); font-style: italic; padding: 12px 0; }
+    .hint {
+      color: var(--dim);
+      font-size: 11px;
+      margin-top: 14px;
+      padding: 10px 14px;
+      background: rgba(10, 18, 28, 0.6);
+      border-left: 2px solid var(--cyan);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AGENT OPS · WORK CREW</h1>
+    <span class="meta" id="meta">idle</span>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <button id="reload">Reload</button>
+      <label class="file" for="fileInput">Load JSONL…</label>
+      <input type="file" id="fileInput" accept=".jsonl,.txt,application/json" />
+      <span>Auto-tail: <strong id="tailState">on</strong></span>
+      <button id="toggleTail">Pause</button>
+      <span class="status-line" id="status">waiting for work_outcomes.jsonl…</span>
+    </div>
+
+    <section class="tiles" id="tiles"></section>
+
+    <section class="feed">
+      <h3>OUTCOMES · MOST RECENT</h3>
+      <div id="rows"><div class="empty">No outcomes recorded yet. Say <em>work crew run &lt;task&gt;</em> from Jarvis, then reload this page.</div></div>
+    </section>
+
+    <div class="hint">
+      This dashboard reads <code>jarvis/data/work_outcomes.jsonl</code>. If your
+      browser blocks <code>file://</code> fetches, run
+      <code>python -m http.server 8123</code> inside <code>jarvis/data</code>
+      and open <code>http://127.0.0.1:8123/agent_ops_dashboard.html</code>, or
+      use the <em>Load JSONL…</em> picker above.
+    </div>
+  </main>
+
+  <script>
+    const AGENTS = [
+      { handle: "MANAGER", role: "Dispatcher — picks the smallest specialist set" },
+      { handle: "SCHOLAR", role: "Research — Tavily / Serper / DuckDuckGo" },
+      { handle: "STITCH",  role: "Code integration — sandbox patches, HITL push" },
+      { handle: "REEL",    role: "Short-form video — HITL Buffer TikTok draft" },
+      { handle: "FLIP",    role: "Deals scout — never spends money" },
+      { handle: "LEDGER",  role: "Finance summaries — READ-ONLY, never trades" },
+      { handle: "MUSE",    role: "Creative brainstorming and copy" },
+    ];
+
+    const OUTCOMES_URL = "./work_outcomes.jsonl";
+    const REFRESH_MS = 4000;
+
+    const els = {
+      tiles: document.getElementById("tiles"),
+      rows: document.getElementById("rows"),
+      status: document.getElementById("status"),
+      meta: document.getElementById("meta"),
+      reload: document.getElementById("reload"),
+      fileInput: document.getElementById("fileInput"),
+      toggleTail: document.getElementById("toggleTail"),
+      tailState: document.getElementById("tailState"),
+    };
+
+    let tailOn = true;
+    let timer = null;
+    let lastLoaded = 0;
+
+    function fmtTime(ts) {
+      if (!ts) return "";
+      const d = new Date(ts * 1000);
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    function parseLines(text) {
+      const rows = [];
+      for (const raw of (text || "").split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line) continue;
+        try {
+          const row = JSON.parse(line);
+          if (row && row.agent) rows.push(row);
+        } catch {
+          /* skip malformed */
+        }
+      }
+      return rows;
+    }
+
+    function totalsFrom(rows) {
+      const totals = new Map();
+      for (const a of AGENTS) totals.set(a.handle, { xp: 0, count: 0, ok: 0, fail: 0, hitl: 0, last: null });
+      for (const row of rows) {
+        const key = row.agent || "?";
+        if (!totals.has(key)) {
+          totals.set(key, { xp: 0, count: 0, ok: 0, fail: 0, hitl: 0, last: null });
+        }
+        const b = totals.get(key);
+        b.xp += Number(row.xp || 0);
+        b.count += 1;
+        if (row.ok) b.ok += 1; else b.fail += 1;
+        if (row.hitl) b.hitl += 1;
+        if (!b.last || (row.ts || 0) > (b.last.ts || 0)) b.last = row;
+      }
+      return totals;
+    }
+
+    function renderTiles(totals) {
+      const cards = [];
+      for (const a of AGENTS) {
+        const t = totals.get(a.handle) || { xp: 0, count: 0, ok: 0, fail: 0, hitl: 0, last: null };
+        const last = t.last;
+        let lastClass = "";
+        let lastText = "no outcomes yet";
+        if (last) {
+          lastClass = last.hitl ? "hitl" : last.ok ? "ok" : "fail";
+          const kind = last.kind || "?";
+          lastText = `<strong>${kind}</strong> · ${fmtTime(last.ts)}<br />${escapeHtml((last.summary || "").slice(0, 120))}`;
+        }
+        cards.push(`
+          <article class="tile">
+            <h2>${a.handle}</h2>
+            <div class="role">${a.role}</div>
+            <div class="metrics">
+              <div><div class="num">${t.xp}</div><span class="lbl">XP</span></div>
+              <div><div class="num">${t.count}</div><span class="lbl">RUNS</span></div>
+              <div><div class="num">${t.ok}/${t.fail}</div><span class="lbl">OK / FAIL</span></div>
+            </div>
+            <div class="last ${lastClass}">${lastText}</div>
+          </article>
+        `);
+      }
+      els.tiles.innerHTML = cards.join("");
+    }
+
+    function renderRows(rows) {
+      if (!rows.length) {
+        els.rows.innerHTML = `<div class="empty">No outcomes recorded yet. Say <em>work crew run &lt;task&gt;</em> from Jarvis, then reload this page.</div>`;
+        return;
+      }
+      const recent = rows.slice(-80).reverse();
+      const parts = recent.map((row) => {
+        const cls = row.hitl ? "hitl" : row.ok ? "ok" : "fail";
+        return `
+          <div class="row ${cls}">
+            <span class="t">${fmtTime(row.ts)}</span>
+            <span class="a">${escapeHtml(row.agent || "?")}</span>
+            <span class="k">${escapeHtml(row.kind || "?")}</span>
+            <span class="s">${escapeHtml((row.summary || "").slice(0, 220))}</span>
+          </div>
+        `;
+      });
+      els.rows.innerHTML = parts.join("");
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function setStatus(text, cls) {
+      els.status.textContent = text;
+      els.status.className = "status-line" + (cls ? " " + cls : "");
+    }
+
+    function applyText(text) {
+      const rows = parseLines(text);
+      renderTiles(totalsFrom(rows));
+      renderRows(rows);
+      els.meta.textContent = `${rows.length} outcome${rows.length === 1 ? "" : "s"} loaded`;
+    }
+
+    async function tryFetch() {
+      try {
+        const res = await fetch(OUTCOMES_URL + "?_=" + Date.now(), { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const text = await res.text();
+        applyText(text);
+        lastLoaded = Date.now();
+        setStatus(`live · ${new Date().toLocaleTimeString()}`, "ok");
+      } catch (e) {
+        setStatus(`fetch blocked: ${e.message} — use Load JSONL…`, "warn");
+        // Leave any previously loaded (file-picker) state intact.
+        if (!lastLoaded) {
+          renderTiles(totalsFrom([]));
+          renderRows([]);
+        }
+      }
+    }
+
+    function schedule() {
+      if (timer) clearInterval(timer);
+      if (!tailOn) return;
+      timer = setInterval(tryFetch, REFRESH_MS);
+    }
+
+    els.reload.addEventListener("click", tryFetch);
+    els.toggleTail.addEventListener("click", () => {
+      tailOn = !tailOn;
+      els.tailState.textContent = tailOn ? "on" : "off";
+      els.toggleTail.textContent = tailOn ? "Pause" : "Resume";
+      schedule();
+    });
+    els.fileInput.addEventListener("change", (evt) => {
+      const file = evt.target.files && evt.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        applyText(reader.result);
+        setStatus(`loaded ${file.name}`, "ok");
+        tailOn = false;
+        els.tailState.textContent = "off";
+        els.toggleTail.textContent = "Resume";
+        schedule();
+      };
+      reader.readAsText(file);
+    });
+
+    renderTiles(totalsFrom([]));
+    tryFetch();
+    schedule();
+  </script>
+</body>
+</html>

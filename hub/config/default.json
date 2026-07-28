@@ -20,6 +20,50 @@
       "name": "Admin",
       "role": "operations",
       "channel": "ops"
+    },
+    "manager": {
+      "id": "manager",
+      "name": "Manager",
+      "role": "work_crew_dispatcher",
+      "channel": "work-crew"
+    },
+    "scholar": {
+      "id": "scholar",
+      "name": "Scholar",
+      "role": "work_crew_research",
+      "channel": "work-crew"
+    },
+    "stitch": {
+      "id": "stitch",
+      "name": "Stitch",
+      "role": "work_crew_patch",
+      "channel": "work-crew"
+    },
+    "reel": {
+      "id": "reel",
+      "name": "Reel",
+      "role": "work_crew_shortform",
+      "channel": "work-crew"
+    },
+    "flip": {
+      "id": "flip",
+      "name": "Flip",
+      "role": "work_crew_deals_scout",
+      "channel": "work-crew"
+    },
+    "ledger": {
+      "id": "ledger",
+      "name": "Ledger",
+      "role": "work_crew_finance_readonly",
+      "channel": "work-crew",
+      "readOnly": true,
+      "refusesTrades": true
+    },
+    "muse": {
+      "id": "muse",
+      "name": "Muse",
+      "role": "work_crew_creative",
+      "channel": "work-crew"
     }
   },
   "memory": {

@@ -26,6 +26,8 @@ jarvis/data/*.lock
 jarvis/data/*.pid
 jarvis/data/*.jpg
 jarvis/data/*.html
+# ...except the Work Crew Agent Ops dashboard, which ships with the code.
+!jarvis/data/agent_ops_dashboard.html
 jarvis/data/*.txt
 jarvis/data/*.log.*
 jarvis/data/tts/

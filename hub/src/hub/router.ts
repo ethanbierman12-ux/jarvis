@@ -124,6 +124,54 @@ export function planRoutes(userText: string): RoutePlan {
     };
   }
 
+  // Work Crew explicit asks
+  if (/\b(ask )?manager\b|\bwork crew\b/.test(t)) {
+    return {
+      reason: "Work Crew dispatcher",
+      steps: [{ spoke: "manager", intent: "plan", input: userText }],
+    };
+  }
+  if (/\b(ask )?scholar\b/.test(t)) {
+    return {
+      reason: "Work Crew SCHOLAR ask",
+      steps: [{ spoke: "scholar", intent: "research", input: userText }],
+    };
+  }
+  if (/\b(ask )?stitch\b/.test(t)) {
+    const intent = /\bpush|deploy|merge\b/.test(t) ? "push" : "patch";
+    return {
+      reason: "Work Crew STITCH ask",
+      steps: [{ spoke: "stitch", intent, input: userText }],
+    };
+  }
+  if (/\b(ask )?reel\b|\btiktok\b|\bshort form\b/.test(t)) {
+    const intent = /\bpublish|post\b/.test(t) ? "publish" : "draft";
+    return {
+      reason: "Work Crew REEL ask",
+      steps: [{ spoke: "reel", intent, input: userText }],
+    };
+  }
+  if (/\b(ask )?flip\b|\barbitrage\b/.test(t)) {
+    const intent = /\bbuy|purchase|execute\b/.test(t) ? "execute" : "scout";
+    return {
+      reason: "Work Crew FLIP ask",
+      steps: [{ spoke: "flip", intent, input: userText }],
+    };
+  }
+  if (/\b(ask )?ledger\b|\bbalance\b|\bfinance\b/.test(t)) {
+    const intent = /\btrade|buy|sell|execute\b/.test(t) ? "trade" : "report";
+    return {
+      reason: "Work Crew LEDGER ask (read-only)",
+      steps: [{ spoke: "ledger", intent, input: userText }],
+    };
+  }
+  if (/\b(ask )?muse\b|\bbrainstorm\b/.test(t)) {
+    return {
+      reason: "Work Crew MUSE ask",
+      steps: [{ spoke: "muse", intent: "brainstorm", input: userText }],
+    };
+  }
+
   if (/ticket|inbox|draft reply|support|email customer/.test(t)) {
     const intent = /draft|reply/.test(t) ? "draft_reply" : "triage";
     return {
@@ -147,6 +195,19 @@ export function planRoutes(userText: string): RoutePlan {
   };
 }
 
+const KNOWN_SPOKES: readonly SpokeId[] = [
+  "sarah",
+  "tom",
+  "admin",
+  "manager",
+  "scholar",
+  "stitch",
+  "reel",
+  "flip",
+  "ledger",
+  "muse",
+];
+
 export function parseLlmPlan(raw: string): RoutePlan | null {
   try {
     const jsonStart = raw.indexOf("{");
@@ -155,7 +216,7 @@ export function parseLlmPlan(raw: string): RoutePlan | null {
     const obj = JSON.parse(raw.slice(jsonStart, jsonEnd + 1)) as RoutePlan;
     if (!obj.steps || !Array.isArray(obj.steps)) return null;
     obj.steps = obj.steps
-      .filter((s) => s && ["sarah", "tom", "admin"].includes(s.spoke))
+      .filter((s) => s && (KNOWN_SPOKES as readonly string[]).includes(s.spoke))
       .slice(0, CFG.maxOrchestrationSteps) as RoutePlan["steps"];
     return obj;
   } catch {

@@ -41,7 +41,18 @@ app.get("/health", (_req, res) => {
     uptimeSec: Math.round((Date.now() - started) / 1000),
     sessions: ephemeral.list().length,
     mockLlm: (process.env.MOCK_LLM || "true").toLowerCase() !== "false",
-    spokes: { sarah: "idle", tom: "idle", admin: "idle" },
+    spokes: {
+      sarah: "idle",
+      tom: "idle",
+      admin: "idle",
+      manager: "idle",
+      scholar: "idle",
+      stitch: "idle",
+      reel: "idle",
+      flip: "idle",
+      ledger: "idle",
+      muse: "idle",
+    },
     ts: Date.now(),
   };
   // Reflect latest session statuses if any
