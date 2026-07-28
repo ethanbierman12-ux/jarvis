@@ -182,6 +182,11 @@ class Settings:
     computer_use_openai_model: str = "gpt-4.1"
     anthropic_api_key: str = ""  # vaulted
     openai_api_key: str = ""  # vaulted
+    # Claude Code CLI (`npm i -g @anthropic-ai/claude-code`)
+    # When on, llm_client prefers the local CLI over the Anthropic REST API
+    # so Jarvis can reuse a Claude Pro / Max subscription instead of billing
+    # an API key. Falls back cleanly when the binary is missing.
+    prefer_claude_cli: bool = False
     whisper_mode: bool = False  # soft TTS when you whisper / late night
     whisper_volume: str = "-20%"
     healer_enabled: bool = True

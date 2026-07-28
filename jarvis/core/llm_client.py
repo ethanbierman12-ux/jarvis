@@ -1,9 +1,11 @@
 """Shared LLM completion — one helper for every module that needs prompt → text.
 
 Backend chain (first available wins):
-  1. Local Ollama  (http://127.0.0.1:11434 — free, private, preferred)
-  2. Anthropic     (anthropic_api_key in vault)
-  3. OpenAI        (openai_api_key in vault)
+  1. Claude Code CLI (opt-in via settings.prefer_claude_cli — reuses your
+                      Claude Pro / Max subscription instead of API billing)
+  2. Local Ollama  (http://127.0.0.1:11434 — free, private, preferred)
+  3. Anthropic     (anthropic_api_key in vault)
+  4. OpenAI        (openai_api_key in vault)
 
 Boot-safe: urllib only, no SDKs, every path wrapped. Returns "" when no
 backend is reachable — callers degrade gracefully.
@@ -14,6 +16,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 _OLLAMA_HOST = "http://127.0.0.1:11434"
@@ -23,6 +26,23 @@ _OPENAI_MODEL = "gpt-4.1-mini"
 _ollama_model_cache: str | None = None
 _ollama_cache_at: float = 0.0
 _OLLAMA_RETRY_SEC = 60.0  # re-probe a down/empty Ollama once a minute
+
+
+def _prefer_claude_cli() -> bool:
+    """Cheap best-effort read of ``settings.prefer_claude_cli``.
+
+    We avoid importing ``jarvis.config`` here because llm_client is loaded
+    very early during boot and by tools that don't need the full Settings
+    dataclass. A missing / malformed settings file simply returns False.
+    """
+    try:
+        settings_path = Path(__file__).resolve().parent.parent.parent / "config" / "settings.json"
+        if not settings_path.is_file():
+            return False
+        raw = json.loads(settings_path.read_text(encoding="utf-8-sig"))
+        return bool(raw.get("prefer_claude_cli", False))
+    except Exception:
+        return False
 
 
 def _post_json(url: str, payload: dict, headers: dict | None = None, timeout: float = 60.0) -> dict:
@@ -164,6 +184,14 @@ def _vault_key(name: str) -> str:
 
 def backend_name() -> str:
     """Which backend complete() would use right now — for status lines."""
+    if _prefer_claude_cli():
+        try:
+            from jarvis.core import anthropic_cli
+
+            if anthropic_cli.is_available():
+                return "claude-cli"
+        except Exception:
+            pass
     if ollama_model():
         return f"ollama:{ollama_model()}"
     if _vault_key("anthropic_api_key"):
@@ -206,6 +234,21 @@ def diagnose_failure() -> str:
     return "No LLM reply, Sir. " + " ".join(bits)
 
 
+def _complete_claude_cli(
+    prompt: str, system: str, *, model: str, max_tokens: int
+) -> str:
+    """Route through the local Claude Code CLI when the user opted in."""
+    try:
+        from jarvis.core import anthropic_cli
+    except Exception:
+        return ""
+    if not anthropic_cli.is_available():
+        return ""
+    return anthropic_cli.complete(
+        prompt, system=system, model=model, max_tokens=max_tokens
+    )
+
+
 def complete(
     prompt: str,
     *,
@@ -217,6 +260,10 @@ def complete(
     """Prompt → text through the first available backend. '' when all fail."""
     if not (prompt or "").strip():
         return ""
+    if _prefer_claude_cli():
+        out = _complete_claude_cli(prompt, system, model=model, max_tokens=max_tokens)
+        if out:
+            return out
     out = _complete_ollama(
         prompt, system, model=model, temperature=temperature, max_tokens=max_tokens
     )
