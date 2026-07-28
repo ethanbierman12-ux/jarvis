@@ -1,12 +1,44 @@
 /** Shared Hub & Spoke types */
 
-export type SpokeId = "sarah" | "tom" | "admin";
+/**
+ * Original spokes (Sarah / Tom / Admin) plus the Work Crew mirror
+ * (manager / scholar / stitch / reel / flip / ledger / muse).
+ *
+ * Work Crew spokes are announcement-only stubs — they persist plan intent
+ * through the bus so n8n / Slack can wire additional automations, but they
+ * never call an external API. Real execution stays in the Python
+ * ``jarvis.core.work_crew`` module. This keeps ``MOCK_LLM=true`` safe.
+ */
+export type SpokeId =
+  | "sarah"
+  | "tom"
+  | "admin"
+  | "manager"
+  | "scholar"
+  | "stitch"
+  | "reel"
+  | "flip"
+  | "ledger"
+  | "muse";
 
 export type AgentStatus = "idle" | "running" | "waiting_hitl" | "done" | "error" | "halted";
 
 export interface Message {
   id: string;
-  role: "user" | "jarvis" | "sarah" | "tom" | "admin" | "system";
+  role:
+    | "user"
+    | "jarvis"
+    | "system"
+    | "sarah"
+    | "tom"
+    | "admin"
+    | "manager"
+    | "scholar"
+    | "stitch"
+    | "reel"
+    | "flip"
+    | "ledger"
+    | "muse";
   content: string;
   ts: number;
   meta?: Record<string, unknown>;

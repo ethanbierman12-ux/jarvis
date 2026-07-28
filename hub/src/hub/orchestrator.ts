@@ -8,6 +8,15 @@ import { planWithLlm, synthesizeReply } from "./llm.js";
 import { runSarah } from "../agents/sarah.js";
 import { runTom } from "../agents/tom.js";
 import { runAdmin } from "../agents/admin.js";
+import {
+  runManager,
+  runScholar,
+  runStitch,
+  runReel,
+  runFlip,
+  runLedger,
+  runMuse,
+} from "../agents/work_crew.js";
 import type { RoutePlan, SpokeResult, SpokeId } from "../types.js";
 
 export interface ChatRequest {
@@ -178,8 +187,22 @@ async function dispatchSpoke(
       return runTom(input, intent, prior);
     case "admin":
       return runAdmin(input, intent, prior);
+    case "manager":
+      return runManager(input, intent);
+    case "scholar":
+      return runScholar(input, intent);
+    case "stitch":
+      return runStitch(input, intent);
+    case "reel":
+      return runReel(input, intent);
+    case "flip":
+      return runFlip(input, intent);
+    case "ledger":
+      return runLedger(input, intent);
+    case "muse":
+      return runMuse(input, intent);
     default:
-      return { spoke: "sarah", ok: false, summary: `Unknown spoke ${spoke}` };
+      return { spoke: "sarah", ok: false, summary: `Unknown spoke ${String(spoke)}` };
   }
 }
 

@@ -57,6 +57,7 @@ Optional ElevenLabs: set `elevenlabs_api_key` in `config/settings.json` (mirrore
 - **ChromaDB** vector memory → `jarvis/data/chroma`
 - **Duplex voice**: set `deepgram_api_key` in `config/settings.json` → streaming STT (<300ms finals) + talk-over-Jarvis barge-in; classic STT is the fallback
 - **Agent crew**: say `crew <request>` / `crew status` / `crew health` / `crew debates` / `crew debate random` / `crew debate tech` / `crew debate <question>` — eight agents plus a debate chamber with 100+ preset topics (tech, AI, money, career, lifestyle, health, gaming, home, Philly, business)
+- **Work Crew**: seven persona specialists (MANAGER / SCHOLAR / STITCH / REEL / FLIP / LEDGER / MUSE) — see `docs/WORK_CREW_CLOUD_BRIEF.md`. LEDGER is **read-only** and never executes trades; REEL Buffer posts go through HITL. Open `jarvis/data/agent_ops_dashboard.html` to watch XP + outcome counts per agent.
 - **Rotating logs** (5 MB × 3) → `jarvis/data/jarvis.log`
 - **Mic hot-plug recovery** in the voice loop
 - **Windows Startup**: `install_jarvis_startup.bat`
@@ -94,6 +95,37 @@ The PC cannot hear claps while it is off. Use a **second always-on device** on t
 
 Config: `config/clap_wol.json` → `"transports": ["wifi", "bluetooth"]`  
 Test: `python test_wol.py --transport both`
+
+## Work Crew + Claude Code CLI (Windows)
+
+The Work Crew (`jarvis/core/work_crew.py`) sits alongside the eight-agent Agent
+Crew and hands out *units of work* — patches, reels, deals, finance reports —
+under HITL gates for anything that leaves the machine. Full spec:
+`docs/WORK_CREW_CLOUD_BRIEF.md`.
+
+Enable the Claude Code CLI so Jarvis reuses your Claude Pro / Max subscription
+instead of billing an API key:
+
+```powershell
+:: 1. Node 20+ from nodejs.org, reopen PowerShell.
+npm install -g @anthropic-ai/claude-code
+claude --version
+claude login
+
+:: 2. Turn it on in Jarvis (or say "prefer claude cli").
+notepad config\settings.json    # set "prefer_claude_cli": true
+```
+
+Rollback: set `prefer_claude_cli` to `false`. The LLM chain falls straight
+back to Ollama / Anthropic REST / OpenAI — no restart required.
+
+Try it:
+
+```
+Jarvis, work crew status.
+Jarvis, work crew run: draft a reel about clap-to-wake.
+start jarvis\data\agent_ops_dashboard.html
+```
 
 ## Architecture
 
