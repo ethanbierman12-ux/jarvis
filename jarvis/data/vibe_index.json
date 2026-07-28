@@ -103,6 +103,62 @@
       "engine": "template",
       "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\signal-board-081417",
       "created": "2026-07-27T08:14:48"
+    },
+    {
+      "slug": "neon-pulse-tracker",
+      "name": "Neon Pulse Tracker",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\neon-pulse-tracker",
+      "created": "2026-07-27T08:33:20"
+    },
+    {
+      "slug": "hydration-ping",
+      "name": "Hydration Ping",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\hydration-ping",
+      "created": "2026-07-27T08:41:57"
+    },
+    {
+      "slug": "cartographer-pins",
+      "name": "Cartographer Pins",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\cartographer-pins",
+      "created": "2026-07-27T09:18:29"
+    },
+    {
+      "slug": "budget-spark",
+      "name": "Budget Spark",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\budget-spark",
+      "created": "2026-07-27T09:36:45"
+    },
+    {
+      "slug": "kairos-clock",
+      "name": "Kairos Clock",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\kairos-clock",
+      "created": "2026-07-27T09:50:42"
+    },
+    {
+      "slug": "ink-drop-journal",
+      "name": "Ink Drop Journal",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\ink-drop-journal",
+      "created": "2026-07-27T10:00:07"
+    },
+    {
+      "slug": "pulse-runner",
+      "name": "Pulse Runner",
+      "stack": "game",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\pulse-runner",
+      "created": "2026-07-27T10:05:49"
     }
   ]
 }

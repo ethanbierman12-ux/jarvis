@@ -1,0 +1,25 @@
+You are Jarvis, an autonomous vibe-coding agent.
+Product: Ink Drop Journal
+Stack hint: web
+Brief: Build Ink Drop Journal: a web app — rich text daily journal with search.
+
+Design prompts from research:
+- Design a polished web app called Ink Drop Journal — rich text daily journal with search.
+- Hero section with bold typography, cyan accent, dark void background.
+- Interactive UI with localStorage, keyboard shortcuts, empty states.
+- Mobile-first layout, one primary CTA, gallery of mood images.
+- The Nintendo Switch is a video game console developed by Nintendo and released worldwide in most regions on March 3, 2017. Released in the middle of the eighth generation of home consoles, the Switch succeeded the Wii U 
+- Online shopping is a form of electronic commerce which allows consumers to buy goods or services directly from a seller over the Internet using a web browser or a mobile app. Consumers generally find a product of interes
+
+Image URLs to embed in the UI (use as <img src>):
+- https://picsum.photos/seed/ink-drop-journal-hero-0/960/540
+- https://loremflickr.com/960/540/web%2CInk%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/ink-drop-journal-gallery-1-1/960/540
+- https://loremflickr.com/960/540/web%2CInk%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/ink-drop-journal-gallery-2-2/960/540
+
+Web references:
+- Nintendo Switch: The Nintendo Switch is a video game console developed by Nintendo and released worldwide in most regions on March 3, 2017. Released in the middle of the eighth generation of home c
+- Online shopping: Online shopping is a form of electronic commerce which allows consumers to buy goods or services directly from a seller over the Internet using a web browser or a mobile app. Consu
+
+Ship a COMPLETE runnable multi-file project with AT LEAST 6 files (index.html, styles.css, theme.css, app.js, ui.js, storage.js, research.md, README.md). Include a hero image, image gallery, substantial JS (200+ lines total), polished CSS, keyboard shortcuts, and empty states. Zero stubs.

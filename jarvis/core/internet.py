@@ -261,6 +261,8 @@ class InternetAgent:
             ).strip(" ?.")
             if not topic:
                 topic = q
+            # Resolve a real article title first (avoids REST 404 spam)
+            title = None
             opensearch = (
                 "https://en.wikipedia.org/w/api.php?"
                 + urllib.parse.urlencode(
@@ -275,26 +277,54 @@ class InternetAgent:
             )
             titles = self._get_json(opensearch, timeout=8)
             if isinstance(titles, list) and len(titles) > 1 and titles[1]:
-                topic = titles[1][0]
+                title = titles[1][0]
+            if not title:
+                search = (
+                    "https://en.wikipedia.org/w/api.php?"
+                    + urllib.parse.urlencode(
+                        {
+                            "action": "query",
+                            "list": "search",
+                            "srsearch": topic,
+                            "srlimit": 1,
+                            "format": "json",
+                        }
+                    )
+                )
+                data_s = self._get_json(search, timeout=8)
+                hits = (
+                    ((data_s or {}).get("query") or {}).get("search") or []
+                )
+                if hits:
+                    title = hits[0].get("title")
+            if not title:
+                return None
             api = (
                 "https://en.wikipedia.org/api/rest_v1/page/summary/"
-                + urllib.parse.quote(str(topic).replace(" ", "_"))
+                + urllib.parse.quote(str(title).replace(" ", "_"))
             )
-            data = self._get_json(api, timeout=8)
+            try:
+                data = self._get_json(api, timeout=8)
+            except Exception as e:
+                # Missing articles are normal — stay quiet on 404
+                if "404" in str(e):
+                    return None
+                raise
             if data.get("type") == "disambiguation":
                 return None
             extract = (data.get("extract") or "").strip()
             if not extract:
                 return None
             return {
-                "title": data.get("title") or topic,
+                "title": data.get("title") or title,
                 "extract": extract[:500],
                 "url": (data.get("content_urls") or {}).get("desktop", {}).get("page")
                 or data.get("url")
                 or "",
             }
         except Exception as e:
-            print(f"[net] wiki failed: {e}")
+            if "404" not in str(e):
+                print(f"[net] wiki failed: {e}")
             return None
 
     def _fetch_snippet(self, url: str) -> str:

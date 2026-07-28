@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Budget Spark</title>
+<link rel="stylesheet" href="theme.css"/>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <div class="bg"></div>
+  <header class="top">
+    <p class="eyebrow">JARVIS · VIBE · BUDGET</p>
+    <nav>
+      <button type="button" data-go="home" class="nav on">Home</button>
+      <button type="button" data-go="board" class="nav">App</button>
+      <button type="button" data-go="gallery" class="nav">Gallery</button>
+      <button type="button" id="themeBtn" class="nav ghost">Theme</button>
+    </nav>
+  </header>
+  <main>
+    <section id="home" class="view on">
+      <div class="hero" style="--hero:url('https://picsum.photos/seed/budget-spark-hero-0/960/540')">
+        <div class="hero-copy">
+          <h1>Budget Spark</h1>
+          <p class="lead">expense tracker with categories and running total</p>
+          <div class="cta-row">
+            <button type="button" id="startBtn" class="primary">Open app</button>
+            <button type="button" data-go="gallery" class="ghost">Research images</button>
+          </div>
+          <p class="meta">Kind: budget · researched live · functional local app</p>
+        </div>
+      </div>
+    </section>
+    <section id="board" class="view">
+
+      <section class="panel">
+        <div class="panel-head"><h2>Money board</h2>
+          <div class="stats"><span>spent <b id="statTotal">0</b></span><span>left <b id="statDone">0</b></span></div>
+        </div>
+        <form id="form">
+          <input id="input" placeholder="Coffee 4.50" autocomplete="off"/>
+          <select id="cat"><option>food</option><option>travel</option><option>tools</option><option>fun</option><option>other</option></select>
+          <button type="submit">Add</button>
+        </form>
+        <div class="cta-row">
+          <label class="dim">Budget <input id="budget" type="number" value="100" style="width:90px;margin-left:8px"/></label>
+          <button type="button" id="clearSpent">Clear spent</button>
+        </div>
+        <ul id="list"></ul>
+      </section>
+    </section>
+    <section id="gallery" class="view">
+      <h2 class="section-title">Research gallery</h2>
+      <p class="dim">Images Jarvis clicked and kept while searching.</p>
+      <div class="gallery">
+      <figure><img src="https://loremflickr.com/960/540/web%2CBudget%2Ctechnology%2Cneon?lock=3" alt="mood 1" loading="lazy"/><figcaption>Mood 1</figcaption></figure>
+      <figure><img src="https://picsum.photos/seed/budget-spark-gallery-1-1/960/540" alt="mood 2" loading="lazy"/><figcaption>Mood 2</figcaption></figure>
+      <figure><img src="https://loremflickr.com/960/540/web%2CBudget%2Ctechnology%2Cneon?lock=4" alt="mood 3" loading="lazy"/><figcaption>Mood 3</figcaption></figure>
+      <figure><img src="https://picsum.photos/seed/budget-spark-gallery-2-2/960/540" alt="mood 4" loading="lazy"/><figcaption>Mood 4</figcaption></figure>
+      </div>
+    </section>
+  </main>
+  <script src="storage.js"></script>
+  <script src="ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

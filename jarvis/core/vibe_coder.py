@@ -58,6 +58,15 @@ _INVENTIONS = (
     ("Git Blame Lite", "python", "CLI that summarizes a folder of text files"),
     ("Server Pulse", "dashboard", "fake service health cards with latency"),
     ("Launch Checklist", "dashboard", "pre-flight deploy checklist with owners"),
+    # Games + videos bias
+    ("Neon Snake Arena", "game", "classic snake with levels pause and high score"),
+    ("Pulse Runner", "game", "endless runner jump dodge collect gems"),
+    ("Orb Breaker", "game", "breakout bricks with powerups and lives"),
+    ("Star Dual", "game", "two-button duel shooter with waves"),
+    ("Reel Mood Studio", "video", "slideshow video reel from research images"),
+    ("Caption Cut", "video", "captioned image filmstrip with export frame"),
+    ("Night Trailer", "video", "cinematic trailer cards with music-free beats"),
+    ("Storyboard Flip", "video", "storyboard frames play as a looping video"),
 )
 
 
@@ -362,8 +371,17 @@ class VibeCoder:
             except Exception as e:
                 preview_url = ""
                 print(f"[vibe] preview server: {e}")
+            if preview_url:
+                self.last_meta["preview_url"] = preview_url
+                self.last_meta["app_url"] = preview_url
+                try:
+                    (out_dir / "vibe.json").write_text(
+                        json.dumps(self.last_meta, indent=2), encoding="utf-8"
+                    )
+                except Exception:
+                    pass
             progress(
-                "Sandbox app preview ready — look at APP PREVIEW tab",
+                "Sandbox app preview ready — switching to PREVIEW tab",
                 agent_stage="preview",
                 tab="building",
                 preview_url=preview_url,
@@ -372,16 +390,12 @@ class VibeCoder:
                 research=research.get("hits") or [],
                 html=files.get("preview.html") or files.get("index.html") or "",
             )
-            # Also open the live app in Chrome so you see the real product
-            if preview_url:
-                try:
-                    self._open_chrome(preview_url)
-                except Exception:
-                    pass
+            # Stay in Build Theater PREVIEW — no Chrome popup (smoother)
             progress(
-                "Preview only — say 'publish vibe' to open in Cursor when ready",
+                "Preview ready — say publish vibe only when you want Cursor",
                 agent_stage="ship",
                 tab="building",
+                preview_url=preview_url,
             )
 
         n = len(written)
@@ -488,38 +502,39 @@ class VibeCoder:
             pass
 
     def _admire_image(self, progress: Callable[..., None]) -> None:
-        """Slowly move to a Google Images tile, click it, and compliment it."""
+        """Move/click an image tile inside Build Theater (no OS mouse hijack)."""
         import time as _time
 
+        tiles = [
+            (0.22, 0.42),
+            (0.48, 0.48),
+            (0.72, 0.44),
+            (0.35, 0.62),
+            (0.60, 0.55),
+        ]
+        x, y = random.choice(tiles)
         try:
-            import pyautogui
-
-            pyautogui.FAILSAFE = True
-            w, h = pyautogui.size()
-            # Typical Google Images grid sits mid-screen under the search bar
-            tiles = [
-                (int(w * 0.22), int(h * 0.42)),
-                (int(w * 0.48), int(h * 0.48)),
-                (int(w * 0.72), int(h * 0.44)),
-                (int(w * 0.35), int(h * 0.62)),
-            ]
-            x, y = random.choice(tiles)
             progress(
                 "Moving cursor onto a promising image…",
                 agent_stage="research",
                 tab="working",
-                terminal=f"mouse --move {x},{y}",
+                mouse="move",
+                mouse_x=x,
+                mouse_y=y,
+                terminal=f"mouse --move {x:.2f},{y:.2f}",
             )
-            pyautogui.moveTo(x, y, duration=1.1)
-            _time.sleep(0.7)
+            _time.sleep(1.0)
             progress(
                 "Clicking image…",
                 agent_stage="research",
                 tab="working",
+                mouse="click",
+                mouse_x=x,
+                mouse_y=y,
+                mouse_click=True,
                 terminal="mouse --click",
             )
-            pyautogui.click()
-            _time.sleep(1.2)
+            _time.sleep(1.1)
             lines = (
                 "This is a nice image.",
                 "This is a nice image — strong mood for the app.",
@@ -532,9 +547,12 @@ class VibeCoder:
                 agent_stage="research",
                 tab="working",
                 speak=line,
+                mouse="hover",
+                mouse_x=x,
+                mouse_y=y,
                 terminal="jarvis --admire",
             )
-            _time.sleep(2.2)
+            _time.sleep(1.8)
         except Exception as e:
             progress(
                 "This is a nice image.",
@@ -582,9 +600,14 @@ class VibeCoder:
         pool = [x for x in _INVENTIONS if x[0] not in used]
         if len(pool) < 5:
             pool = list(_INVENTIONS)
-        # Prefer unused; shuffle for variety
-        random.shuffle(pool)
-        name, stack, pitch = pool[0]
+        # Bias toward games/videos so invent feels cinematic
+        weighted: list[tuple[str, str, str]] = []
+        for item in pool:
+            stack = item[1]
+            copies = 3 if stack in ("game", "video") else 1
+            weighted.extend([item] * copies)
+        random.shuffle(weighted)
+        name, stack, pitch = (weighted or pool)[0]
         # Mutate name slightly so even repeats feel fresh
         suffixes = ("", " Lab", " Desk", " OS", " HQ", " Kit", " Studio", f" {random.randint(2,9)}")
         if name in used:
@@ -664,8 +687,25 @@ class VibeCoder:
 
     def _guess_stack(self, brief: str) -> str:
         b = brief.lower()
-        if any(w in b for w in ("game", "play", "arcade", "shooter", "puzzle")):
+        if any(
+            w in b
+            for w in (
+                "game",
+                "play",
+                "arcade",
+                "shooter",
+                "puzzle",
+                "snake",
+                "runner",
+                "maze",
+            )
+        ):
             return "game"
+        if any(
+            w in b
+            for w in ("video", "reel", "trailer", "slideshow", "film", "movie", "storyboard")
+        ):
+            return "video"
         if any(w in b for w in ("cli", "command line", "python script", "terminal")):
             return "python"
         if any(w in b for w in ("dashboard", "ops", "metrics", "status board")):
@@ -702,7 +742,7 @@ class VibeCoder:
             f"Mobile-first layout, one primary CTA, gallery of mood images.",
         ]
 
-        # Track so first Chrome open can use a window; later calls only add tabs
+        # Research stays in Build Theater — click search bar, type slowly, then submit
         self._chrome_started = False
 
         for i, q in enumerate(queries):
@@ -710,52 +750,127 @@ class VibeCoder:
             google_url = f"https://www.google.com/search?q={gq}&hl=en"
             images_url = f"https://www.google.com/search?tbm=isch&q={gq}&hl=en"
 
+            # 1) Open blank Google home (not pre-filled results)
             progress(
-                f"Slow search — opening Google for: {q[:60]}…",
+                "Opening Google home — clicking the search bar…",
+                agent_stage="research",
+                tab="working",
+                browser_url="https://www.google.com/",
+                mouse="focus-search",
+                mouse_x=0.50,
+                mouse_y=0.42,
+                mouse_click=True,
+                keyboard="",
+                keyboard_reset=True,
+                terminal="theater --google-home",
+                prompts=prompts,
+            )
+            _time.sleep(1.6)
+
+            # 2) Type the query slowly so you can watch each keystroke
+            typed = ""
+            for ci, ch in enumerate(q):
+                typed += ch
+                # Emit often enough to see typing, not every single char spam
+                if ci == 0 or ci % 2 == 1 or ci == len(q) - 1:
+                    progress(
+                        f"Typing into search… {typed}",
+                        agent_stage="research",
+                        tab="working",
+                        keyboard=typed,
+                        keyboard_reset=(ci == 0),
+                        mouse="typing",
+                        mouse_x=0.50,
+                        mouse_y=0.42,
+                        terminal=f"keyboard --type {typed[:40]}",
+                        prompts=prompts,
+                    )
+                    _time.sleep(0.14)
+            _time.sleep(0.55)
+
+            # 3) Submit search → results
+            progress(
+                f"Submitting search: {q[:56]}…",
+                agent_stage="research",
+                tab="working",
+                keyboard=q,
+                mouse="submit",
+                mouse_x=0.78,
+                mouse_y=0.42,
+                mouse_click=True,
+                google_submit=True,
+                terminal="keyboard --enter",
+                prompts=prompts,
+            )
+            _time.sleep(0.7)
+            progress(
+                f"Reading Google results… ({i+1}/{len(queries)})",
                 agent_stage="research",
                 tab="working",
                 browser_url=google_url,
-                terminal=f"chrome {google_url[:70]}",
+                mouse="scroll",
+                mouse_x=0.55,
+                mouse_y=0.60,
+                terminal="scroll --results",
                 research=hits[-6:],
                 images=images[-6:],
                 prompts=prompts,
             )
-            try:
-                self._open_chrome(google_url, new_window=not self._chrome_started)
-                self._chrome_started = True
-            except Exception:
-                pass
-            # Slow enough to watch results paint
-            _time.sleep(4.2)
+            _time.sleep(2.8)
 
+            # 4) Images — type again slowly on Images mode
             progress(
-                f"Reading Google results for prompts… ({i+1}/{len(queries)})",
+                "Opening Google Images — clicking search bar…",
                 agent_stage="research",
                 tab="working",
-                browser_url=google_url,
-                terminal="scroll --results",
+                browser_url="https://www.google.com/imghp?hl=en",
+                mouse="focus-search",
+                mouse_x=0.50,
+                mouse_y=0.40,
+                mouse_click=True,
+                keyboard="",
+                keyboard_reset=True,
+                terminal="theater --images-home",
                 prompts=prompts,
             )
-            _time.sleep(3.0)
-
-            progress(
-                f"Opening Google Images — leave this tab open…",
-                agent_stage="research",
-                tab="working",
-                browser_url=images_url,
-                terminal=f"chrome --images {q[:50]}",
-                prompts=prompts,
-            )
-            try:
-                # Always add a tab; never close previous ones
-                self._open_chrome(images_url, new_window=False)
-            except Exception:
-                pass
-            _time.sleep(3.8)
-
-            # Click a tile and compliment it (visible on the Images tab)
-            self._admire_image(progress)
             _time.sleep(1.5)
+            typed = ""
+            for ci, ch in enumerate(q):
+                typed += ch
+                if ci == 0 or ci % 2 == 1 or ci == len(q) - 1:
+                    progress(
+                        f"Typing image search… {typed}",
+                        agent_stage="research",
+                        tab="working",
+                        keyboard=typed,
+                        keyboard_reset=(ci == 0),
+                        mouse="typing",
+                        mouse_x=0.50,
+                        mouse_y=0.40,
+                        terminal=f"keyboard --images {typed[:40]}",
+                        prompts=prompts,
+                    )
+                    _time.sleep(0.12)
+            _time.sleep(0.45)
+            progress(
+                f"Searching images for: {q[:50]}…",
+                agent_stage="research",
+                tab="working",
+                keyboard=q,
+                mouse="submit",
+                mouse_click=True,
+                mouse_x=0.78,
+                mouse_y=0.40,
+                google_submit=True,
+                browser_url=images_url,
+                terminal=f"theater --images {q[:50]}",
+                prompts=prompts,
+            )
+            _time.sleep(2.6)
+
+            # Click a tile and compliment it (visible on WORKING tab)
+            self._admire_image(progress)
+            _time.sleep(1.2)
 
             progress(
                 f"Harvesting prompts from results: {q[:56]}…",
@@ -1071,6 +1186,8 @@ class VibeCoder:
             return self._tpl_python(name, pitch)
         if stack == "game":
             return self._tpl_game(name, pitch)
+        if stack == "video":
+            return self._tpl_video(name, pitch, research=research)
         if stack == "dashboard":
             return self._tpl_dashboard(name, pitch)
         return self._tpl_web(name, pitch, research=research)
@@ -1131,7 +1248,10 @@ class VibeCoder:
             board = """
       <section class="panel">
         <div class="panel-head"><h2>Focus timer</h2>
-          <div class="stats"><span><b id="statRounds">0</b> rounds</span></div>
+          <div class="stats">
+            <span><b id="statRounds">0</b> rounds</span>
+            <span><b id="statFocus">0</b> min focus</span>
+          </div>
         </div>
         <div class="timer-face" id="clock">25:00</div>
         <div class="cta-row">
@@ -1140,9 +1260,13 @@ class VibeCoder:
           <button type="button" id="resetTimer">Reset</button>
           <button type="button" id="mode25">25/5</button>
           <button type="button" id="mode50">50/10</button>
+          <button type="button" id="mode15">15/3</button>
+          <button type="button" id="skipBreak">Skip break</button>
+          <button type="button" id="clearHist">Clear history</button>
+          <button type="button" id="exportHist">Export</button>
         </div>
         <ul id="list"></ul>
-        <p class="hint">Completes a round automatically · history saved locally</p>
+        <p class="hint">Completes a round automatically · history saved locally · Export copies JSON</p>
       </section>"""
             app = f"""
 const KEY = "vibe:{key}:timer";
@@ -1156,6 +1280,8 @@ function render(){{
   clock.textContent = fmt(left);
   const hist = load();
   document.getElementById("statRounds").textContent = String(hist.length);
+  const focusMin = hist.filter(h => /Focus/i.test(h.label||"")).length * Math.round(work/60);
+  const sf = document.getElementById("statFocus"); if (sf) sf.textContent = String(focusMin);
   list.innerHTML = hist.slice(0,12).map(h => `<li><span>${{h.label}} · ${{h.at}}</span></li>`).join("") || "<li><span>No rounds yet — hit Start</span></li>";
 }}
 function tick(){{
@@ -1176,6 +1302,13 @@ document.getElementById("pauseTimer").onclick = () => {{ on = false; }};
 document.getElementById("resetTimer").onclick = () => {{ on=false; mode="work"; left=work; render(); }};
 document.getElementById("mode25").onclick = () => {{ work=25*60; breakS=5*60; left=work; render(); }};
 document.getElementById("mode50").onclick = () => {{ work=50*60; breakS=10*60; left=work; render(); }};
+document.getElementById("mode15").onclick = () => {{ work=15*60; breakS=3*60; left=work; render(); }};
+document.getElementById("skipBreak").onclick = () => {{ mode="work"; left=work; render(); }};
+document.getElementById("clearHist").onclick = () => {{ save([]); render(); }};
+document.getElementById("exportHist").onclick = () => {{
+  const blob = new Blob([JSON.stringify(load(),null,2)], {{type:"application/json"}});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "timer-history.json"; a.click();
+}};
 document.getElementById("startBtn")?.addEventListener("click", () => ui.setView("board"));
 ui.bindNav();
 render();
@@ -1694,6 +1827,23 @@ const ui = window.VibeUI;
         }
     def _tpl_game(self, name: str, pitch: str) -> dict[str, str]:
         safe = _esc(name)
+        blob = f"{name} {pitch}".lower()
+        if any(w in blob for w in ("snake",)):
+            kind = "snake"
+        elif any(w in blob for w in ("runner", "jump", "dash")):
+            kind = "runner"
+        else:
+            kind = "shooter"
+        js = {
+            "snake": self._game_js_snake(),
+            "runner": self._game_js_runner(),
+            "shooter": self._game_js_shooter(),
+        }[kind]
+        help_txt = {
+            "snake": "ARROWS STEER · P PAUSE · R RESTART",
+            "runner": "SPACE / UP JUMP · P PAUSE · R RESTART",
+            "shooter": "ARROWS MOVE · SPACE SHOOT · P PAUSE · R RESTART",
+        }[kind]
         return {
             "index.html": f"""<!DOCTYPE html>
 <html lang="en">
@@ -1703,104 +1853,283 @@ const ui = window.VibeUI;
 <title>{safe}</title>
 <style>
   html,body{{margin:0;height:100%;background:#05070c;color:#e8f4ff;font-family:Bahnschrift,Segoe UI,sans-serif}}
-  #wrap{{display:grid;place-items:center;height:100%;gap:12px}}
-  canvas{{border:1px solid rgba(0,232,255,.4);background:#02080e;box-shadow:0 0 40px rgba(0,232,255,.12)}}
-  p{{letter-spacing:.2em;font-size:12px;color:#00e8ff;margin:0}}
-  .dim{{color:#7a93a8;letter-spacing:.08em}}
+  #wrap{{display:grid;place-items:center;height:100%;gap:10px;padding:12px}}
+  canvas{{border:1px solid rgba(0,232,255,.4);background:#02080e;box-shadow:0 0 40px rgba(0,232,255,.12);cursor:pointer}}
+  p{{letter-spacing:.18em;font-size:12px;color:#00e8ff;margin:0}}
+  .dim{{color:#7a93a8;letter-spacing:.08em;text-align:center;max-width:520px}}
+  .hud{{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}}
+  button{{background:transparent;border:1px solid rgba(0,232,255,.45);color:#00e8ff;
+    padding:8px 14px;letter-spacing:.14em;cursor:pointer;font:inherit;text-transform:uppercase}}
+  button:hover,button.active{{background:rgba(0,232,255,.15)}}
+  #score{{color:#e8f4ff;font-size:14px;letter-spacing:.2em}}
 </style>
 </head>
 <body>
 <div id="wrap">
   <p>{safe}</p>
-  <canvas id="c" width="480" height="320"></canvas>
-  <p class="dim">ARROWS MOVE · SPACE SHOOT · {_esc(pitch).upper()}</p>
+  <div id="score">SCORE 0 · BEST 0 · LIVES 3</div>
+  <canvas id="c" width="520" height="340"></canvas>
+  <div class="hud">
+    <button type="button" id="btnPause">Pause</button>
+    <button type="button" id="btnRestart">Restart</button>
+    <button type="button" id="btnMute">Mute SFX</button>
+    <button type="button" id="btnEasy">Easy</button>
+    <button type="button" id="btnHard">Hard</button>
+  </div>
+  <p class="dim">{help_txt} · {_esc(pitch).upper()}</p>
 </div>
 <script src="game.js"></script>
 </body>
 </html>
 """,
-            "game.js": """const c = document.getElementById("c");
+            "game.js": js,
+            "preview.html": f"""<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>{safe} preview</title>
+<style>body{{margin:0;background:#02080e;color:#9adfff;font-family:Bahnschrift,sans-serif;display:grid;place-items:center;height:100vh}}
+a{{color:#00e8ff;letter-spacing:.2em;text-decoration:none;border:1px solid #00e8ff;padding:14px 22px}}</style></head>
+<body><div><h1>{safe}</h1><p>{_esc(pitch)}</p><p><a href="index.html">OPEN FULL GAME</a></p></div></body></html>
+""",
+            "README.md": self._readme(
+                {"name": name, "stack": "game", "pitch": pitch},
+                "template",
+                ["index.html", "game.js", "preview.html", "README.md"],
+            ),
+        }
+
+    def _game_js_shooter(self) -> str:
+        return r"""
+const c = document.getElementById("c");
 const ctx = c.getContext("2d");
 const keys = {};
-addEventListener("keydown", e => keys[e.code] = true);
+const scoreEl = document.getElementById("score");
+addEventListener("keydown", e => { keys[e.code] = true; if(["Space","ArrowUp","ArrowDown"].includes(e.code)) e.preventDefault(); });
 addEventListener("keyup", e => keys[e.code] = false);
-
-let player = { x: 240, y: 260, w: 28, h: 16 };
-let bullets = [];
-let foes = [];
-let score = 0;
-let tick = 0;
-let alive = true;
-
-function spawn() {
-  foes.push({ x: 40 + Math.random() * 400, y: -20, s: 1.2 + Math.random() * 1.5 });
-}
-
-function loop() {
+let player = { x: 246, y: 280, w: 28, h: 16 };
+let bullets = [], foes = [], particles = [];
+let score = 0, best = +(localStorage.getItem("vibe:shooter:best")||0);
+let lives = 3, tick = 0, alive = true, paused = false, muted = false, speed = 1;
+function beep(){ if(muted) return; try{ const a=new (window.AudioContext||window.webkitAudioContext)(); const o=a.createOscillator(); const g=a.createGain(); o.connect(g); g.connect(a.destination); o.frequency.value=440; g.gain.value=0.03; o.start(); o.stop(a.currentTime+0.05);}catch(e){} }
+function spawn(){ foes.push({ x: 40 + Math.random()*440, y: -20, s: (1.2+Math.random()*1.5)*speed }); }
+function reset(){ alive=true; score=0; lives=3; foes=[]; bullets=[]; particles=[]; player.x=246; paused=false; }
+function loop(){
+  requestAnimationFrame(loop);
+  if(paused) return;
   tick++;
-  ctx.fillStyle = "#02080e";
-  ctx.fillRect(0, 0, c.width, c.height);
-  // grid
-  ctx.strokeStyle = "rgba(0,232,255,0.06)";
-  for (let x = 0; x < c.width; x += 40) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, c.height); ctx.stroke();
+  ctx.fillStyle="#02080e"; ctx.fillRect(0,0,c.width,c.height);
+  ctx.strokeStyle="rgba(0,232,255,0.06)";
+  for(let x=0;x<c.width;x+=40){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,c.height); ctx.stroke(); }
+  if(alive){
+    if(keys.ArrowLeft) player.x -= 4*speed;
+    if(keys.ArrowRight) player.x += 4*speed;
+    player.x = Math.max(0, Math.min(c.width-player.w, player.x));
+    if(keys.Space && tick%Math.max(6, Math.floor(12/speed))===0){ bullets.push({x:player.x+player.w/2,y:player.y}); beep(); }
+    if(tick%Math.max(20, Math.floor(45/speed))===0) spawn();
   }
-
-  if (alive) {
-    if (keys.ArrowLeft) player.x -= 4;
-    if (keys.ArrowRight) player.x += 4;
-    player.x = Math.max(0, Math.min(c.width - player.w, player.x));
-    if (keys.Space && tick % 12 === 0) {
-      bullets.push({ x: player.x + player.w / 2, y: player.y });
+  bullets = bullets.filter(b => b.y>-10);
+  bullets.forEach(b => { b.y -= 7; ctx.fillStyle="#00e8ff"; ctx.fillRect(b.x-2,b.y,4,10); });
+  foes.forEach(f => { f.y += f.s; ctx.fillStyle="#ff6b35"; ctx.fillRect(f.x,f.y,22,16); });
+  for(let i=foes.length-1;i>=0;i--){
+    const f=foes[i];
+    if(f.y>c.height){ foes.splice(i,1); continue; }
+    if(f.y+16>player.y && f.x<player.x+player.w && f.x+22>player.x){
+      foes.splice(i,1); lives--; beep();
+      if(lives<=0){ alive=false; best=Math.max(best,score); localStorage.setItem("vibe:shooter:best",best); }
+      continue;
     }
-    if (tick % 45 === 0) spawn();
-  }
-
-  bullets = bullets.filter(b => b.y > -10);
-  bullets.forEach(b => { b.y -= 7; ctx.fillStyle = "#00e8ff"; ctx.fillRect(b.x - 2, b.y, 4, 10); });
-
-  foes.forEach(f => {
-    f.y += f.s;
-    ctx.fillStyle = "#ff6b35";
-    ctx.fillRect(f.x, f.y, 22, 16);
-  });
-
-  for (let i = foes.length - 1; i >= 0; i--) {
-    const f = foes[i];
-    if (f.y > c.height) { foes.splice(i, 1); continue; }
-    if (f.y + 16 > player.y && f.x < player.x + player.w && f.x + 22 > player.x) alive = false;
-    for (let j = bullets.length - 1; j >= 0; j--) {
-      const b = bullets[j];
-      if (b.x > f.x && b.x < f.x + 22 && b.y > f.y && b.y < f.y + 16) {
-        foes.splice(i, 1); bullets.splice(j, 1); score += 10; break;
+    for(let j=bullets.length-1;j>=0;j--){
+      const b=bullets[j];
+      if(b.x>f.x && b.x<f.x+22 && b.y>f.y && b.y<f.y+16){
+        foes.splice(i,1); bullets.splice(j,1); score+=10;
+        for(let k=0;k<6;k++) particles.push({x:f.x+11,y:f.y+8,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4,life:20});
+        break;
       }
     }
   }
-
-  ctx.fillStyle = "#00e8ff";
-  ctx.fillRect(player.x, player.y, player.w, player.h);
-  ctx.fillStyle = "#e8f4ff";
-  ctx.font = "14px Bahnschrift";
-  ctx.fillText("SCORE " + score, 12, 22);
-  if (!alive) {
-    ctx.fillStyle = "rgba(5,7,12,.7)";
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.fillStyle = "#00e8ff";
-    ctx.font = "28px Bahnschrift";
-    ctx.fillText("SYSTEMS DOWN", 140, 150);
-    ctx.font = "14px Bahnschrift";
-    ctx.fillText("Press R to reboot", 180, 180);
-    if (keys.KeyR) {
-      alive = true; score = 0; foes = []; bullets = []; player.x = 240;
-    }
+  particles = particles.filter(p => p.life>0);
+  particles.forEach(p => { p.life--; p.x+=p.vx; p.y+=p.vy; ctx.fillStyle="#7cf0ff"; ctx.fillRect(p.x,p.y,2,2); });
+  ctx.fillStyle="#00e8ff"; ctx.fillRect(player.x,player.y,player.w,player.h);
+  scoreEl.textContent = `SCORE ${score} · BEST ${best} · LIVES ${lives}`;
+  if(!alive){
+    ctx.fillStyle="rgba(5,7,12,.72)"; ctx.fillRect(0,0,c.width,c.height);
+    ctx.fillStyle="#00e8ff"; ctx.font="28px Bahnschrift"; ctx.fillText("SYSTEMS DOWN", 150, 150);
+    ctx.font="14px Bahnschrift"; ctx.fillText("Press R or Restart", 190, 180);
+    if(keys.KeyR) reset();
   }
-  requestAnimationFrame(loop);
 }
+document.getElementById("btnPause").onclick=()=>{ paused=!paused; };
+document.getElementById("btnRestart").onclick=reset;
+document.getElementById("btnMute").onclick=()=>{ muted=!muted; };
+document.getElementById("btnEasy").onclick=()=>{ speed=0.75; };
+document.getElementById("btnHard").onclick=()=>{ speed=1.45; };
+c.onclick=()=>{ if(!alive) reset(); else paused=!paused; };
 loop();
+"""
+
+    def _game_js_snake(self) -> str:
+        return r"""
+const c=document.getElementById("c"), ctx=c.getContext("2d"), scoreEl=document.getElementById("score");
+const cell=20; let dir={x:1,y:0}, next=dir, snake=[{x:10,y:8}], food={x:15,y:8};
+let score=0, best=+(localStorage.getItem("vibe:snake:best")||0), paused=false, alive=true, speed=120, acc=0, last=0;
+addEventListener("keydown", e=>{
+  const k=e.code;
+  if(k==="ArrowUp"&&dir.y===0) next={x:0,y:-1};
+  if(k==="ArrowDown"&&dir.y===0) next={x:0,y:1};
+  if(k==="ArrowLeft"&&dir.x===0) next={x:-1,y:0};
+  if(k==="ArrowRight"&&dir.x===0) next={x:1,y:0};
+  if(k==="KeyP") paused=!paused;
+  if(k==="KeyR") reset();
+});
+function place(){ food={x:(Math.random()*26)|0,y:(Math.random()*17)|0}; }
+function reset(){ snake=[{x:10,y:8}]; dir={x:1,y:0}; next=dir; score=0; alive=true; paused=false; place(); }
+function step(){
+  if(!alive||paused) return;
+  dir=next; const h={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+  if(h.x<0||h.y<0||h.x>=26||h.y>=17||snake.some(s=>s.x===h.x&&s.y===h.y)){
+    alive=false; best=Math.max(best,score); localStorage.setItem("vibe:snake:best",best); return;
+  }
+  snake.unshift(h);
+  if(h.x===food.x&&h.y===food.y){ score+=10; place(); } else snake.pop();
+}
+function draw(){
+  ctx.fillStyle="#02080e"; ctx.fillRect(0,0,c.width,c.height);
+  ctx.fillStyle="#ff6b35"; ctx.fillRect(food.x*cell,food.y*cell,cell-1,cell-1);
+  snake.forEach((s,i)=>{ ctx.fillStyle=i? "#00e8ff":"#7cf0ff"; ctx.fillRect(s.x*cell,s.y*cell,cell-1,cell-1); });
+  scoreEl.textContent=`SCORE ${score} · BEST ${best} · LIVES ${alive?1:0}`;
+  if(!alive){ ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(0,0,c.width,c.height); ctx.fillStyle="#00e8ff"; ctx.font="24px Bahnschrift"; ctx.fillText("GAME OVER",190,160); }
+}
+function loop(t){ requestAnimationFrame(loop); if(!last) last=t; acc+=t-last; last=t; while(acc>speed){ step(); acc-=speed; } draw(); }
+document.getElementById("btnPause").onclick=()=>paused=!paused;
+document.getElementById("btnRestart").onclick=reset;
+document.getElementById("btnMute").onclick=()=>{};
+document.getElementById("btnEasy").onclick=()=>speed=160;
+document.getElementById("btnHard").onclick=()=>speed=70;
+c.onclick=()=>{ if(!alive) reset(); };
+loop(0);
+"""
+
+    def _game_js_runner(self) -> str:
+        return r"""
+const c=document.getElementById("c"), ctx=c.getContext("2d"), scoreEl=document.getElementById("score");
+let y=260, vy=0, onGround=true, obstacles=[], score=0, best=+(localStorage.getItem("vibe:runner:best")||0);
+let alive=true, paused=false, speed=5, tick=0;
+addEventListener("keydown", e=>{
+  if((e.code==="Space"||e.code==="ArrowUp")&&onGround&&alive){ vy=-11; onGround=false; }
+  if(e.code==="KeyP") paused=!paused;
+  if(e.code==="KeyR") reset();
+});
+function reset(){ y=260; vy=0; onGround=true; obstacles=[]; score=0; alive=true; paused=false; tick=0; speed=5; }
+function loop(){
+  requestAnimationFrame(loop);
+  if(paused) return;
+  tick++;
+  ctx.fillStyle="#02080e"; ctx.fillRect(0,0,c.width,c.height);
+  ctx.strokeStyle="rgba(0,232,255,.2)"; ctx.beginPath(); ctx.moveTo(0,300); ctx.lineTo(c.width,300); ctx.stroke();
+  if(alive){
+    vy+=0.55; y+=vy; if(y>=260){ y=260; vy=0; onGround=true; }
+    if(tick%Math.max(40, 70-Math.floor(speed*3))===0) obstacles.push({x:c.width, w:18+Math.random()*16, h:24+Math.random()*30});
+    speed+=0.0015; score++;
+  }
+  obstacles=obstacles.filter(o=>o.x>-40);
+  obstacles.forEach(o=>{
+    o.x-=speed; ctx.fillStyle="#ff6b35"; ctx.fillRect(o.x,300-o.h,o.w,o.h);
+    if(alive && o.x<70&&o.x+o.w>40&&y+20>300-o.h){ alive=false; best=Math.max(best,score); localStorage.setItem("vibe:runner:best",best); }
+  });
+  ctx.fillStyle="#00e8ff"; ctx.fillRect(40,y,28,28);
+  scoreEl.textContent=`SCORE ${score} · BEST ${best} · LIVES ${alive?1:0}`;
+  if(!alive){ ctx.fillStyle="rgba(0,0,0,.55)"; ctx.fillRect(0,0,c.width,c.height); ctx.fillStyle="#00e8ff"; ctx.font="24px Bahnschrift"; ctx.fillText("CRASHED",210,160); }
+}
+document.getElementById("btnPause").onclick=()=>paused=!paused;
+document.getElementById("btnRestart").onclick=reset;
+document.getElementById("btnMute").onclick=()=>{};
+document.getElementById("btnEasy").onclick=()=>speed=3.5;
+document.getElementById("btnHard").onclick=()=>speed=7;
+c.onclick=()=>{ if(!alive) reset(); else if(onGround){ vy=-11; onGround=false; } };
+loop();
+"""
+
+    def _tpl_video(self, name: str, pitch: str, *, research: dict[str, Any] | None = None) -> dict[str, str]:
+        safe = _esc(name)
+        research = research or {}
+        images = [
+            str(im.get("url") or "")
+            for im in (research.get("images") or [])
+            if str(im.get("url") or "").startswith("http")
+        ]
+        while len(images) < 5:
+            images.append(
+                f"https://picsum.photos/seed/{self._slug(name)}-v{len(images)}/960/540"
+            )
+        imgs_js = json.dumps(images[:8])
+        cap_list = [pitch[:80]] + [f"{name} — scene {i+1}" for i in range(4)]
+        captions = json.dumps(cap_list[:5])
+        return {
+            "index.html": f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>{safe}</title>
+<style>
+html,body{{margin:0;height:100%;background:#05070c;color:#e8f4ff;font-family:Bahnschrift,Segoe UI,sans-serif}}
+#wrap{{max-width:960px;margin:0 auto;padding:18px;display:grid;gap:12px}}
+.stage{{position:relative;aspect-ratio:16/9;background:#02080e;border:1px solid rgba(0,232,255,.35);overflow:hidden}}
+.stage img{{width:100%;height:100%;object-fit:cover;display:block}}
+.cap{{position:absolute;left:0;right:0;bottom:0;padding:16px 18px;background:linear-gradient(transparent,rgba(0,0,0,.82));
+  font-size:clamp(16px,3vw,28px);letter-spacing:.04em}}
+.hud{{display:flex;flex-wrap:wrap;gap:8px}}
+button{{background:transparent;border:1px solid rgba(0,232,255,.45);color:#00e8ff;padding:10px 14px;
+  letter-spacing:.12em;text-transform:uppercase;cursor:pointer;font:inherit}}
+button:hover{{background:rgba(0,232,255,.12)}}
+.dim{{color:#7a93a8}}
+</style></head><body>
+<div id="wrap">
+  <h1 style="margin:0;letter-spacing:.2em;color:#00e8ff">{safe}</h1>
+  <p class="dim">{_esc(pitch)}</p>
+  <div class="stage"><img id="frame" alt="frame"/><div class="cap" id="cap">…</div></div>
+  <div class="hud">
+    <button type="button" id="play">Play</button>
+    <button type="button" id="pause">Pause</button>
+    <button type="button" id="prev">Prev</button>
+    <button type="button" id="next">Next</button>
+    <button type="button" id="slower">Slower</button>
+    <button type="button" id="faster">Faster</button>
+    <button type="button" id="export">Export Frame</button>
+  </div>
+  <p class="dim">Research images + captions play as a looping reel. Export downloads the current PNG frame.</p>
+</div>
+<script src="video.js"></script>
+</body></html>
+""",
+            "video.js": f"""
+const imgs = {imgs_js};
+const caps = {captions};
+let i = 0, playing = true, ms = 2200, timer = null;
+const frame = document.getElementById("frame");
+const cap = document.getElementById("cap");
+function show(){{
+  frame.src = imgs[i % imgs.length];
+  cap.textContent = caps[i % caps.length] || ("Scene " + ((i%imgs.length)+1));
+}}
+function tick(){{ if(!playing) return; i = (i+1) % imgs.length; show(); }}
+function arm(){{ clearInterval(timer); timer = setInterval(tick, ms); }}
+show(); arm();
+document.getElementById("play").onclick=()=>{{ playing=true; arm(); }};
+document.getElementById("pause").onclick=()=>{{ playing=false; clearInterval(timer); }};
+document.getElementById("prev").onclick=()=>{{ i=(i+imgs.length-1)%imgs.length; show(); }};
+document.getElementById("next").onclick=()=>{{ i=(i+1)%imgs.length; show(); }};
+document.getElementById("slower").onclick=()=>{{ ms=Math.min(5000, ms+400); arm(); }};
+document.getElementById("faster").onclick=()=>{{ ms=Math.max(600, ms-400); arm(); }};
+document.getElementById("export").onclick=()=>{{
+  const a=document.createElement("a"); a.href=frame.src; a.download="{self._slug(name)}-frame.png"; a.click();
+}};
+""",
+            "preview.html": f"""<!DOCTYPE html><html><head><meta charset="utf-8"/><title>{safe}</title>
+<style>body{{margin:0;background:#02080e;color:#9adfff;font-family:Bahnschrift,sans-serif;display:grid;place-items:center;height:100vh}}
+a{{color:#00e8ff;border:1px solid #00e8ff;padding:12px 18px;text-decoration:none;letter-spacing:.16em}}</style></head>
+<body><div><h1>{safe}</h1><p>{_esc(pitch)}</p><a href="index.html">OPEN VIDEO STUDIO</a></div></body></html>
 """,
             "README.md": self._readme(
-                {"name": name, "stack": "game", "pitch": pitch}, "template",
-                ["index.html", "game.js", "README.md"],
+                {"name": name, "stack": "video", "pitch": pitch},
+                "template",
+                ["index.html", "video.js", "preview.html", "README.md"],
             ),
         }
 

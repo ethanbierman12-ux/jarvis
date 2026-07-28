@@ -1597,6 +1597,19 @@ class Brain:
                     hitl=self.hitl,
                 )
                 meta = self.vibe.last_meta or {}
+                preview_url = str(meta.get("preview_url") or "").strip()
+                app_url = str(meta.get("app_url") or "").strip()
+                if not preview_url:
+                    port = getattr(self.vibe, "_preview_port", None)
+                    root = self.vibe.last_project
+                    if port and root is not None:
+                        entry = (
+                            "index.html"
+                            if (root / "index.html").exists()
+                            else "preview.html"
+                        )
+                        preview_url = f"http://127.0.0.1:{port}/{entry}"
+                        app_url = preview_url
                 payload = {
                     "path": meta.get("path") or str(self.vibe.last_project or ""),
                     "name": meta.get("name") or "",
@@ -1604,6 +1617,9 @@ class Brain:
                     "files": meta.get("files") or [],
                     "entry": meta.get("entry") or "",
                     "prompt": self.vibe.last_prompt or "",
+                    "preview_url": preview_url,
+                    "app_url": app_url,
+                    "keep_theater": True,
                 }
                 self._emit("code_ui", payload)
                 self.feed.push("vibe", reply[:220])
@@ -5719,18 +5735,23 @@ class Brain:
             r"\b((start |do |run )?(autonomous )?(ai )?agent (development|coding|dev)|"
             r"(start |do |run )?vibe( coding|ing| code)?|"
             r"code vibe|"
-            r"(build|make|create|generate|ship)\s+(me )?(an? )?(app|project|game|tool|cli)|"
+            r"(build|make|create|generate|ship)\s+(me )?(an? )?(app|project|game|video|reel|trailer|tool|cli)|"
+            r"make (me )?(a )?(game|video|reel|trailer)|"
             r"autonomous (coding|development|dev))\b",
             t,
         ):
             brief = ""
             m3 = re.search(
                 r"(?:vibe(?: coding|ing| code)?|agent (?:development|coding|dev)|"
-                r"(?:app|project|game|tool|cli))\s+(?:for|called|named)?\s*(.+)$",
+                r"(?:app|project|game|video|reel|trailer|tool|cli))\s+(?:for|called|named)?\s*(.+)$",
                 t,
             )
             if m3:
                 brief = m3.group(1).strip()
+            if re.search(r"\bmake (me )?(a )?game\b", t) and not brief:
+                brief = "browser game with score pause restart and difficulty"
+            if re.search(r"\bmake (me )?(a )?(video|reel|trailer)\b", t) and not brief:
+                brief = "video slideshow reel with captions play pause and export"
             brief = re.sub(
                 r"^(called|named|for|me|a|an|the)\s+", "", brief, flags=re.I
             ).strip()

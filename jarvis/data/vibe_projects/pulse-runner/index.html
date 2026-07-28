@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Pulse Runner</title>
+<style>
+  html,body{margin:0;height:100%;background:#05070c;color:#e8f4ff;font-family:Bahnschrift,Segoe UI,sans-serif}
+  #wrap{display:grid;place-items:center;height:100%;gap:10px;padding:12px}
+  canvas{border:1px solid rgba(0,232,255,.4);background:#02080e;box-shadow:0 0 40px rgba(0,232,255,.12);cursor:pointer}
+  p{letter-spacing:.18em;font-size:12px;color:#00e8ff;margin:0}
+  .dim{color:#7a93a8;letter-spacing:.08em;text-align:center;max-width:520px}
+  .hud{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  button{background:transparent;border:1px solid rgba(0,232,255,.45);color:#00e8ff;
+    padding:8px 14px;letter-spacing:.14em;cursor:pointer;font:inherit;text-transform:uppercase}
+  button:hover,button.active{background:rgba(0,232,255,.15)}
+  #score{color:#e8f4ff;font-size:14px;letter-spacing:.2em}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <p>Pulse Runner</p>
+  <div id="score">SCORE 0 · BEST 0 · LIVES 3</div>
+  <canvas id="c" width="520" height="340"></canvas>
+  <div class="hud">
+    <button type="button" id="btnPause">Pause</button>
+    <button type="button" id="btnRestart">Restart</button>
+    <button type="button" id="btnMute">Mute SFX</button>
+    <button type="button" id="btnEasy">Easy</button>
+    <button type="button" id="btnHard">Hard</button>
+  </div>
+  <p class="dim">SPACE / UP JUMP · P PAUSE · R RESTART · ENDLESS RUNNER JUMP DODGE COLLECT GEMS</p>
+</div>
+<script src="game.js"></script>
+</body>
+</html>

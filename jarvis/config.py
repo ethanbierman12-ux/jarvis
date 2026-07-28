@@ -88,7 +88,7 @@ class Settings:
     # Multi-monitor
     hud_monitor: str = "primary"  # primary | secondary | 0 | 1
     ops_monitor: str = "secondary"  # where big stats board goes
-    ops_monitor_enabled: bool = True  # PDTester digests on secondary monitor
+    ops_monitor_enabled: bool = False  # PDTester — say "open pdtester" to show
     open_on_other_monitor: bool = True  # apps/URLs Jarvis opens
     # Wake-on-LAN / clap wake (second device uses Wi-Fi and/or Bluetooth)
     wol_mac: str = ""

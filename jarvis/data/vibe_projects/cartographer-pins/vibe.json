@@ -1,0 +1,20 @@
+{
+  "name": "Cartographer Pins",
+  "stack": "web",
+  "pitch": "pin places you want to visit with notes",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "theme.css",
+    "styles.css",
+    "storage.js",
+    "ui.js",
+    "app.js",
+    "research.md",
+    "preview.html",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\cartographer-pins",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\cartographer-pins\\index.html",
+  "zero_setup": true
+}

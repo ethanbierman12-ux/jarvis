@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Hydration Ping</title>
+<link rel="stylesheet" href="theme.css"/>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <div class="bg"></div>
+  <header class="top">
+    <p class="eyebrow">JARVIS · VIBE · QUEST</p>
+    <nav>
+      <button type="button" data-go="home" class="nav on">Home</button>
+      <button type="button" data-go="board" class="nav">App</button>
+      <button type="button" data-go="gallery" class="nav">Gallery</button>
+      <button type="button" id="themeBtn" class="nav ghost">Theme</button>
+    </nav>
+  </header>
+  <main>
+    <section id="home" class="view on">
+      <div class="hero" style="--hero:url('https://picsum.photos/seed/hydration-ping-hero-0/960/540')">
+        <div class="hero-copy">
+          <h1>Hydration Ping</h1>
+          <p class="lead">water intake tracker with reminders log</p>
+          <div class="cta-row">
+            <button type="button" id="startBtn" class="primary">Open app</button>
+            <button type="button" data-go="gallery" class="ghost">Research images</button>
+          </div>
+          <p class="meta">Kind: quest · researched live · functional local app</p>
+        </div>
+      </div>
+    </section>
+    <section id="board" class="view">
+
+      <section class="panel">
+        <div class="panel-head"><h2>Quest board</h2>
+          <div class="stats"><span><b id="statTotal">0</b> items</span><span><b id="statDone">0</b> done</span><span><b id="statXP">0</b> XP</span></div>
+        </div>
+        <form id="form">
+          <input id="input" placeholder="Add something actionable…" autocomplete="off"/>
+          <button type="submit">Add</button>
+        </form>
+        <div class="filters">
+          <button type="button" data-filter="all" class="chip on">All</button>
+          <button type="button" data-filter="open" class="chip">Open</button>
+          <button type="button" data-filter="done" class="chip">Done</button>
+        </div>
+        <ul id="list"></ul>
+        <p class="hint">Click text to toggle · XP awarded on complete · <kbd>N</kbd> focus</p>
+      </section>
+    </section>
+    <section id="gallery" class="view">
+      <h2 class="section-title">Research gallery</h2>
+      <p class="dim">Images Jarvis clicked and kept while searching.</p>
+      <div class="gallery">
+      <figure><img src="https://loremflickr.com/960/540/web%2CHydration%2Ctechnology%2Cneon?lock=3" alt="mood 1" loading="lazy"/><figcaption>Mood 1</figcaption></figure>
+      <figure><img src="https://picsum.photos/seed/hydration-ping-gallery-1-1/960/540" alt="mood 2" loading="lazy"/><figcaption>Mood 2</figcaption></figure>
+      <figure><img src="https://loremflickr.com/960/540/web%2CHydration%2Ctechnology%2Cneon?lock=4" alt="mood 3" loading="lazy"/><figcaption>Mood 3</figcaption></figure>
+      <figure><img src="https://picsum.photos/seed/hydration-ping-gallery-2-2/960/540" alt="mood 4" loading="lazy"/><figcaption>Mood 4</figcaption></figure>
+      </div>
+    </section>
+  </main>
+  <script src="storage.js"></script>
+  <script src="ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

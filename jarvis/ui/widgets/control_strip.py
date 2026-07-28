@@ -84,6 +84,8 @@ class ControlStrip(QFrame):
                 (
                     ("Site", "build a site", "ghost"),
                     ("Vibe", "start vibe coding", "ghost"),
+                    ("Game", "make a game", "ghost"),
+                    ("Video", "make a video", "ghost"),
                     ("Biz", "find biz", "ghost"),
                     ("Search", "search the web for latest AI news", "ghost"),
                 ),

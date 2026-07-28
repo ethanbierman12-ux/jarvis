@@ -108,18 +108,31 @@ class DisplayManager:
         screen = self.resolve(prefer)
         margin = 24
         if maximize:
-            widget.show()
             try:
-                # Frame geometry then expand into available area
-                widget.setGeometry(
-                    screen.x + 8,
-                    screen.y + 8,
-                    max(800, screen.width - 16),
-                    max(600, screen.height - 16),
+                from PyQt6.QtCore import QPoint, Qt
+
+                # Move onto target screen then maximize — avoids QWindowsWindow
+                # setGeometry spam from frame margins vs availableGeometry.
+                try:
+                    widget.setWindowState(
+                        widget.windowState() & ~Qt.WindowState.WindowMaximized
+                    )
+                except Exception:
+                    pass
+                widget.move(QPoint(screen.x + 8, screen.y + 8))
+                widget.resize(
+                    min(max(widget.minimumWidth(), 980), max(800, screen.width - 32)),
+                    min(max(widget.minimumHeight(), 680), max(600, screen.height - 48)),
                 )
+                widget.show()
                 widget.showMaximized()
             except Exception:
-                widget.setGeometry(screen.x, screen.y, screen.width, screen.height)
+                try:
+                    widget.move(screen.x + 8, screen.y + 8)
+                    widget.show()
+                    widget.showMaximized()
+                except Exception:
+                    widget.show()
         else:
             w = min(max(widget.width(), 1100), screen.width - margin * 2)
             h = min(max(widget.height(), 720), screen.height - margin * 2)

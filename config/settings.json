@@ -56,7 +56,7 @@
   "away_mail_max_per_tick": 3,
   "hud_monitor": "primary",
   "ops_monitor": "secondary",
-  "ops_monitor_enabled": true,
+  "ops_monitor_enabled": false,
   "open_on_other_monitor": true,
   "wol_mac": "",
   "wol_broadcast": "10.0.0.255",

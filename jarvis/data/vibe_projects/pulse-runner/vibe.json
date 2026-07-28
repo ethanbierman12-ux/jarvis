@@ -1,0 +1,15 @@
+{
+  "name": "Pulse Runner",
+  "stack": "game",
+  "pitch": "endless runner jump dodge collect gems",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "game.js",
+    "preview.html",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\pulse-runner",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\pulse-runner\\index.html",
+  "zero_setup": true
+}

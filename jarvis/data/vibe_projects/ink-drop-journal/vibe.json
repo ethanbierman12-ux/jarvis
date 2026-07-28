@@ -1,0 +1,20 @@
+{
+  "name": "Ink Drop Journal",
+  "stack": "web",
+  "pitch": "rich text daily journal with search",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "theme.css",
+    "styles.css",
+    "storage.js",
+    "ui.js",
+    "app.js",
+    "research.md",
+    "preview.html",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\ink-drop-journal",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\ink-drop-journal\\index.html",
+  "zero_setup": true
+}

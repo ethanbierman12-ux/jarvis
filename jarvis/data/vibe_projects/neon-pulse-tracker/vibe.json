@@ -1,0 +1,20 @@
+{
+  "name": "Neon Pulse Tracker",
+  "stack": "web",
+  "pitch": "habit streaks with a cyber HUD",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "theme.css",
+    "styles.css",
+    "storage.js",
+    "ui.js",
+    "app.js",
+    "research.md",
+    "preview.html",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\neon-pulse-tracker",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\neon-pulse-tracker\\index.html",
+  "zero_setup": true
+}

@@ -623,11 +623,8 @@ class MainWindow(QMainWindow):
     def _on_live_feed_item(self, item: dict) -> None:
         """Stream one activity event to the secondary live feed (animated)."""
         try:
-            if self.ops is None:
-                # Lazily ensure ops exists so live work is always visible
-                if getattr(self.settings, "ops_monitor_enabled", True):
-                    self._show_ops()
-            if self.ops:
+            # Only update PDTester if already open — never auto-spawn it
+            if self.ops is not None and self.ops.isVisible():
                 self.ops.push_live_item(item)
                 self.ops.set_now_working(
                     str(item.get("kind") or "info"),
@@ -1550,27 +1547,29 @@ class MainWindow(QMainWindow):
             return
         if not isinstance(payload, dict):
             return
+        try:
+            self.site_preview.hide()
+        except Exception:
+            pass
         if payload.get("building"):
             hint = payload.get("hint") or "new venture"
             try:
                 self._open_build_theater(mode="site", hint=str(hint))
             except Exception as e:
                 self.append_log(f"SITE › theater failed: {e}")
-                self.site_preview.show_building(str(hint))
-                self.site_preview.raise_()
             self.append_log(f"SITE › agentic coding — {hint}")
             self.status.setText("● AGENTIC CODING")
             self._reactor_activity("build")
             return
         url = str(payload.get("url") or "").strip()
         brand = str(payload.get("brand") or "")
-        prompt = str(payload.get("prompt") or "")
         if url:
-            self.site_preview.show_url(url, brand=brand or "scaffold", prompt=prompt or url)
             try:
+                if not self.build_theater.isVisible():
+                    self._open_build_theater(mode="site", hint=brand or "scaffold")
                 self.build_theater.show_done(path=url, name=brand or "scaffold")
-            except Exception:
-                pass
+            except Exception as e:
+                self.append_log(f"SITE › theater preview failed: {e}")
             self.append_log(f"SITE › preview tab — {url}")
             self.status.setText("● PREVIEW")
             self._reactor_activity("idle")
@@ -1582,15 +1581,12 @@ class MainWindow(QMainWindow):
         from pathlib import Path
 
         p = Path(path)
-        self.site_preview.show_site(
-            p,
-            brand=brand,
-            prompt=prompt,
-        )
         try:
+            if not self.build_theater.isVisible():
+                self._open_build_theater(mode="site", hint=brand or p.parent.name)
             self.build_theater.show_done(path=str(p), name=brand or p.parent.name)
-        except Exception:
-            pass
+        except Exception as e:
+            self.append_log(f"SITE › theater finish failed: {e}")
         self.append_log(f"SITE › live preview — {brand or p.parent.name}")
         self.status.setText("● SITE READY")
         self._reactor_activity("idle")
@@ -1638,14 +1634,13 @@ class MainWindow(QMainWindow):
         if payload.get("building"):
             hint = payload.get("hint") or "new app"
             try:
+                self.code_preview.hide()
+            except Exception:
+                pass
+            try:
                 self._open_build_theater(mode="vibe", hint=str(hint))
             except Exception as e:
                 self.append_log(f"VIBE › theater failed: {e}")
-                try:
-                    self.code_preview.show_building(str(hint))
-                    self.code_preview.raise_()
-                except Exception:
-                    pass
             self.append_log(f"VIBE › autonomous agent — {hint}")
             self.status.setText("● VIBE CODING")
             self._reactor_activity("vibe")
@@ -1657,22 +1652,46 @@ class MainWindow(QMainWindow):
         from pathlib import Path
 
         p = Path(path)
+        preview_url = str(payload.get("preview_url") or payload.get("app_url") or "").strip()
+        # Stay in Build Theater — do not open CodePreview ("Visual Coder")
         try:
-            self.build_theater.show_done(
-                path=str(p), name=str(payload.get("name") or p.name)
-            )
-            self.build_theater.raise_()
+            self.code_preview.hide()
         except Exception:
             pass
-        self.code_preview.show_project(
-            p,
-            name=str(payload.get("name") or ""),
-            engine=str(payload.get("engine") or ""),
-            files=list(payload.get("files") or []),
-            entry=str(payload.get("entry") or ""),
-        )
+        try:
+            theater = self.build_theater
+            if not theater.isVisible():
+                self._open_build_theater(
+                    mode="vibe", hint=str(payload.get("name") or p.name)
+                )
+            else:
+                theater.ensure_open()
+            if preview_url.startswith("http"):
+                theater.apply_progress(
+                    {
+                        "msg": f"App live at {preview_url}",
+                        "tab": "building",
+                        "agent_stage": "preview",
+                        "preview_url": preview_url,
+                        "path": str(p),
+                    }
+                )
+            theater.show_done(
+                path=str(p),
+                name=str(payload.get("name") or p.name),
+                preview_url=preview_url,
+            )
+            theater._set_tab("building", force=True)
+            theater.raise_()
+            self.show()
+            self.raise_()
+            self.activateWindow()
+        except Exception as e:
+            self.append_log(f"VIBE › theater finish failed: {e}")
         self.append_log(f"VIBE › ready — {payload.get('name') or p.name}")
-        self.status.setText("● VIBE READY")
+        if preview_url:
+            self.append_log(f"VIBE › preview {preview_url}")
+        self.status.setText("● VIBE PREVIEW")
         self._reactor_activity("idle")
 
     def _code_progress(self, msg) -> None:
@@ -1680,23 +1699,47 @@ class MainWindow(QMainWindow):
         if text:
             self.append_log(f"VIBE › {text}")
         self._reactor_activity("vibe")
-        # Always drive the theater while a vibe session is active (don't require
-        # a prior isVisible race — first progress can arrive before show paints).
         try:
             theater = getattr(self, "build_theater", None)
-            if theater is not None and (
-                theater.isVisible() or getattr(theater, "_active", False)
-            ):
-                if not theater.isVisible():
-                    theater._fill_parent()
-                    theater.show()
-                    theater.raise_()
-                theater.apply_progress(msg)
+            if theater is None:
+                return
+            # Don't reset an active session — that was killing tab switches
+            if theater.isVisible() or getattr(theater, "_active", False):
+                theater.ensure_open()
+            else:
+                hint = "vibe"
+                if isinstance(msg, dict):
+                    hint = str(msg.get("hint") or msg.get("msg") or "vibe")[:48]
+                self._open_build_theater(mode="vibe", hint=hint)
+            theater.apply_progress(msg)
+            # Explicit tab pop so WORKING / CODING / PREVIEW always paint
+            if isinstance(msg, dict):
+                tab = str(msg.get("tab") or "").lower()
+                stage = str(msg.get("agent_stage") or "").lower()
+                if msg.get("preview_url") or stage in ("preview", "ship", "live"):
+                    theater._set_tab("building", force=True)
+                elif (
+                    msg.get("file_path")
+                    or msg.get("file_content")
+                    or msg.get("code")
+                    or tab == "coding"
+                    or stage in ("code", "coding", "file", "terminal")
+                ):
+                    theater._set_tab("coding", force=True)
+                elif (
+                    tab == "working"
+                    or stage in ("research", "plan", "invent")
+                    or msg.get("keyboard") is not None
+                    or msg.get("mouse") is not None
+                ):
+                    theater._set_tab("working", force=True)
+                elif tab in ("working", "coding", "building"):
+                    theater._set_tab(tab, force=True)
         except Exception as e:
             self.append_log(f"VIBE › theater progress failed: {e}")
         try:
             if self.code_preview.isVisible():
-                self.code_preview.set_progress(text)
+                self.code_preview.hide()
         except Exception:
             pass
 
@@ -2277,6 +2320,8 @@ class MainWindow(QMainWindow):
             getattr(self, "code_preview", None),
             getattr(self, "away_theater", None),
             getattr(self, "news", None),
+            getattr(self, "camera", None),
+            getattr(self, "artifact", None),
         ):
             try:
                 if w is not None and w.isVisible():
@@ -2287,10 +2332,25 @@ class MainWindow(QMainWindow):
         if root is not None:
             self.build_theater.setParent(root)
             self.build_theater.setGeometry(root.rect())
-        self.build_theater.show_session(mode=mode, hint=hint)
-        self.build_theater.raise_()
-        self.build_theater.activateWindow()
+        theater = self.build_theater
+        # Fresh session only when idle — never wipe mid-vibe (breaks tabs)
+        if getattr(theater, "_active", False) and theater.isVisible():
+            theater.ensure_open()
+            if hint:
+                theater.sub.setText(str(hint)[:60])
+        else:
+            theater.show_session(mode=mode, hint=hint)
+        theater.raise_()
+        try:
+            theater.activateWindow()
+        except Exception:
+            pass
+        try:
+            theater._set_tab(getattr(theater, "_tab", None) or "working", force=True)
+        except Exception:
+            pass
         self.append_log(f"BUILD › theater open · {mode} · {hint}")
+        self.status.setText("● BUILD THEATER")
 
     def _launch_vibe_coding(self, brief: str = "") -> None:
         """Open Build Theater immediately, then run vibe agent on a worker."""
@@ -2299,14 +2359,13 @@ class MainWindow(QMainWindow):
         self.status.setText("● VIBE CODING")
         self._reactor_activity("vibe")
         try:
+            self.code_preview.hide()
+        except Exception:
+            pass
+        try:
             self._open_build_theater(mode="vibe", hint=hint)
         except Exception as e:
             self.append_log(f"VIBE › theater open failed: {e}")
-            try:
-                self.code_preview.show_building(hint)
-                self.code_preview.raise_()
-            except Exception:
-                pass
 
         if not self.brain:
             self.append_log("VIBE › brain not ready")
@@ -2333,15 +2392,13 @@ class MainWindow(QMainWindow):
         self.status.setText("● AGENTIC CODING")
         self._reactor_activity("build")
         try:
+            self.site_preview.hide()
+        except Exception:
+            pass
+        try:
             self._open_build_theater(mode="site", hint="agentic build")
         except Exception as e:
             self.append_log(f"SITE › theater open failed: {e}")
-            try:
-                self.site_preview.show_building("agentic build")
-                self.site_preview.raise_()
-                self.site_preview.activateWindow()
-            except Exception as e2:
-                self.append_log(f"SITE › workbench open failed: {e2}")
 
         if not self.brain:
             self.append_log("SITE › brain not ready")

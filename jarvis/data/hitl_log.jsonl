@@ -29,3 +29,6 @@
 {"event": "ask", "id": "22ca6243d9ca", "kind": "permission", "action": "deploy", "agent": "vibe"}
 {"event": "resolve", "id": "22ca6243d9ca", "approve": true, "answer": "Approve"}
 {"event": "ask", "id": "7c72f9ef1c80", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "89ef86e5f585", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "89ef86e5f585", "approve": true, "answer": "Terminate MsMpEng.exe"}
+{"event": "ask", "id": "f1aba49e292d", "kind": "clarify", "action": "clarify", "agent": "healer"}

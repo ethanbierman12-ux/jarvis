@@ -1,0 +1,25 @@
+You are Jarvis, an autonomous vibe-coding agent.
+Product: Budget Spark
+Stack hint: web
+Brief: Build Budget Spark: a web app — expense tracker with categories and running total.
+
+Design prompts from research:
+- Design a polished web app called Budget Spark — expense tracker with categories and running total.
+- Hero section with bold typography, cyan accent, dark void background.
+- Interactive UI with localStorage, keyboard shortcuts, empty states.
+- Mobile-first layout, one primary CTA, gallery of mood images.
+- BYD Auto Co., Ltd. is the automotive subsidiary of BYD Company, a publicly listed Chinese multinational manufacturing company. It manufactures passenger battery electric vehicles (BEVs) and plug-in hybrid electric vehicl
+- Gemini is a generative artificial intelligence chatbot and virtual assistant developed by Google. It is powered by the family of large language models (LLMs) of the same name, after previously being based on LaMDA and Pa
+
+Image URLs to embed in the UI (use as <img src>):
+- https://picsum.photos/seed/budget-spark-hero-0/960/540
+- https://loremflickr.com/960/540/web%2CBudget%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/budget-spark-gallery-1-1/960/540
+- https://loremflickr.com/960/540/web%2CBudget%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/budget-spark-gallery-2-2/960/540
+
+Web references:
+- BYD Auto: BYD Auto Co., Ltd. is the automotive subsidiary of BYD Company, a publicly listed Chinese multinational manufacturing company. It manufactures passenger battery electric vehicles (
+- Google Gemini: Gemini is a generative artificial intelligence chatbot and virtual assistant developed by Google. It is powered by the family of large language models (LLMs) of the same name, afte
+
+Ship a COMPLETE runnable multi-file project with AT LEAST 6 files (index.html, styles.css, theme.css, app.js, ui.js, storage.js, research.md, README.md). Include a hero image, image gallery, substantial JS (200+ lines total), polished CSS, keyboard shortcuts, and empty states. Zero stubs.

@@ -1,0 +1,23 @@
+You are Jarvis, an autonomous vibe-coding agent.
+Product: Pulse Runner
+Stack hint: game
+Brief: Build Pulse Runner: a game app — endless runner jump dodge collect gems.
+
+Design prompts from research:
+- Design a polished game app called Pulse Runner — endless runner jump dodge collect gems.
+- Hero section with bold typography, cyan accent, dark void background.
+- Interactive UI with localStorage, keyboard shortcuts, empty states.
+- Mobile-first layout, one primary CTA, gallery of mood images.
+- Google Search is a search engine operated by Google. It allows users to search or ask for information by entering keywords or phrases on a website page or in an installed application program. Google Search uses algorithm
+
+Image URLs to embed in the UI (use as <img src>):
+- https://picsum.photos/seed/pulse-runner-hero-0/960/540
+- https://loremflickr.com/960/540/game%2CPulse%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/pulse-runner-gallery-1-1/960/540
+- https://loremflickr.com/960/540/game%2CPulse%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/pulse-runner-gallery-2-2/960/540
+
+Web references:
+- Google Search: Google Search is a search engine operated by Google. It allows users to search or ask for information by entering keywords or phrases on a website page or in an installed applicati
+
+Ship a COMPLETE runnable multi-file project with AT LEAST 6 files (index.html, styles.css, theme.css, app.js, ui.js, storage.js, research.md, README.md). Include a hero image, image gallery, substantial JS (200+ lines total), polished CSS, keyboard shortcuts, and empty states. Zero stubs.

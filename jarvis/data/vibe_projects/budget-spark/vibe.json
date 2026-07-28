@@ -1,0 +1,20 @@
+{
+  "name": "Budget Spark",
+  "stack": "web",
+  "pitch": "expense tracker with categories and running total",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "theme.css",
+    "styles.css",
+    "storage.js",
+    "ui.js",
+    "app.js",
+    "research.md",
+    "preview.html",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\budget-spark",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\budget-spark\\index.html",
+  "zero_setup": true
+}

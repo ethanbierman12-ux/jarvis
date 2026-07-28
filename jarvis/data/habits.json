@@ -1161,6 +1161,83 @@
       "weekday": "Monday",
       "kind": "vibe_code",
       "detail": "coding"
+    },
+    {
+      "ts": "2026-07-27T08:23:19",
+      "hour": 8,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "vibing coder"
+    },
+    {
+      "ts": "2026-07-27T08:23:58",
+      "hour": 8,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "vibing coder"
+    },
+    {
+      "ts": "2026-07-27T08:31:25",
+      "hour": 8,
+      "weekday": "Monday",
+      "kind": "vibe_code",
+      "detail": "cooding"
+    },
+    {
+      "ts": "2026-07-27T08:50:01",
+      "hour": 8,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "vibing coding"
+    },
+    {
+      "ts": "2026-07-27T09:05:58",
+      "hour": 9,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "vibing coding"
+    },
+    {
+      "ts": "2026-07-27T09:27:09",
+      "hour": 9,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "vibing code"
+    },
+    {
+      "ts": "2026-07-27T09:31:07",
+      "hour": 9,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "vibig code"
+    },
+    {
+      "ts": "2026-07-27T09:45:08",
+      "hour": 9,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "vibing code"
+    },
+    {
+      "ts": "2026-07-27T09:49:34",
+      "hour": 9,
+      "weekday": "Monday",
+      "kind": "vibe_code",
+      "detail": "coder"
+    },
+    {
+      "ts": "2026-07-27T10:04:29",
+      "hour": 10,
+      "weekday": "Monday",
+      "kind": "vibe_code",
+      "detail": "coder"
+    },
+    {
+      "ts": "2026-07-27T10:10:27",
+      "hour": 10,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "vibing code"
     }
   ],
   "priorities": []

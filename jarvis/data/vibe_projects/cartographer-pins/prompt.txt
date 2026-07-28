@@ -1,0 +1,23 @@
+You are Jarvis, an autonomous vibe-coding agent.
+Product: Cartographer Pins
+Stack hint: web
+Brief: Build Cartographer Pins: a web app — pin places you want to visit with notes.
+
+Design prompts from research:
+- Design a polished web app called Cartographer Pins — pin places you want to visit with notes.
+- Hero section with bold typography, cyan accent, dark void background.
+- Interactive UI with localStorage, keyboard shortcuts, empty states.
+- Mobile-first layout, one primary CTA, gallery of mood images.
+- Google Maps is a web mapping platform and consumer application developed by Google. It offers satellite imagery, aerial photography, street maps, 360° interactive panoramic views of streets, real-time traffic conditions,
+
+Image URLs to embed in the UI (use as <img src>):
+- https://picsum.photos/seed/cartographer-pins-hero-0/960/540
+- https://loremflickr.com/960/540/web%2CCartographer%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/cartographer-pins-gallery-1-1/960/540
+- https://loremflickr.com/960/540/web%2CCartographer%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/cartographer-pins-gallery-2-2/960/540
+
+Web references:
+- Google Maps: Google Maps is a web mapping platform and consumer application developed by Google. It offers satellite imagery, aerial photography, street maps, 360° interactive panoramic views o
+
+Ship a COMPLETE runnable multi-file project with AT LEAST 6 files (index.html, styles.css, theme.css, app.js, ui.js, storage.js, research.md, README.md). Include a hero image, image gallery, substantial JS (200+ lines total), polished CSS, keyboard shortcuts, and empty states. Zero stubs.
