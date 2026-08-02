@@ -2,6 +2,16 @@
 # Data lives in ./config — do not commit secrets from there.
 
 services:
+  mosquitto:
+    container_name: jarvis-mosquitto
+    image: eclipse-mosquitto:2
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+    restart: unless-stopped
+    ports:
+      # MQTT stays local; Quest clients use the token-protected HTTPS/HTTP state API.
+      - "127.0.0.1:1883:1883"
+
   homeassistant:
     container_name: homeassistant
     image: ghcr.io/home-assistant/home-assistant:stable

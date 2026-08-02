@@ -48,6 +48,7 @@ from jarvis.core.clipboard_insight import ClipboardInsight
 from jarvis.core.iot_bridge import IoTBridge
 from jarvis.core.ambiguity import classify_ambiguity, resolve_option
 from jarvis.core.companion_server import CompanionServer, make_token
+from jarvis.core.state_bus import StateBus
 from jarvis.core.companion_pack import build_companion_setup_zip, companion_url
 from jarvis.core.task_queue import TaskQueue
 from jarvis.core.folder_watch import FolderWatch, is_watch_noise
@@ -147,6 +148,20 @@ class Brain:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.ui: dict[str, Callable] = {}
+        self.state_bus = StateBus(
+            enabled=bool(getattr(settings, "mqtt_enabled", False)),
+            host=str(getattr(settings, "mqtt_host", "127.0.0.1") or "127.0.0.1"),
+            port=int(getattr(settings, "mqtt_port", 1883) or 1883),
+            username=str(getattr(settings, "mqtt_username", "") or ""),
+            password=str(getattr(settings, "mqtt_password", "") or ""),
+            client_id=str(getattr(settings, "mqtt_client_id", "jarvis-hud") or "jarvis-hud"),
+            topic_prefix=str(
+                getattr(settings, "mqtt_topic_prefix", "jarvis") or "jarvis"
+            ),
+            mic_publish_hz=float(
+                getattr(settings, "mqtt_mic_publish_hz", 10.0) or 10.0
+            ),
+        )
         self.system = SystemControl()
         self.apps = AppLauncher(
             open_on_other=bool(getattr(settings, "open_on_other_monitor", True))
@@ -190,7 +205,7 @@ class Brain:
         self._gov_vision_fps = -1
         self.resources = ResourceManager()
         self.states = StateMachine()
-        self.updater = SandboxCompiler()
+        self.updater = SandboxCompiler(settings)
         self.scanner = Scanner(apps=self.apps, system=self.system)
         self.activity = ActivityObserver()
         self.notes = NoteTaker()
@@ -620,6 +635,7 @@ class Brain:
 
     # ── lifecycle ───────────────────────────────────────────────
     def start(self) -> None:
+        self.state_bus.start()
         self.resources.for_state("hud")
         self.vision.start()
         self.voice.start()
@@ -1716,6 +1732,15 @@ class Brain:
                 self.watch.stop()
         except Exception:
             pass
+        try:
+            if getattr(self, "companion", None):
+                self.companion.stop()
+        except Exception:
+            pass
+        try:
+            self.state_bus.stop()
+        except Exception:
+            pass
 
     def handle_macro(self, cmd: str) -> str:
         """Silent Stream Deck / HTTP macros — no TTS required for stop."""
@@ -1882,6 +1907,7 @@ class Brain:
                 "user": self.settings.user_name,
                 "listening": not bool(getattr(self, "_handling", False)),
                 "port": port,
+                "spatial_url": f"/spatial?token={token}",
                 "handoff": note,
             }
 
@@ -1891,7 +1917,9 @@ class Brain:
             host=host,
             port=port,
             on_status=_status,
+            on_state=self.state_bus.snapshot,
             on_handoff=self._companion_handoff,
+            spatial_enabled=bool(getattr(self.settings, "spatial_hud_enabled", True)),
         )
         self.companion.start()
 
@@ -2469,6 +2497,10 @@ class Brain:
         return self._flavor("ok", line)
 
     def _emit(self, key: str, payload: Any) -> None:
+        try:
+            self.state_bus.publish_ui_event(key, payload)
+        except Exception as e:
+            print(f"[state-bus:{key}] {e}")
         cb = self.ui.get(key)
         if cb:
             try:
@@ -3332,6 +3364,40 @@ class Brain:
         """Healer, scaffold, research jobs, git safety, whisper, IoT, memory."""
         if not t:
             return None
+
+        # Roadmap foundations / diagnostics
+        if re.search(r"\b(state bus|mqtt)( status)?\b", t):
+            return self._flavor("ok", self.state_bus.status())
+        if re.search(r"\b(verify|check|status)( the)? audit( chain| ledger)?\b", t):
+            try:
+                from jarvis.core.audit_ledger import AuditLedger, get_audit_ledger
+
+                ok, detail = get_audit_ledger().verify()
+                reports = [f"Desktop: {detail}"]
+                hub_chain = ROOT / "hub" / "data" / "audit" / "chain.jsonl"
+                if hub_chain.exists():
+                    hub_ok, hub_detail = AuditLedger(hub_chain).verify_readonly()
+                    ok = ok and hub_ok
+                    reports.append(f"Hub: {hub_detail}")
+                report = " ".join(reports)
+                return self._flavor("ok", report if ok else f"Warning: {report}")
+            except Exception as e:
+                return self._flavor("ok", f"Audit ledger unavailable: {e}")
+        if re.search(r"\b(exec|execution|sandbox|edge)( backend)? status\b", t):
+            backend = getattr(getattr(self, "updater", None), "exec_backend", None)
+            return self._flavor(
+                "ok", backend.status() if backend else "Execution backend unavailable."
+            )
+        if re.search(r"\b(spatial|webxr|quest)( hud)? status\b", t):
+            enabled = bool(getattr(self.settings, "spatial_hud_enabled", True))
+            port = int(getattr(self.settings, "companion_port", 8766) or 8766)
+            if not enabled:
+                return self._flavor("ok", "Spatial HUD disabled in settings.")
+            return self._flavor(
+                "ok",
+                f"Spatial HUD ready on companion port {port}, path slash spatial. "
+                "Use the authenticated companion link in Quest Browser.",
+            )
 
         # Whisper / soft speak
         if re.search(r"\b(whisper mode|soft speak|quiet voice)\s+on\b", t):

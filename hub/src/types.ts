@@ -1,6 +1,7 @@
 /** Shared Hub & Spoke types */
 
 export type SpokeId = "sarah" | "tom" | "admin";
+export type Sensitivity = "personal" | "work" | "public";
 
 export type AgentStatus = "idle" | "running" | "waiting_hitl" | "done" | "error" | "halted";
 
@@ -32,6 +33,7 @@ export interface SpokeResult {
   data?: Record<string, unknown>;
   escalateTo?: SpokeId;
   needsHitl?: boolean;
+  sensitivity?: Sensitivity;
 }
 
 export interface SessionState {

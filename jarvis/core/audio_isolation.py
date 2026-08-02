@@ -55,7 +55,13 @@ PHYSICAL_NEEDLES = (
     "REALTEK",
     "CONEXANT",
     "INTEL",
+    "RESPEAKER",
+    "SEEED",
+    "FAR-FIELD",
+    "FAR FIELD",
 )
+
+FAR_FIELD_NEEDLES = ("RESPEAKER", "SEEED", "FAR-FIELD", "FAR FIELD")
 
 
 def is_loopback_name(name: str) -> bool:
@@ -109,6 +115,8 @@ def pick_isolated_mic_index(
             score += 35
         if "EMEET" in n and "VIRTUAL" not in n:
             score += 15
+        if any(k in n for k in FAR_FIELD_NEEDLES):
+            score += 45
         if any(k in n for k in ("HEADSET", "HANDS-FREE", "EARPHONE", "BUDS")):
             score += 25
         if "CAMERA" in n or "SMARTCAM" in n:
@@ -152,6 +160,8 @@ def rank_mic_candidates(
             score += 50
         elif is_physical_mic_name(n):
             score += 30
+        if any(k in n for k in FAR_FIELD_NEEDLES):
+            score += 45
         if score <= 0:
             continue
         scored.append((score, i, name or f"mic-{i}"))

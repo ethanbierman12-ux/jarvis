@@ -2,16 +2,27 @@
 
 import { EventEmitter } from "node:events";
 import type { SpokeId, SpokeResult } from "../types.js";
+import type { Sensitivity } from "../security/audit.js";
 
 export interface BusEvent {
   type: "spoke.result" | "hub.log" | "hub.halt" | "hub.plan" | "health";
   payload: unknown;
   ts: number;
+  sensitivity: Sensitivity;
 }
 
 class MessageBus extends EventEmitter {
-  publish(type: BusEvent["type"], payload: unknown) {
-    const ev: BusEvent = { type, payload, ts: Date.now() };
+  publish(type: BusEvent["type"], payload: unknown, sensitivity?: Sensitivity) {
+    const embedded =
+      payload && typeof payload === "object"
+        ? (payload as { sensitivity?: Sensitivity }).sensitivity
+        : undefined;
+    const ev: BusEvent = {
+      type,
+      payload,
+      ts: Date.now(),
+      sensitivity: normalizeSensitivity(sensitivity || embedded),
+    };
     this.emit("event", ev);
     this.emit(type, ev);
     void fanOut(ev);
@@ -23,7 +34,7 @@ class MessageBus extends EventEmitter {
   }
 
   spokeResult(result: SpokeResult) {
-    return this.publish("spoke.result", result);
+    return this.publish("spoke.result", result, result.sensitivity || "personal");
   }
 
   halt(reason: string, sessionId?: string) {
@@ -42,6 +53,9 @@ async function fanOut(ev: BusEvent) {
   });
   const posts: Promise<unknown>[] = [];
   if (slack) {
+    if (!shareAllowed(ev.sensitivity)) {
+      console.warn(`[privacy] blocked ${ev.sensitivity} event fan-out to Slack`);
+    } else {
     posts.push(
       fetch(slack, {
         method: "POST",
@@ -51,8 +65,12 @@ async function fanOut(ev: BusEvent) {
         }),
       }).catch(() => null)
     );
+    }
   }
   if (n8n) {
+    if (!shareAllowed(ev.sensitivity)) {
+      console.warn(`[privacy] blocked ${ev.sensitivity} event fan-out to n8n`);
+    } else {
     posts.push(
       fetch(n8n, {
         method: "POST",
@@ -60,8 +78,20 @@ async function fanOut(ev: BusEvent) {
         body,
       }).catch(() => null)
     );
+    }
   }
   await Promise.all(posts);
+}
+
+function normalizeSensitivity(value?: string): Sensitivity {
+  const label = String(value || "personal").toLowerCase();
+  return label === "public" || label === "work" ? label : "personal";
+}
+
+export function shareAllowed(sensitivity: Sensitivity): boolean {
+  if (sensitivity === "personal") return false;
+  const ceiling = String(process.env.JARVIS_SHARE_MAX_SENSITIVITY || "work").toLowerCase();
+  return sensitivity === "public" || ceiling === "work";
 }
 
 function formatSlack(ev: BusEvent): string {

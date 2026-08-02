@@ -6,6 +6,7 @@ import json
 import mimetypes
 import secrets
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable
@@ -14,6 +15,7 @@ from urllib.parse import parse_qs, urlparse
 from jarvis.config import ROOT
 
 COMPANION_WEB = ROOT / "jarvis" / "web" / "companion"
+SPATIAL_WEB = ROOT / "jarvis" / "web" / "spatial"
 
 
 def make_token() -> str:
@@ -39,15 +41,25 @@ class CompanionServer:
         port: int = 8766,
         web_root: Path | None = None,
         on_status: Callable[[], dict] | None = None,
+        on_state: Callable[[], dict] | None = None,
         on_handoff: Callable[[dict], dict] | None = None,
+        spatial_root: Path | None = None,
+        spatial_enabled: bool = True,
+        session_ttl_sec: float = 43_200,
     ) -> None:
         self.on_chat = on_chat
         self.on_status = on_status
+        self.on_state = on_state
         self.on_handoff = on_handoff
         self.token = (token or "").strip()
         self.host = host
         self.port = int(port)
         self.web_root = Path(web_root or COMPANION_WEB)
+        self.spatial_root = Path(spatial_root or SPATIAL_WEB)
+        self.spatial_enabled = bool(spatial_enabled)
+        self.session_ttl_sec = max(300.0, float(session_ttl_sec))
+        self._sessions: dict[str, float] = {}
+        self._session_lock = threading.Lock()
         self._httpd: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.last_reply: str = ""
@@ -95,9 +107,9 @@ class CompanionServer:
                 cookie = self.headers.get("Cookie") or ""
                 for part in cookie.split(";"):
                     part = part.strip()
-                    if part.startswith("jarvis_token="):
+                    if part.startswith("jarvis_session="):
                         got = part.split("=", 1)[1].strip()
-                        if got and secrets.compare_digest(got, server.token):
+                        if got and server._session_ok(got):
                             return True
                 return False
 
@@ -142,12 +154,30 @@ class CompanionServer:
                     )
                     return
 
+                if path == "/api/state":
+                    if not self._auth_ok():
+                        self._json(401, {"ok": False, "error": "unauthorized"})
+                        return
+                    try:
+                        state = server.on_state() if server.on_state else {}
+                        self._json(200, {"ok": True, "state": state or {}})
+                    except Exception as e:
+                        self._json(500, {"ok": False, "error": str(e)})
+                    return
+
                 if path.startswith("/api/"):
                     self._json(404, {"ok": False, "error": "not found"})
                     return
 
-                # Static PWA — index always needs token on first paint (or cookie)
-                self._serve_static(path)
+                # Static PWAs — index needs token on first paint (or cookie).
+                if path == "/spatial" or path.startswith("/spatial/"):
+                    if not server.spatial_enabled:
+                        self._json(404, {"ok": False, "error": "spatial HUD disabled"})
+                        return
+                    rel = path[len("/spatial") :].lstrip("/") or "index.html"
+                    self._serve_static(rel, root=server.spatial_root)
+                else:
+                    self._serve_static(path)
 
             def do_POST(self) -> None:  # noqa: N802
                 parsed = urlparse(self.path)
@@ -195,14 +225,34 @@ class CompanionServer:
                 except Exception as e:
                     self._json(500, {"ok": False, "error": str(e)})
 
-            def _serve_static(self, path: str) -> None:
+            def _serve_static(self, path: str, *, root: Path | None = None) -> None:
+                static_root = Path(root or server.web_root)
+                parsed = urlparse(self.path)
+                qs = parse_qs(parsed.query)
+                qtok = (qs.get("token") or [""])[0].strip()
+                if qtok and secrets.compare_digest(qtok, server.token):
+                    session_token = server._new_session()
+                    secure = (
+                        (self.headers.get("X-Forwarded-Proto") or "").lower() == "https"
+                    )
+                    cookie = (
+                        f"jarvis_session={session_token}; Path=/; Max-Age="
+                        f"{int(server.session_ttl_sec)}; HttpOnly; SameSite=Strict"
+                        + ("; Secure" if secure else "")
+                    )
+                    self.send_response(303)
+                    self.send_header("Location", parsed.path or "/")
+                    self.send_header("Set-Cookie", cookie)
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    return
                 if path in ("/", "", "/index.html"):
                     rel = "index.html"
                 else:
                     rel = path.lstrip("/").replace("..", "")
-                target = (server.web_root / rel).resolve()
+                target = (static_root / rel).resolve()
                 try:
-                    target.relative_to(server.web_root.resolve())
+                    target.relative_to(static_root.resolve())
                 except ValueError:
                     self._json(403, {"ok": False, "error": "forbidden"})
                     return
@@ -218,15 +268,6 @@ class CompanionServer:
                 self.send_header("Content-Type", mime)
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "no-cache")
-                # Seed cookie when token is in the URL so later API calls work
-                parsed = urlparse(self.path)
-                qs = parse_qs(parsed.query)
-                qtok = (qs.get("token") or [""])[0].strip()
-                if qtok and secrets.compare_digest(qtok, server.token):
-                    self.send_header(
-                        "Set-Cookie",
-                        f"jarvis_token={server.token}; Path=/; SameSite=Lax; HttpOnly",
-                    )
                 self._cors()
                 self.end_headers()
                 self.wfile.write(data)
@@ -247,10 +288,38 @@ class CompanionServer:
             f"(Tailscale → this PC:{self.port})"
         )
 
+    def _new_session(self) -> str:
+        token = secrets.token_urlsafe(32)
+        now = time.time()
+        with self._session_lock:
+            self._sessions = {
+                key: expiry for key, expiry in self._sessions.items() if expiry > now
+            }
+            self._sessions[token] = now + self.session_ttl_sec
+        return token
+
+    def _session_ok(self, token: str) -> bool:
+        now = time.time()
+        with self._session_lock:
+            expiry = self._sessions.get(token, 0.0)
+            if expiry <= now:
+                self._sessions.pop(token, None)
+                return False
+            return True
+
     def stop(self) -> None:
         if self._httpd:
+            httpd, self._httpd = self._httpd, None
             try:
-                self._httpd.shutdown()
+                httpd.shutdown()
             except Exception:
                 pass
-            self._httpd = None
+            try:
+                httpd.server_close()
+            except Exception:
+                pass
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+        self._thread = None
+        with self._session_lock:
+            self._sessions.clear()

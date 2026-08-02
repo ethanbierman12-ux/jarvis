@@ -916,48 +916,74 @@ class VoiceEngine:
             import sounddevice as sd
         except Exception:
             return
-        try:
-            with sd.InputStream(
-                channels=1,
-                samplerate=16000,
-                blocksize=2048,
-                dtype="float32",
-            ) as stream:
-                while self._running:
-                    try:
-                        data, _overflow = stream.read(2048)
-                        mono = np.asarray(data, dtype=np.float32).reshape(-1)
-                        rms = float(np.sqrt(np.mean(np.square(mono)))) if mono.size else 0.0
-                        if rms < 0.008:
-                            rms = 0.0
-                        level = min(1.0, rms * 9.0)
-                        # While Jarvis talks, core amp comes from TTS envelope — don't stomp it
-                        if not self._speaking:
-                            self._emit_level(level)
-                        else:
-                            self._level = level  # still track for barge
-                        # Barge-in via level: ONLY when classic STT is active.
-                        # Duplex owns barge via transcript+level gate — dual
-                        # triggers were cutting Jarvis off on speaker bleed.
-                        if (
-                            self._speaking
-                            and self._barge_armed
-                            and self._duplex is None
-                            and time.time() >= float(getattr(self, "_barge_after", 0) or 0)
-                        ):
-                            if level > 0.78:
-                                self._barge_hits = int(getattr(self, "_barge_hits", 0)) + 1
-                                if self._barge_hits >= 8:  # ~0.7s sustained
-                                    self.barge_in()
-                            else:
-                                self._barge_hits = 0
-                        else:
-                            self._barge_hits = 0
-                        time.sleep(0.12 if self._speaking else 0.22)
-                    except Exception:
-                        time.sleep(0.15)
-        except Exception as e:
-            print(f"[voice] level meter offline: {e}")
+        while self._running:
+            try:
+                from jarvis.core.duplex_voice import rank_input_devices
+
+                devices: list[int | None] = [
+                    *rank_input_devices(
+                        self.mic_prefer, allow_virtual=self.allow_virtual_mic
+                    ),
+                    None,
+                ]
+            except Exception:
+                devices = [None]
+            last_error: Exception | None = None
+            for device in dict.fromkeys(devices):
+                try:
+                    with sd.InputStream(
+                        device=device,
+                        channels=1,
+                        samplerate=16000,
+                        blocksize=2048,
+                        dtype="float32",
+                    ) as stream:
+                        self._read_level_stream(stream, np)
+                        return
+                except Exception as e:
+                    last_error = e
+                    print(f"[voice] level mic open failed device={device}: {e}")
+            if last_error:
+                print(f"[voice] level meter offline; retrying: {last_error}")
+            time.sleep(1.0)
+
+    def _read_level_stream(self, stream, np) -> None:
+        failures = 0
+        while self._running:
+            try:
+                data, _overflow = stream.read(2048)
+                failures = 0
+                mono = np.asarray(data, dtype=np.float32).reshape(-1)
+                rms = float(np.sqrt(np.mean(np.square(mono)))) if mono.size else 0.0
+                if rms < 0.008:
+                    rms = 0.0
+                level = min(1.0, rms * 9.0)
+                # While Jarvis talks, core amp comes from TTS envelope — don't stomp it
+                if not self._speaking:
+                    self._emit_level(level)
+                else:
+                    self._level = level  # still track for barge
+                # Barge-in via level: ONLY when classic STT is active.
+                if (
+                    self._speaking
+                    and self._barge_armed
+                    and self._duplex is None
+                    and time.time() >= float(getattr(self, "_barge_after", 0) or 0)
+                ):
+                    if level > 0.78:
+                        self._barge_hits = int(getattr(self, "_barge_hits", 0)) + 1
+                        if self._barge_hits >= 8:  # ~0.7s sustained
+                            self.barge_in()
+                    else:
+                        self._barge_hits = 0
+                else:
+                    self._barge_hits = 0
+                time.sleep(0.12 if self._speaking else 0.22)
+            except Exception:
+                failures += 1
+                if failures >= 5:
+                    raise
+                time.sleep(0.15)
 
     def _maybe_denoise(self, audio, sr_mod):
         if not self.noise_reduce:

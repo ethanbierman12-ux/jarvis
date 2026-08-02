@@ -27,14 +27,14 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-import sys
 import time
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
 from jarvis.config import DATA_DIR, ROOT
-from jarvis.core.llm_client import backend_name, complete
+from jarvis.core.exec_backend import ExecBackend
+from jarvis.core.llm_client import backend_name, complete, remote_backends_configured
 
 # Terminal commands FORGE may run — read-only diagnostics only.
 SAFE_COMMANDS: dict[str, list[str]] = {
@@ -165,7 +165,21 @@ class MemoryAgent:
         if vs is None or not getattr(vs, "available", False):
             return ""
         try:
-            hits = vs.recall(query, n=n)
+            if hasattr(vs, "recall_records"):
+                records = vs.recall_records(query, n=n)
+                backend = backend_name()
+                local_llm = (
+                    backend == "none"
+                    or backend.startswith("ollama:")
+                    and not remote_backends_configured()
+                )
+                hits = [
+                    record["text"]
+                    for record in records
+                    if local_llm or record.get("sensitivity") != "personal"
+                ]
+            else:
+                hits = vs.recall(query, n=n) if backend_name().startswith("ollama:") else []
             return "\n".join(f"- {h}" for h in hits) if hits else ""
         except Exception:
             return ""
@@ -309,6 +323,11 @@ class CodeAgent:
         "__import__",
     )
 
+    def __init__(self, settings: Any | None = None) -> None:
+        self.exec_backend = (
+            ExecBackend.from_settings(settings) if settings is not None else ExecBackend()
+        )
+
     def _safety_scan(self, code: str) -> str:
         low = code.lower()
         for pat in self.DENY_PATTERNS:
@@ -358,22 +377,15 @@ class CodeAgent:
                 continue
             script = self.SANDBOX / f"task_{int(time.time())}_{attempt}.py"
             script.write_text(code, encoding="utf-8")
-            try:
-                proc = subprocess.run(
-                    [sys.executable, "-I", str(script)],
-                    cwd=str(self.SANDBOX),
-                    capture_output=True,
-                    text=True,
-                    timeout=self.RUN_TIMEOUT,
-                    creationflags=0x08000000,  # CREATE_NO_WINDOW
-                )
-            except subprocess.TimeoutExpired:
+            proc = self.exec_backend.run_python(script, timeout=self.RUN_TIMEOUT)
+            if proc.returncode == 124:
                 error = f"Timed out after {self.RUN_TIMEOUT}s — likely an infinite loop."
                 continue
             if proc.returncode == 0:
                 out = (proc.stdout or "").strip()[:2500]
                 return (
-                    f"Script succeeded on attempt {attempt} ({script.name}).\n"
+                    f"Script succeeded on attempt {attempt} ({script.name}) "
+                    f"via {proc.backend}.\n"
                     f"OUTPUT:\n{out or '(no output)'}"
                 )
             error = ((proc.stderr or "").strip() or f"exit code {proc.returncode}")[-1200:]
@@ -601,7 +613,7 @@ class AgentCrew:
         self.operator = OperatorAgent(computer_use)
         self.comms = CommsAgent(phone, n8n)
         self.critic = CriticAgent()
-        self.code = CodeAgent()
+        self.code = CodeAgent(settings)
         self.guardian = GuardianAgent()
         self.last_run: dict[str, Any] = {}
 
@@ -627,7 +639,8 @@ class AgentCrew:
             f"VECTOR routing, SCHOLAR via {research_backend}, ARCHIVE memory {mem}, "
             f"FORGE tools ready, HERALD comms "
             f"{'linked' if self.comms._phone else 'unlinked'}, SENTINEL QC armed, "
-            f"CODESMITH sandbox ready, WARDEN watching telemetry."
+            f"CODESMITH sandbox ready ({self.code.exec_backend.last_backend}), "
+            f"WARDEN watching telemetry."
         )
 
     def debate(self, question: str) -> str:

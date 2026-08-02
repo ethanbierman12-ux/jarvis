@@ -27,7 +27,8 @@ export async function transcribeDeepgram(
       Authorization: `Token ${key}`,
       "Content-Type": mime,
     },
-    body: audio,
+    // Node accepts Buffer at runtime; bridge the DOM fetch typing used by TS 5.8.
+    body: audio as unknown as BodyInit,
   });
   if (!res.ok) {
     const err = await res.text();

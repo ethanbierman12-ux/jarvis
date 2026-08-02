@@ -11,6 +11,7 @@ import time
 from typing import Callable
 
 from jarvis.config import PLUGINS_DIR, ROOT, DATA_DIR
+from jarvis.core.exec_backend import ExecBackend
 
 _DANGER = re.compile(
     r"\b(rm\s+-rf|shutil\.rmtree|os\.system\s*\(|subprocess\.|eval\s*\(|exec\s*\(|ctypes)\b",
@@ -31,8 +32,11 @@ _RELOADABLE = (
 
 
 class SandboxCompiler:
-    def __init__(self) -> None:
+    def __init__(self, settings=None) -> None:
         self._modules: dict[str, object] = {}
+        self.exec_backend = (
+            ExecBackend.from_settings(settings) if settings is not None else ExecBackend()
+        )
         PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
         if str(PLUGINS_DIR) not in sys.path:
             sys.path.insert(0, str(PLUGINS_DIR))
@@ -58,20 +62,46 @@ class SandboxCompiler:
             return f"Syntax error: {e}. Please refine your request."
 
         path = PLUGINS_DIR / f"{name}.py"
+        previous = path.read_text(encoding="utf-8") if path.exists() else None
+        old_module = self._modules.get(name) or sys.modules.get(name)
         path.write_text(code, encoding="utf-8")
+        check = self.exec_backend.validate_python(path)
+        if check.returncode != 0:
+            if previous is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_text(previous, encoding="utf-8")
+            detail = (check.stderr or "validation failed").strip()[-300:]
+            return f"Plugin isolation check failed via {check.backend}: {detail}"
         try:
             if name in self._modules:
                 mod = importlib.reload(self._modules[name])  # type: ignore[arg-type]
             else:
                 spec = importlib.util.spec_from_file_location(name, path)
                 if not spec or not spec.loader:
-                    return "Failed to load plugin spec."
+                    raise RuntimeError("failed to load plugin spec")
                 mod = importlib.util.module_from_spec(spec)
                 sys.modules[name] = mod
                 spec.loader.exec_module(mod)
             self._modules[name] = mod
             return f"Plugin '{name}' live. No reboot required."
         except Exception as e:
+            try:
+                if previous is None:
+                    path.unlink(missing_ok=True)
+                    self._modules.pop(name, None)
+                    sys.modules.pop(name, None)
+                else:
+                    path.write_text(previous, encoding="utf-8")
+                    if old_module is not None:
+                        restored = importlib.reload(old_module)
+                        self._modules[name] = restored
+                        sys.modules[name] = restored
+            except Exception as rollback_error:
+                return (
+                    "The update failed and rollback needs attention. "
+                    f"Load error: {e}; rollback error: {rollback_error}"
+                )
             return f"The new update failed to execute safely; reverting. ({e})"
 
     def hot_upgrade(
@@ -111,6 +141,10 @@ class SandboxCompiler:
                     errors += 1
                     continue
                 ast.parse(code)
+                check = self.exec_backend.validate_python(path)
+                if check.returncode != 0:
+                    errors += 1
+                    continue
                 if name in sys.modules:
                     mod = importlib.reload(sys.modules[name])
                 else:

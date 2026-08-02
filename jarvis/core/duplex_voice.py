@@ -18,7 +18,7 @@ import threading
 import time
 from typing import Callable
 
-from jarvis.core.audio_isolation import pick_isolated_mic_index
+from jarvis.core.audio_isolation import pick_isolated_mic_index, rank_mic_candidates
 
 SAMPLE_RATE = 16000
 BLOCK_MS = 100  # 100ms frames — low latency without hammering the socket
@@ -39,12 +39,18 @@ def duplex_deps_ok() -> tuple[bool, str]:
 
 def pick_input_device(prefer: str = "", allow_virtual: bool = False) -> int | None:
     """Pick a sounddevice input index using the same isolation rules as PyAudio."""
+    candidates = rank_input_devices(prefer, allow_virtual)
+    return candidates[0] if candidates else None
+
+
+def rank_input_devices(prefer: str = "", allow_virtual: bool = False) -> list[int]:
+    """Ordered sounddevice indexes for open-and-retry after USB hot-plug."""
     try:
         import sounddevice as sd
 
         devices = sd.query_devices()
     except Exception:
-        return None
+        return []
     # Keep list positions aligned with device indexes; blank out non-inputs so
     # the ranker never selects them.
     names = [
@@ -55,9 +61,18 @@ def pick_input_device(prefer: str = "", allow_virtual: bool = False) -> int | No
         names, prefer=prefer or "", allow_virtual=allow_virtual
     )
     print(f"[duplex] {reason}")
-    if idx is not None and int(devices[idx].get("max_input_channels") or 0) > 0:
-        return idx
-    return None
+    ranked = rank_mic_candidates(
+        names, prefer=prefer or "", allow_virtual=allow_virtual
+    )
+    order: list[int] = []
+    if idx is not None:
+        order.append(idx)
+    order.extend(i for i, _name in ranked if i not in order)
+    return [
+        i
+        for i in order
+        if 0 <= i < len(devices) and int(devices[i].get("max_input_channels") or 0) > 0
+    ]
 
 
 class DeepgramDuplex:
@@ -195,7 +210,7 @@ class DeepgramDuplex:
             return None
 
         blocksize = SAMPLE_RATE * BLOCK_MS // 1000
-        device = pick_input_device(
+        devices = rank_input_devices(
             self.mic_prefer, allow_virtual=self.allow_virtual_mic
         )
 
@@ -225,7 +240,7 @@ class DeepgramDuplex:
             except RuntimeError:
                 pass  # loop shutting down
 
-        for dev in (device, None):
+        for dev in [*devices, None]:
             try:
                 stream = sd.InputStream(
                     device=dev,

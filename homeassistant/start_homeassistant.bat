@@ -22,7 +22,7 @@ if errorlevel 1 (
   if errorlevel 1 goto wait
 )
 
-echo Pulling / starting Home Assistant...
+echo Pulling / starting Home Assistant and Jarvis MQTT...
 docker compose up -d
 if errorlevel 1 (
   echo Failed. Is Docker Desktop running?
@@ -33,6 +33,7 @@ if errorlevel 1 (
 echo.
 echo Home Assistant starting.
 echo Open: http://127.0.0.1:8123
+echo Jarvis MQTT: 127.0.0.1:1883
 echo First boot can take 1-3 minutes.
 echo.
 start "" "http://127.0.0.1:8123"

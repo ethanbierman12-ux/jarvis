@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from jarvis.config import DATA_DIR
+from jarvis.core.audit_ledger import get_audit_ledger, normalize_sensitivity
 
 INSTR_PATH = DATA_DIR / "custom_instructions.md"
 
@@ -25,7 +26,7 @@ class CustomInstructions:
         except Exception:
             return ""
 
-    def append(self, text: str) -> str:
+    def append(self, text: str, *, sensitivity: str = "personal") -> str:
         line = (text or "").strip()
         if not line:
             return "No instruction provided."
@@ -42,15 +43,22 @@ class CustomInstructions:
         try:
             with INSTR_PATH.open("a", encoding="utf-8") as f:
                 f.write(f"- {line}\n")
+            self._audit(
+                "instruction.append",
+                line,
+                sensitivity=normalize_sensitivity(sensitivity),
+            )
             return f"Instruction saved: {line}"
         except Exception as e:
             return f"Could not save instruction: {e}"
 
     def clear(self) -> str:
         try:
+            previous = self.read()
             INSTR_PATH.write_text(
                 "# Jarvis custom behaviors\n\n", encoding="utf-8"
             )
+            self._audit("instruction.clear", previous, sensitivity="personal")
             return "Custom instructions cleared."
         except Exception as e:
             return f"Clear failed: {e}"
@@ -66,3 +74,16 @@ class CustomInstructions:
             return ""
         blob = " | ".join(lines[-8:])
         return blob[:limit]
+
+    @staticmethod
+    def _audit(op: str, payload: str, *, sensitivity: str) -> None:
+        try:
+            get_audit_ledger().append(
+                actor="instructions",
+                op=op,
+                resource="custom_instructions.md",
+                payload=payload,
+                sensitivity=sensitivity,
+            )
+        except Exception as exc:
+            print(f"[audit] {op}: {exc}")

@@ -173,6 +173,11 @@ def backend_name() -> str:
     return "none"
 
 
+def remote_backends_configured() -> bool:
+    """True when complete() could fall through to a cloud LLM."""
+    return bool(_vault_key("anthropic_api_key") or _vault_key("openai_api_key"))
+
+
 def complete(
     prompt: str,
     *,
