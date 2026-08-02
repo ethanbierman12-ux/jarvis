@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,7 +30,7 @@ class ExecBackend:
         self,
         *,
         mode: str = "auto",
-        host_fallback: bool = True,
+        host_fallback: bool = False,
         docker_runtime: str = "runsc",
         docker_require_gvisor: bool = False,
         docker_image: str = "python:3.13-slim",
@@ -52,7 +53,7 @@ class ExecBackend:
     def from_settings(cls, settings: Any) -> "ExecBackend":
         return cls(
             mode=str(getattr(settings, "exec_backend", "auto") or "auto"),
-            host_fallback=bool(getattr(settings, "exec_host_fallback", True)),
+            host_fallback=bool(getattr(settings, "exec_host_fallback", False)),
             docker_runtime=str(getattr(settings, "docker_runtime", "runsc") or "runsc"),
             docker_require_gvisor=bool(
                 getattr(settings, "docker_require_gvisor", False)
@@ -162,10 +163,13 @@ class ExecBackend:
         if self.docker_runtime and not self.docker_require_gvisor:
             runtimes.append(None)
         for runtime in runtimes:
+            container_name = f"jarvis-sandbox-{uuid.uuid4().hex[:10]}"
             cmd = [
                 docker,
                 "run",
                 "--rm",
+                "--name",
+                container_name,
                 "--network",
                 "none",
                 "--read-only",
@@ -196,6 +200,12 @@ class ExecBackend:
                 timeout=timeout,
                 backend=f"docker:{runtime or 'default'}",
             )
+            if result.returncode == 124:
+                self._subprocess(
+                    [docker, "rm", "-f", container_name],
+                    timeout=10,
+                    backend="docker-cleanup",
+                )
             if runtime and self._runtime_unavailable(result.stderr):
                 continue
             return result
@@ -255,6 +265,7 @@ class ExecBackend:
                 cwd=str(cwd) if cwd else None,
                 capture_output=True,
                 text=True,
+                errors="replace",
                 timeout=timeout,
                 **kwargs,
             )

@@ -86,6 +86,7 @@ class StateBus:
             self._started = True
         if not self.enabled:
             return
+        client = None
         try:
             import paho.mqtt.client as mqtt
 
@@ -106,6 +107,14 @@ class StateBus:
             client.connect_async(self.host, self.port, keepalive=30)
             client.loop_start()
         except Exception as exc:
+            if client is not None:
+                try:
+                    client.loop_stop()
+                except Exception:
+                    pass
+            with self._lock:
+                self._client = None
+                self._started = False
             self._set_error(f"MQTT unavailable: {exc}")
 
     def stop(self) -> None:
@@ -173,7 +182,7 @@ class StateBus:
         if topic:
             body_key = {"reactor": "mode", "mic": "level", "speaking": "active"}[field]
             self._publish(topic, {body_key: value, "seq": seq, "ts": now}, retain=True)
-        self._publish("state", self.snapshot(include_transport=False), retain=True)
+        self._publish("state", self._mqtt_snapshot(), retain=True)
 
     def snapshot(self, *, include_transport: bool = True) -> dict[str, Any]:
         """Return an isolated JSON-safe state snapshot."""
@@ -203,6 +212,13 @@ class StateBus:
             detail = f" ({self._last_error})" if self._last_error else ""
             return f"State bus using HTTP fallback; MQTT disconnected{detail}."
 
+    def _mqtt_snapshot(self) -> dict[str, Any]:
+        """MQTT is local telemetry only; conversation text stays off the broker."""
+        state = self.snapshot(include_transport=False)
+        state.pop("last_heard", None)
+        state.pop("last_spoken", None)
+        return state
+
     def _publish(self, suffix: str, payload: dict[str, Any], *, retain: bool) -> None:
         with self._lock:
             client = self._client
@@ -231,11 +247,12 @@ class StateBus:
             self._connected = ok
             self._last_error = "" if ok else f"connect rejected: {reason_code}"
         if ok:
-            self._publish("state", self.snapshot(include_transport=False), retain=True)
+            self._publish("state", self._mqtt_snapshot(), retain=True)
 
-    def _on_disconnect(
-        self, _client, _userdata, _flags=None, reason_code=0, _properties=None
-    ) -> None:
+    def _on_disconnect(self, _client, _userdata, *args) -> None:
+        # Callback API v1: (client, userdata, rc)
+        # Callback API v2: (client, userdata, flags, reason_code, properties)
+        reason_code = args[0] if len(args) == 1 else args[1] if len(args) >= 2 else 0
         with self._lock:
             self._connected = False
             if reason_code:

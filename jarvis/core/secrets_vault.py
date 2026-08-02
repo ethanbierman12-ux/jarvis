@@ -4,41 +4,17 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any
 
-from jarvis.config import DATA_DIR
+from jarvis.config import DATA_DIR, SENSITIVE_SETTING_KEYS
 
 VAULT_DIR = DATA_DIR / "vault"
 VAULT_FILE = VAULT_DIR / "secrets.dpapi.json"
 
 # Keys that must never sit in settings.json in cleartext
-SECRET_KEYS = (
-    "elevenlabs_api_key",
-    "deepgram_api_key",
-    "tavily_api_key",
-    "serper_api_key",
-    "openweather_api_key",
-    "ha_token",
-    "n8n_api_key",
-    "manus_api_key",
-    "anthropic_api_key",
-    "openai_api_key",
-    "stripe_secret_key",
-    "notion_token",
-    "buffer_access_token",
-    "gmail_access_token",
-    "spotify_client_id",
-    "spotify_client_secret",
-    "lifx_token",
-    "hue_username",
-    "phone_shortcuts_webhook",
-    "alexa_ifttt_key",
-    "companion_token",
-    "mqtt_password",
-)
+SECRET_KEYS = SENSITIVE_SETTING_KEYS
 
 # Token-shaped secrets never contain whitespace; speech/command bar sometimes injects spaces.
 _TOKENISH_PREFIX = re.compile(
@@ -175,20 +151,9 @@ class SecretsVault:
         try:
             enc = _dpapi_protect(raw)
         except Exception as e:
-            print(f"[vault] protect failed: {e}")
-            # Fallback: machine-local obfuscation file (better than plaintext settings)
-            fallback = self.path.with_suffix(".local.json")
-            fallback.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-            try:
-                os.chmod(fallback, 0o600)
-            except Exception:
-                pass
-            self._audit(
-                "vault.save",
-                {"keys": sorted(payload), "storage": "local-fallback"},
-                meta={"key_count": len(payload), "dpapi": False},
-            )
-            return
+            raise RuntimeError(
+                "DPAPI unavailable; refusing plaintext secret fallback"
+            ) from e
         wrapper = {
             "version": 1,
             "algo": "DPAPI",
@@ -231,7 +196,8 @@ class SecretsVault:
     def harvest_from(self, settings_obj: Any) -> int:
         """Pull plaintext secrets off settings into the vault. Returns count moved."""
         self.load()
-        moved = 0
+        previous = dict(self._cache)
+        moved_keys: list[str] = []
         for key in SECRET_KEYS:
             if not hasattr(settings_obj, key):
                 continue
@@ -242,11 +208,17 @@ class SecretsVault:
             if str(val).startswith("•") or str(val) in ("***", "changeme", "YOUR_"):
                 continue
             self._cache[key] = sanitize_secret(str(val))
-            setattr(settings_obj, key, "")
-            moved += 1
-        if moved:
+            moved_keys.append(key)
+        if not moved_keys:
+            return 0
+        try:
             self.save()
-        return moved
+        except Exception:
+            self._cache = previous
+            raise
+        for key in moved_keys:
+            setattr(settings_obj, key, "")
+        return len(moved_keys)
 
     def redact_dict(self, raw: dict[str, Any]) -> dict[str, Any]:
         """Return a copy safe to write to settings.json."""

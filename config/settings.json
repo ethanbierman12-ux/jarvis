@@ -144,7 +144,7 @@
   "mqtt_mic_publish_hz": 10.0,
   "spatial_hud_enabled": true,
   "exec_backend": "auto",
-  "exec_host_fallback": true,
+  "exec_host_fallback": false,
   "docker_runtime": "runsc",
   "docker_require_gvisor": false,
   "docker_python_image": "python:3.13-slim",

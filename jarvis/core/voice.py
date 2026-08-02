@@ -916,39 +916,43 @@ class VoiceEngine:
             import sounddevice as sd
         except Exception:
             return
-        try:
-            from jarvis.core.duplex_voice import rank_input_devices
-
-            devices: list[int | None] = [
-                *rank_input_devices(
-                    self.mic_prefer, allow_virtual=self.allow_virtual_mic
-                ),
-                None,
-            ]
-        except Exception:
-            devices = [None]
-        last_error: Exception | None = None
-        for device in dict.fromkeys(devices):
+        while self._running:
             try:
-                with sd.InputStream(
-                    device=device,
-                    channels=1,
-                    samplerate=16000,
-                    blocksize=2048,
-                    dtype="float32",
-                ) as stream:
-                    self._read_level_stream(stream, np)
-                    return
-            except Exception as e:
-                last_error = e
-                print(f"[voice] level mic open failed device={device}: {e}")
-        if last_error:
-            print(f"[voice] level meter offline: {last_error}")
+                from jarvis.core.duplex_voice import rank_input_devices
+
+                devices: list[int | None] = [
+                    *rank_input_devices(
+                        self.mic_prefer, allow_virtual=self.allow_virtual_mic
+                    ),
+                    None,
+                ]
+            except Exception:
+                devices = [None]
+            last_error: Exception | None = None
+            for device in dict.fromkeys(devices):
+                try:
+                    with sd.InputStream(
+                        device=device,
+                        channels=1,
+                        samplerate=16000,
+                        blocksize=2048,
+                        dtype="float32",
+                    ) as stream:
+                        self._read_level_stream(stream, np)
+                        return
+                except Exception as e:
+                    last_error = e
+                    print(f"[voice] level mic open failed device={device}: {e}")
+            if last_error:
+                print(f"[voice] level meter offline; retrying: {last_error}")
+            time.sleep(1.0)
 
     def _read_level_stream(self, stream, np) -> None:
+        failures = 0
         while self._running:
             try:
                 data, _overflow = stream.read(2048)
+                failures = 0
                 mono = np.asarray(data, dtype=np.float32).reshape(-1)
                 rms = float(np.sqrt(np.mean(np.square(mono)))) if mono.size else 0.0
                 if rms < 0.008:
@@ -976,6 +980,9 @@ class VoiceEngine:
                     self._barge_hits = 0
                 time.sleep(0.12 if self._speaking else 0.22)
             except Exception:
+                failures += 1
+                if failures >= 5:
+                    raise
                 time.sleep(0.15)
 
     def _maybe_denoise(self, audio, sr_mod):

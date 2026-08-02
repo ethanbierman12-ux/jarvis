@@ -34,7 +34,7 @@ from typing import Any, Callable
 
 from jarvis.config import DATA_DIR, ROOT
 from jarvis.core.exec_backend import ExecBackend
-from jarvis.core.llm_client import backend_name, complete
+from jarvis.core.llm_client import backend_name, complete, remote_backends_configured
 
 # Terminal commands FORGE may run — read-only diagnostics only.
 SAFE_COMMANDS: dict[str, list[str]] = {
@@ -165,7 +165,21 @@ class MemoryAgent:
         if vs is None or not getattr(vs, "available", False):
             return ""
         try:
-            hits = vs.recall(query, n=n)
+            if hasattr(vs, "recall_records"):
+                records = vs.recall_records(query, n=n)
+                backend = backend_name()
+                local_llm = (
+                    backend == "none"
+                    or backend.startswith("ollama:")
+                    and not remote_backends_configured()
+                )
+                hits = [
+                    record["text"]
+                    for record in records
+                    if local_llm or record.get("sensitivity") != "personal"
+                ]
+            else:
+                hits = vs.recall(query, n=n) if backend_name().startswith("ollama:") else []
             return "\n".join(f"- {h}" for h in hits) if hits else ""
         except Exception:
             return ""

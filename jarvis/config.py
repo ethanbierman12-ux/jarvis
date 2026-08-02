@@ -12,6 +12,31 @@ DATA_DIR = ROOT / "jarvis" / "data"
 PLUGINS_DIR = ROOT / "plugins"
 ASSETS_DIR = ROOT / "assets"
 
+SENSITIVE_SETTING_KEYS = (
+    "elevenlabs_api_key",
+    "deepgram_api_key",
+    "tavily_api_key",
+    "serper_api_key",
+    "openweather_api_key",
+    "ha_token",
+    "n8n_api_key",
+    "manus_api_key",
+    "anthropic_api_key",
+    "openai_api_key",
+    "stripe_secret_key",
+    "notion_token",
+    "buffer_access_token",
+    "gmail_access_token",
+    "spotify_client_id",
+    "spotify_client_secret",
+    "lifx_token",
+    "hue_username",
+    "phone_shortcuts_webhook",
+    "alexa_ifttt_key",
+    "companion_token",
+    "mqtt_password",
+)
+
 
 @dataclass
 class Theme:
@@ -201,7 +226,7 @@ class Settings:
     spatial_hud_enabled: bool = True
     # Isolated code execution: auto tries gVisor/Docker, then an SSH edge worker.
     exec_backend: str = "auto"  # auto | docker | edge | host
-    exec_host_fallback: bool = True
+    exec_host_fallback: bool = False
     docker_runtime: str = "runsc"
     docker_require_gvisor: bool = False
     docker_python_image: str = "python:3.13-slim"
@@ -273,25 +298,25 @@ class Settings:
     def save(self, path: Path | None = None) -> None:
         path = path or CONFIG_PATH
         path.parent.mkdir(parents=True, exist_ok=True)
+        disk = asdict(self)
+        for key in SENSITIVE_SETTING_KEYS:
+            disk[key] = ""
         try:
-            from jarvis.core.secrets_vault import SECRET_KEYS, get_vault, sanitize_secret
+            from jarvis.core.secrets_vault import get_vault, sanitize_secret
 
             vault = get_vault()
             vault.load()
             # Snapshot live secrets → vault, then write redacted JSON
-            for key in SECRET_KEYS:
+            for key in SENSITIVE_SETTING_KEYS:
                 val = getattr(self, key, "") or ""
                 if str(val).strip() and not str(val).startswith("•"):
                     vault._cache[key] = sanitize_secret(str(val))
             vault.save()
-            disk = asdict(self)
-            for key in SECRET_KEYS:
-                disk[key] = ""
-            blob = json.dumps(disk, indent=2)
             # Keep RAM hydrated
             vault.merge_into(self)
-        except Exception:
-            blob = json.dumps(asdict(self), indent=2)
+        except Exception as e:
+            print(f"[vault] secure save failed; settings remain redacted: {e}")
+        blob = json.dumps(disk, indent=2)
         path.write_text(blob, encoding="utf-8")
         if path.resolve() != CONFIG_JSON.resolve():
             try:

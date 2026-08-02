@@ -3370,10 +3370,17 @@ class Brain:
             return self._flavor("ok", self.state_bus.status())
         if re.search(r"\b(verify|check|status)( the)? audit( chain| ledger)?\b", t):
             try:
-                from jarvis.core.audit_ledger import get_audit_ledger
+                from jarvis.core.audit_ledger import AuditLedger, get_audit_ledger
 
                 ok, detail = get_audit_ledger().verify()
-                return self._flavor("ok", detail if ok else f"Warning: {detail}")
+                reports = [f"Desktop: {detail}"]
+                hub_chain = ROOT / "hub" / "data" / "audit" / "chain.jsonl"
+                if hub_chain.exists():
+                    hub_ok, hub_detail = AuditLedger(hub_chain).verify_readonly()
+                    ok = ok and hub_ok
+                    reports.append(f"Hub: {hub_detail}")
+                report = " ".join(reports)
+                return self._flavor("ok", report if ok else f"Warning: {report}")
             except Exception as e:
                 return self._flavor("ok", f"Audit ledger unavailable: {e}")
         if re.search(r"\b(exec|execution|sandbox|edge)( backend)? status\b", t):

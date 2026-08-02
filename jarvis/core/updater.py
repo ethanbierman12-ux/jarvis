@@ -63,6 +63,7 @@ class SandboxCompiler:
 
         path = PLUGINS_DIR / f"{name}.py"
         previous = path.read_text(encoding="utf-8") if path.exists() else None
+        old_module = self._modules.get(name) or sys.modules.get(name)
         path.write_text(code, encoding="utf-8")
         check = self.exec_backend.validate_python(path)
         if check.returncode != 0:
@@ -78,13 +79,29 @@ class SandboxCompiler:
             else:
                 spec = importlib.util.spec_from_file_location(name, path)
                 if not spec or not spec.loader:
-                    return "Failed to load plugin spec."
+                    raise RuntimeError("failed to load plugin spec")
                 mod = importlib.util.module_from_spec(spec)
                 sys.modules[name] = mod
                 spec.loader.exec_module(mod)
             self._modules[name] = mod
             return f"Plugin '{name}' live. No reboot required."
         except Exception as e:
+            try:
+                if previous is None:
+                    path.unlink(missing_ok=True)
+                    self._modules.pop(name, None)
+                    sys.modules.pop(name, None)
+                else:
+                    path.write_text(previous, encoding="utf-8")
+                    if old_module is not None:
+                        restored = importlib.reload(old_module)
+                        self._modules[name] = restored
+                        sys.modules[name] = restored
+            except Exception as rollback_error:
+                return (
+                    "The update failed and rollback needs attention. "
+                    f"Load error: {e}; rollback error: {rollback_error}"
+                )
             return f"The new update failed to execute safely; reverting. ({e})"
 
     def hot_upgrade(

@@ -66,7 +66,8 @@
       for(let y=40;y<700;y+=40) line(16,y,1184,y,"rgba(0,232,255,.045)",1);
 
       text("J.A.R.V.I.S // SPATIAL TELEMETRY",42,58,24,cyan);
-      text(online ? "LINK SECURE" : "HTTP LINK LOST",1150,56,16,online?cyan:"#ff496a","right");
+      const link=online?(window.isSecureContext?"LINK SECURE":"LINK AUTHENTICATED"):"STATE LINK LOST";
+      text(link,1150,56,16,online?cyan:"#ff496a","right");
       line(40,78,1160,78,"rgba(0,232,255,.38)",2);
 
       const mode=String(state.reactor||"idle").toUpperCase();
@@ -157,20 +158,29 @@
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
     }
     async function beginXr() {
+      let xrSession=null;
       try {
         const ar=await navigator.xr.isSessionSupported("immersive-ar");
         const mode=ar?"immersive-ar":"immersive-vr";
         initGl(); await gl.makeXRCompatible();
-        session=await navigator.xr.requestSession(mode,{requiredFeatures:["local-floor"],optionalFeatures:["dom-overlay"],domOverlay:{root:document.body}});
-        session.updateRenderState({baseLayer:new XRWebGLLayer(session,gl)});
-        const ref=await session.requestReferenceSpace("local-floor");
+        xrSession=await navigator.xr.requestSession(mode,{optionalFeatures:["local-floor","dom-overlay"],domOverlay:{root:document.body}});
+        session=xrSession;
+        const cleanup=()=>{
+          if(session===xrSession) session=null;
+          exit.hidden=true; enter.hidden=false; requestAnimationFrame(paintFlat);
+        };
+        xrSession.addEventListener("end",cleanup,{once:true});
+        xrSession.updateRenderState({baseLayer:new XRWebGLLayer(xrSession,gl)});
+        let ref;
+        try{ref=await xrSession.requestReferenceSpace("local-floor");}
+        catch{ref=await xrSession.requestReferenceSpace("local");}
         enter.hidden=true; exit.hidden=false;
-        session.addEventListener("end",()=>{session=null;exit.hidden=true;enter.hidden=false;requestAnimationFrame(paintFlat);});
         const frame=(time,xrFrame)=>{
+          if(session!==xrSession)return;
           renderHud();
           const pose=xrFrame.getViewerPose(ref);
           if(pose){
-            const layer=session.renderState.baseLayer;
+            const layer=xrSession.renderState.baseLayer;
             gl.bindFramebuffer(gl.FRAMEBUFFER,layer.framebuffer);
             gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
             gl.useProgram(program); gl.bindTexture(gl.TEXTURE_2D,texture);
@@ -182,10 +192,15 @@
               gl.drawArrays(gl.TRIANGLES,0,6);
             }
           }
-          session.requestAnimationFrame(frame);
+          xrSession.requestAnimationFrame(frame);
         };
-        session.requestAnimationFrame(frame);
-      } catch(err) { statusEl.textContent=`XR START FAILED · ${err.message}`; session=null; }
+        xrSession.requestAnimationFrame(frame);
+      } catch(err) {
+        statusEl.textContent=`XR START FAILED · ${err.message}`;
+        if(xrSession){try{await xrSession.end();return;}catch{}}
+        if(session===xrSession)session=null;
+        exit.hidden=true; enter.hidden=false; requestAnimationFrame(paintFlat);
+      }
     }
     async function detectXr() {
       if(!navigator.xr){statusEl.textContent="WEBXR NEEDS QUEST BROWSER + HTTPS";return;}

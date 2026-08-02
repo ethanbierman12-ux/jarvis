@@ -7,12 +7,10 @@ services:
     image: eclipse-mosquitto:2
     volumes:
       - ./mosquitto/config:/mosquitto/config:ro
-      - ./mosquitto/data:/mosquitto/data
     restart: unless-stopped
     ports:
-      # MQTT stays local; Quest clients use the token-protected HTTP state API.
+      # MQTT stays local; Quest clients use the token-protected HTTPS/HTTP state API.
       - "127.0.0.1:1883:1883"
-      - "127.0.0.1:9001:9001"
 
   homeassistant:
     container_name: homeassistant

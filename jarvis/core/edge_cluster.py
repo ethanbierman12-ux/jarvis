@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import re
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -22,12 +24,15 @@ class EdgeWorker:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "EdgeWorker":
+        python = str(raw.get("python") or "python3").strip()
+        if not re.fullmatch(r"(?:/[A-Za-z0-9_.-]+)+|[A-Za-z0-9_.-]+", python):
+            python = ""
         return cls(
             host=str(raw.get("host") or "").strip(),
             user=str(raw.get("user") or "").strip(),
             port=int(raw.get("port") or 22),
             key_path=str(raw.get("key_path") or "").strip(),
-            python=str(raw.get("python") or "python3").strip(),
+            python=python,
             enabled=bool(raw.get("enabled", True)),
             name=str(raw.get("name") or raw.get("host") or "").strip(),
         )
@@ -59,7 +64,7 @@ class EdgeCluster:
         self.workers = [
             worker
             for worker in (EdgeWorker.from_dict(raw) for raw in (workers or []))
-            if worker.enabled and worker.host
+            if worker.enabled and worker.host and worker.python
         ]
         self.timeout_sec = max(2.0, float(timeout_sec or 8.0))
         self.strict_host_keys = bool(strict_host_keys)
@@ -118,7 +123,8 @@ class EdgeCluster:
         if worker.key_path:
             key = Path(worker.key_path).expanduser()
             cmd.extend(["-i", str(key)])
-        cmd.extend([worker.target, worker.python, "-I", "-"])
+        remote_command = f"exec {shlex.quote(worker.python)} -I -"
+        cmd.extend([worker.target, remote_command])
         kwargs: dict[str, Any] = {}
         if os.name == "nt":
             kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
@@ -128,6 +134,7 @@ class EdgeCluster:
                 input=source,
                 capture_output=True,
                 text=True,
+                errors="replace",
                 timeout=max(timeout, self.timeout_sec + 1),
                 **kwargs,
             )
