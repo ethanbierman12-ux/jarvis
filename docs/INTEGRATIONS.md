@@ -104,6 +104,61 @@ Full walkthrough: [HANDOVER_COMPANION.md](HANDOVER_COMPANION.md).
 
 Settings: `companion_enabled`, `companion_port` (8766), `companion_host`, `companion_token`.
 
+## Quest / WebXR spatial HUD
+
+Use the same companion token:
+
+```
+http://JARVIS-PC:8766/spatial?token=YOUR_COMPANION_TOKEN
+```
+
+The page polls the authenticated `/api/state` fallback and offers immersive AR/VR when WebXR is available. Quest Browser generally requires HTTPS for immersive mode; the flat live HUD works without it.
+
+## MQTT state bus
+
+`homeassistant/docker-compose.yml` now starts a loopback-only Mosquitto broker alongside Home Assistant. Run `homeassistant/start_homeassistant.bat`, then enable:
+
+```json
+{
+  "mqtt_enabled": true,
+  "mqtt_host": "127.0.0.1",
+  "mqtt_port": 1883,
+  "mqtt_topic_prefix": "jarvis"
+}
+```
+
+Retained JSON topics:
+
+- `jarvis/reactor` — reactor mode
+- `jarvis/mic` — throttled microphone level
+- `jarvis/speak` — TTS active flag
+- `jarvis/state` — combined state snapshot
+
+Say **“state bus status”** for broker/fallback health. MQTT failure never blocks the PyQt HUD or `/api/state`.
+
+## Isolated execution and edge workers
+
+Generated CODESMITH jobs and plugin validation use `exec_backend`: `auto`, `docker`, `edge`, or `host`. `auto` tries gVisor/Docker, then SSH edge workers, then the existing Python `-I` host sandbox only when `exec_host_fallback` is true.
+
+For strict isolation, pre-pull `docker_python_image`, configure Docker’s `runsc` runtime, and set:
+
+```json
+{
+  "exec_backend": "docker",
+  "docker_runtime": "runsc",
+  "docker_require_gvisor": true,
+  "exec_host_fallback": false
+}
+```
+
+Edge worker objects accept `name`, `host`, `user`, `port`, `key_path`, `python`, and `enabled`. SSH uses batch mode and strict host-key checking. Say **“execution backend status”** for configuration health.
+
+## Audit and privacy
+
+Settings, instruction, vault, and vector-memory writes append payload-redacted SHA-256 records to `jarvis/data/audit/chain.jsonl`. Say **“verify audit chain”** to detect edits, deletion, or reordering.
+
+Memory labels are `personal`, `work`, or `public`. Hub events default to `personal`, which cannot be sent to Slack or n8n. Set `JARVIS_SHARE_MAX_SENSITIVITY=public` in `hub/.env` to block `work` events too.
+
 ## Alexa lamp (recommended — Echo voice relay)
 
 Works **without** IFTTT or Home Assistant if an Echo can hear your PC speakers.
