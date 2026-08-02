@@ -11,6 +11,7 @@ import time
 from typing import Callable
 
 from jarvis.config import PLUGINS_DIR, ROOT, DATA_DIR
+from jarvis.core.exec_backend import ExecBackend
 
 _DANGER = re.compile(
     r"\b(rm\s+-rf|shutil\.rmtree|os\.system\s*\(|subprocess\.|eval\s*\(|exec\s*\(|ctypes)\b",
@@ -31,8 +32,11 @@ _RELOADABLE = (
 
 
 class SandboxCompiler:
-    def __init__(self) -> None:
+    def __init__(self, settings=None) -> None:
         self._modules: dict[str, object] = {}
+        self.exec_backend = (
+            ExecBackend.from_settings(settings) if settings is not None else ExecBackend()
+        )
         PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
         if str(PLUGINS_DIR) not in sys.path:
             sys.path.insert(0, str(PLUGINS_DIR))
@@ -58,7 +62,16 @@ class SandboxCompiler:
             return f"Syntax error: {e}. Please refine your request."
 
         path = PLUGINS_DIR / f"{name}.py"
+        previous = path.read_text(encoding="utf-8") if path.exists() else None
         path.write_text(code, encoding="utf-8")
+        check = self.exec_backend.validate_python(path)
+        if check.returncode != 0:
+            if previous is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_text(previous, encoding="utf-8")
+            detail = (check.stderr or "validation failed").strip()[-300:]
+            return f"Plugin isolation check failed via {check.backend}: {detail}"
         try:
             if name in self._modules:
                 mod = importlib.reload(self._modules[name])  # type: ignore[arg-type]
@@ -111,6 +124,10 @@ class SandboxCompiler:
                     errors += 1
                     continue
                 ast.parse(code)
+                check = self.exec_backend.validate_python(path)
+                if check.returncode != 0:
+                    errors += 1
+                    continue
                 if name in sys.modules:
                     mod = importlib.reload(sys.modules[name])
                 else:

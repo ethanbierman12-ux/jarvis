@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <meta name="theme-color" content="#02080d">
+  <title>JARVIS Spatial HUD</title>
+  <style>
+    :root { color-scheme: dark; --cyan:#00e8ff; --amber:#ffae35; --void:#02080d; }
+    * { box-sizing:border-box; }
+    html, body { width:100%; height:100%; margin:0; overflow:hidden; background:radial-gradient(circle at 50% 45%,#082231,#02080d 62%); font-family:ui-monospace,SFMono-Regular,Consolas,monospace; color:#d9fbff; }
+    #flat { width:100%; height:100%; display:block; }
+    #controls { position:fixed; inset:auto 0 28px; display:flex; justify-content:center; gap:12px; pointer-events:none; }
+    button { pointer-events:auto; border:1px solid rgba(0,232,255,.8); background:rgba(1,18,27,.88); color:var(--cyan); padding:12px 20px; border-radius:5px; font:700 13px/1 ui-monospace,monospace; letter-spacing:.16em; box-shadow:0 0 22px rgba(0,232,255,.18); }
+    button[hidden] { display:none; }
+    #status { position:fixed; top:18px; left:20px; color:#6aa3ad; font-size:11px; letter-spacing:.12em; }
+  </style>
+</head>
+<body>
+  <canvas id="flat"></canvas>
+  <div id="status">CONNECTING TO JARVIS…</div>
+  <div id="controls"><button id="enter" hidden>ENTER SPATIAL HUD</button><button id="exit" hidden>EXIT XR</button></div>
+  <script>
+    "use strict";
+    const flat = document.querySelector("#flat");
+    const flatCtx = flat.getContext("2d");
+    const statusEl = document.querySelector("#status");
+    const enter = document.querySelector("#enter");
+    const exit = document.querySelector("#exit");
+    const hud = document.createElement("canvas");
+    hud.width = 1200; hud.height = 720;
+    const ctx = hud.getContext("2d");
+    let state = { reactor:"idle", mic:0, speaking:false, listening:false, telemetry:{}, stats:{}, seq:0 };
+    let online = false, session = null, gl = null, program = null, texture = null, textureDirty = true;
+
+    const clamp = (v,a,b) => Math.max(a, Math.min(b, Number(v)||0));
+    const pick = (obj, keys, fallback=0) => {
+      for (const key of keys) if (obj && obj[key] != null) return obj[key];
+      return fallback;
+    };
+    function fit(canvas) {
+      const ratio = Math.min(2, devicePixelRatio || 1);
+      const w = Math.floor(innerWidth * ratio), h = Math.floor(innerHeight * ratio);
+      if (canvas.width !== w || canvas.height !== h) { canvas.width=w; canvas.height=h; }
+    }
+    function line(x1,y1,x2,y2,color="#00e8ff",width=2) {
+      ctx.strokeStyle=color; ctx.lineWidth=width; ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    }
+    function text(value,x,y,size=20,color="#bffaff",align="left") {
+      ctx.font=`${size}px ui-monospace, SFMono-Regular, Consolas, monospace`;
+      ctx.fillStyle=color; ctx.textAlign=align; ctx.fillText(String(value),x,y);
+    }
+    function ring(x,y,r,value,color) {
+      ctx.lineWidth=9; ctx.strokeStyle="rgba(52,120,135,.18)"; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.stroke();
+      ctx.strokeStyle=color; ctx.shadowColor=color; ctx.shadowBlur=18; ctx.beginPath(); ctx.arc(x,y,r,-Math.PI/2,-Math.PI/2+Math.PI*2*clamp(value,0,1)); ctx.stroke(); ctx.shadowBlur=0;
+    }
+    function renderHud() {
+      const cyan="#00e8ff", amber="#ffae35", dim="#547b85";
+      ctx.clearRect(0,0,hud.width,hud.height);
+      const bg=ctx.createRadialGradient(600,350,30,600,350,700);
+      bg.addColorStop(0,"rgba(7,42,58,.93)"); bg.addColorStop(1,"rgba(1,7,12,.96)");
+      ctx.fillStyle=bg; ctx.fillRect(0,0,1200,720);
+      ctx.strokeStyle="rgba(0,232,255,.62)"; ctx.lineWidth=3; ctx.strokeRect(14,14,1172,692);
+      ctx.strokeStyle="rgba(0,232,255,.16)"; ctx.lineWidth=1;
+      for(let x=40;x<1180;x+=40) line(x,16,x,704,"rgba(0,232,255,.045)",1);
+      for(let y=40;y<700;y+=40) line(16,y,1184,y,"rgba(0,232,255,.045)",1);
+
+      text("J.A.R.V.I.S // SPATIAL TELEMETRY",42,58,24,cyan);
+      text(online ? "LINK SECURE" : "HTTP LINK LOST",1150,56,16,online?cyan:"#ff496a","right");
+      line(40,78,1160,78,"rgba(0,232,255,.38)",2);
+
+      const mode=String(state.reactor||"idle").toUpperCase();
+      const active=state.speaking ? amber : cyan;
+      const pulse=.76 + Math.sin(performance.now()/260)*.06 + clamp(state.mic,0,.2);
+      ring(600,342,142,pulse,active); ring(600,342,111,.76,active);
+      ctx.fillStyle=active; ctx.shadowColor=active; ctx.shadowBlur=42;
+      ctx.beginPath(); ctx.arc(600,342,52+clamp(state.mic,0,1)*25,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+      ctx.fillStyle="#031018"; ctx.beginPath(); ctx.arc(600,342,35,0,Math.PI*2); ctx.fill();
+      text(mode,600,538,30,active,"center");
+      text(state.speaking?"VOICE OUTPUT":"VOICE INPUT",600,572,15,dim,"center");
+
+      const tel=state.telemetry||{};
+      const cpu=clamp(pick(tel,["cpu","cpu_percent","cpu_pct"])/100,0,1);
+      const ram=clamp(pick(tel,["ram","memory","memory_percent","ram_pct"])/100,0,1);
+      const disk=clamp(pick(tel,["disk","disk_percent","disk_pct"])/100,0,1);
+      ring(172,196,62,cpu,cyan); ring(172,360,62,ram,cyan); ring(172,524,62,disk,cyan);
+      text(`CPU ${Math.round(cpu*100)}%`,172,202,18,"#d9fbff","center");
+      text(`RAM ${Math.round(ram*100)}%`,172,366,18,"#d9fbff","center");
+      text(`DSK ${Math.round(disk*100)}%`,172,530,18,"#d9fbff","center");
+
+      text("VOICE BAND",908,144,15,dim,"center");
+      const level=clamp(state.mic,0,1);
+      for(let i=0;i<32;i++){
+        const x=760+i*10, wave=(Math.sin(i*.72+performance.now()/170)+1)/2;
+        const h=8+level*(18+wave*76);
+        line(x,342-h/2,x,342+h/2,i/32<level?active:"rgba(69,130,142,.35)",5);
+      }
+      text(state.listening?"MIC · LISTENING":"MIC · STANDBY",908,406,16,state.listening?cyan:dim,"center");
+      text(`SEQ ${state.seq||0}`,908,444,14,dim,"center");
+
+      const transport=state.transport||{};
+      const mqtt=transport.mqtt_connected?"MQTT LIVE":"HTTP FALLBACK";
+      text(mqtt,42,676,14,transport.mqtt_connected?cyan:amber);
+      text(new Date().toLocaleTimeString(),1158,676,14,dim,"right");
+      textureDirty=true;
+    }
+    function paintFlat() {
+      fit(flat); renderHud();
+      flatCtx.clearRect(0,0,flat.width,flat.height);
+      const scale=Math.min(flat.width/hud.width,flat.height/hud.height)*.92;
+      const w=hud.width*scale,h=hud.height*scale;
+      flatCtx.drawImage(hud,(flat.width-w)/2,(flat.height-h)/2,w,h);
+      if(!session) requestAnimationFrame(paintFlat);
+    }
+    async function poll() {
+      try {
+        const res=await fetch("/api/state",{cache:"no-store",credentials:"same-origin"});
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body=await res.json();
+        state=body.state||state; online=true;
+        statusEl.textContent=`JARVIS ONLINE · ${state.transport?.mqtt_connected?"MQTT":"HTTP FALLBACK"}`;
+      } catch(err) {
+        online=false; statusEl.textContent=`STATE LINK LOST · ${err.message}`;
+      }
+    }
+
+    function shader(type, source) {
+      const s=gl.createShader(type); gl.shaderSource(s,source); gl.compileShader(s);
+      if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+      return s;
+    }
+    function initGl() {
+      const xrCanvas=document.createElement("canvas");
+      gl=xrCanvas.getContext("webgl",{alpha:true,antialias:true,xrCompatible:true});
+      const vs=shader(gl.VERTEX_SHADER,`
+        attribute vec3 p; attribute vec2 uv; uniform mat4 projection; uniform mat4 view;
+        varying vec2 vuv; void main(){vuv=uv;gl_Position=projection*view*vec4(p,1.0);}
+      `);
+      const fs=shader(gl.FRAGMENT_SHADER,`
+        precision mediump float; varying vec2 vuv; uniform sampler2D panel;
+        void main(){vec4 c=texture2D(panel,vuv);gl_FragColor=c;}
+      `);
+      program=gl.createProgram(); gl.attachShader(program,vs); gl.attachShader(program,fs); gl.linkProgram(program);
+      const vertices=new Float32Array([
+        -1.25,1.15,-2.35, 0,0,  -1.25,-.35,-2.35, 0,1,  1.25,1.15,-2.35, 1,0,
+         1.25,1.15,-2.35, 1,0,  -1.25,-.35,-2.35, 0,1,  1.25,-.35,-2.35, 1,1
+      ]);
+      const buffer=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buffer); gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
+      gl.useProgram(program);
+      const p=gl.getAttribLocation(program,"p"),uv=gl.getAttribLocation(program,"uv");
+      gl.enableVertexAttribArray(p); gl.vertexAttribPointer(p,3,gl.FLOAT,false,20,0);
+      gl.enableVertexAttribArray(uv); gl.vertexAttribPointer(uv,2,gl.FLOAT,false,20,12);
+      texture=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,texture);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    }
+    async function beginXr() {
+      try {
+        const ar=await navigator.xr.isSessionSupported("immersive-ar");
+        const mode=ar?"immersive-ar":"immersive-vr";
+        initGl(); await gl.makeXRCompatible();
+        session=await navigator.xr.requestSession(mode,{requiredFeatures:["local-floor"],optionalFeatures:["dom-overlay"],domOverlay:{root:document.body}});
+        session.updateRenderState({baseLayer:new XRWebGLLayer(session,gl)});
+        const ref=await session.requestReferenceSpace("local-floor");
+        enter.hidden=true; exit.hidden=false;
+        session.addEventListener("end",()=>{session=null;exit.hidden=true;enter.hidden=false;requestAnimationFrame(paintFlat);});
+        const frame=(time,xrFrame)=>{
+          renderHud();
+          const pose=xrFrame.getViewerPose(ref);
+          if(pose){
+            const layer=session.renderState.baseLayer;
+            gl.bindFramebuffer(gl.FRAMEBUFFER,layer.framebuffer);
+            gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+            gl.useProgram(program); gl.bindTexture(gl.TEXTURE_2D,texture);
+            if(textureDirty){gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,hud);textureDirty=false;}
+            for(const view of pose.views){
+              const vp=layer.getViewport(view); gl.viewport(vp.x,vp.y,vp.width,vp.height);
+              gl.uniformMatrix4fv(gl.getUniformLocation(program,"projection"),false,view.projectionMatrix);
+              gl.uniformMatrix4fv(gl.getUniformLocation(program,"view"),false,view.transform.inverse.matrix);
+              gl.drawArrays(gl.TRIANGLES,0,6);
+            }
+          }
+          session.requestAnimationFrame(frame);
+        };
+        session.requestAnimationFrame(frame);
+      } catch(err) { statusEl.textContent=`XR START FAILED · ${err.message}`; session=null; }
+    }
+    async function detectXr() {
+      if(!navigator.xr){statusEl.textContent="WEBXR NEEDS QUEST BROWSER + HTTPS";return;}
+      const ar=await navigator.xr.isSessionSupported("immersive-ar").catch(()=>false);
+      const vr=await navigator.xr.isSessionSupported("immersive-vr").catch(()=>false);
+      enter.hidden=!(ar||vr);
+    }
+    enter.addEventListener("click",beginXr);
+    exit.addEventListener("click",()=>session?.end());
+    addEventListener("resize",()=>fit(flat));
+    poll(); setInterval(poll,300); detectXr(); requestAnimationFrame(paintFlat);
+  </script>
+</body>
+</html>

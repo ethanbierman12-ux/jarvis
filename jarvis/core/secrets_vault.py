@@ -37,6 +37,7 @@ SECRET_KEYS = (
     "phone_shortcuts_webhook",
     "alexa_ifttt_key",
     "companion_token",
+    "mqtt_password",
 )
 
 # Token-shaped secrets never contain whitespace; speech/command bar sometimes injects spaces.
@@ -182,6 +183,11 @@ class SecretsVault:
                 os.chmod(fallback, 0o600)
             except Exception:
                 pass
+            self._audit(
+                "vault.save",
+                {"keys": sorted(payload), "storage": "local-fallback"},
+                meta={"key_count": len(payload), "dpapi": False},
+            )
             return
         wrapper = {
             "version": 1,
@@ -190,6 +196,11 @@ class SecretsVault:
         }
         self.path.write_text(json.dumps(wrapper, indent=2), encoding="utf-8")
         self._loaded = True
+        self._audit(
+            "vault.save",
+            {"keys": sorted(payload), "storage": "dpapi"},
+            meta={"key_count": len(payload), "dpapi": True},
+        )
 
     def get(self, key: str, default: str = "") -> str:
         self.load()
@@ -203,6 +214,11 @@ class SecretsVault:
         else:
             self._cache.pop(key, None)
         self.save()
+        self._audit(
+            "vault.set",
+            {"key": key, "set": bool(cleaned)},
+            meta={"vault_key": key, "set": bool(cleaned)},
+        )
 
     def merge_into(self, settings_obj: Any) -> None:
         """Copy vault secrets onto a Settings dataclass instance (RAM only)."""
@@ -240,6 +256,21 @@ class SecretsVault:
                 # Keep empty in JSON; real value lives in vault
                 out[key] = ""
         return out
+
+    def _audit(self, op: str, payload: Any, *, meta: dict[str, Any]) -> None:
+        try:
+            from jarvis.core.audit_ledger import get_audit_ledger
+
+            get_audit_ledger().append(
+                actor="vault",
+                op=op,
+                resource=f"vault:{self.path.name}",
+                payload=payload,
+                sensitivity="personal",
+                meta=meta,
+            )
+        except Exception as exc:
+            print(f"[audit] {op}: {exc}")
 
 
 _vault: SecretsVault | None = None

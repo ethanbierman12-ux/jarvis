@@ -38,6 +38,9 @@ config/config.json
 .env
 *.log
 jarvis/data/vault/
+jarvis/data/audit/
+homeassistant/mosquitto/data/
+hub/data/audit/
 **/*.dpapi.json
 **/*.local.json
 .cursor/mcp.json

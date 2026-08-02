@@ -188,6 +188,26 @@ class Settings:
     companion_host: str = "0.0.0.0"  # Tailscale peers need non-loopback bind
     companion_token: str = ""  # auto-generated; kept in DPAPI vault when possible
     companion_intro_day: str = ""  # YYYY-MM-DD — once-a-day discoverability tip
+    # Real-time state bus + Quest/WebXR HUD. MQTT is optional; authenticated
+    # /api/state remains available through the companion server as a fallback.
+    mqtt_enabled: bool = False
+    mqtt_host: str = "127.0.0.1"
+    mqtt_port: int = 1883
+    mqtt_username: str = ""
+    mqtt_password: str = ""  # vaulted
+    mqtt_client_id: str = "jarvis-hud"
+    mqtt_topic_prefix: str = "jarvis"
+    mqtt_mic_publish_hz: float = 10.0
+    spatial_hud_enabled: bool = True
+    # Isolated code execution: auto tries gVisor/Docker, then an SSH edge worker.
+    exec_backend: str = "auto"  # auto | docker | edge | host
+    exec_host_fallback: bool = True
+    docker_runtime: str = "runsc"
+    docker_require_gvisor: bool = False
+    docker_python_image: str = "python:3.13-slim"
+    docker_pull_missing: bool = False
+    edge_workers: list[dict[str, Any]] = field(default_factory=list)
+    edge_ssh_timeout_sec: float = 8.0
     # Folder watchdog (Downloads etc.)
     watch_enabled: bool = True
     watch_paths: list[str] = field(default_factory=list)
@@ -278,3 +298,17 @@ class Settings:
                 CONFIG_JSON.write_text(blob, encoding="utf-8")
             except Exception:
                 pass
+        try:
+            from jarvis.core.audit_ledger import get_audit_ledger
+
+            redacted = json.loads(blob)
+            get_audit_ledger().append(
+                actor="settings",
+                op="settings.save",
+                resource=path.name,
+                payload=redacted,
+                sensitivity="personal",
+                meta={"field_count": len(redacted)},
+            )
+        except Exception as e:
+            print(f"[audit] settings.save: {e}")
