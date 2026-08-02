@@ -109,14 +109,16 @@ Settings: `companion_enabled`, `companion_port` (8766), `companion_host`, `compa
 Use the same companion token:
 
 ```
-http://JARVIS-PC:8766/spatial?token=YOUR_COMPANION_TOKEN
+https://JARVIS-PC.YOUR-TAILNET.ts.net/spatial?token=YOUR_COMPANION_TOKEN
 ```
 
-The page polls the authenticated `/api/state` fallback and offers immersive AR/VR when WebXR is available. Quest Browser generally requires HTTPS for immersive mode; the flat live HUD works without it.
+First expose the local companion through HTTPS, for example with `tailscale serve --bg http://127.0.0.1:8766`. The bootstrap request exchanges the companion token for a 12-hour HttpOnly session and redirects to a token-free URL.
+
+The page polls the authenticated `/api/state` fallback and offers immersive AR/VR when WebXR is available. Quest Browser requires the HTTPS URL for immersive mode; the flat live HUD also works over local HTTP.
 
 ## MQTT state bus
 
-`homeassistant/docker-compose.yml` now starts a loopback-only Mosquitto broker alongside Home Assistant. Run `homeassistant/start_homeassistant.bat`, then enable:
+`homeassistant/docker-compose.yml` now starts a non-persistent, loopback-only Mosquitto broker alongside Home Assistant. Run `homeassistant/start_homeassistant.bat`, then enable:
 
 ```json
 {
@@ -132,13 +134,13 @@ Retained JSON topics:
 - `jarvis/reactor` — reactor mode
 - `jarvis/mic` — throttled microphone level
 - `jarvis/speak` — TTS active flag
-- `jarvis/state` — combined state snapshot
+- `jarvis/state` — combined telemetry snapshot (conversation text is excluded)
 
 Say **“state bus status”** for broker/fallback health. MQTT failure never blocks the PyQt HUD or `/api/state`.
 
 ## Isolated execution and edge workers
 
-Generated CODESMITH jobs and plugin validation use `exec_backend`: `auto`, `docker`, `edge`, or `host`. `auto` tries gVisor/Docker, then SSH edge workers, then the existing Python `-I` host sandbox only when `exec_host_fallback` is true.
+Generated CODESMITH jobs and plugin validation use `exec_backend`: `auto`, `docker`, `edge`, or `host`. `auto` tries gVisor/Docker, then SSH edge workers. Host fallback is disabled by default because Python `-I` is not a security boundary; set explicit `host` mode only when that risk is acceptable.
 
 For strict isolation, pre-pull `docker_python_image`, configure Docker’s `runsc` runtime, and set:
 

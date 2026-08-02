@@ -69,7 +69,7 @@ Optional ElevenLabs: set `elevenlabs_api_key` in `config/settings.json` (mirrore
 - **Spatial / edge roadmap**: `docs/ROADMAP_SPATIAL.md`
 - **Live state bus**: retained MQTT topics plus authenticated `/api/state` fallback
 - **Quest spatial HUD**: companion URL `/spatial?token=…` with flat + immersive WebXR modes
-- **Isolated CODESMITH**: gVisor/Docker → SSH edge → configurable guarded host fallback
+- **Isolated CODESMITH**: gVisor/Docker → SSH edge; host execution requires explicit opt-in
 - **Tamper-evident writes**: SHA-256 audit chain and `personal` / `work` / `public` memory labels
 - **Far-field mics**: ReSpeaker/Seeed preference and ranked hot-plug retries
 
