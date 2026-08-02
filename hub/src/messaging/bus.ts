@@ -34,7 +34,7 @@ class MessageBus extends EventEmitter {
   }
 
   spokeResult(result: SpokeResult) {
-    return this.publish("spoke.result", result, result.sensitivity || "work");
+    return this.publish("spoke.result", result, result.sensitivity || "personal");
   }
 
   halt(reason: string, sessionId?: string) {
@@ -88,7 +88,7 @@ function normalizeSensitivity(value?: string): Sensitivity {
   return label === "public" || label === "work" ? label : "personal";
 }
 
-function shareAllowed(sensitivity: Sensitivity): boolean {
+export function shareAllowed(sensitivity: Sensitivity): boolean {
   if (sensitivity === "personal") return false;
   const ceiling = String(process.env.JARVIS_SHARE_MAX_SENSITIVITY || "work").toLowerCase();
   return sensitivity === "public" || ceiling === "work";

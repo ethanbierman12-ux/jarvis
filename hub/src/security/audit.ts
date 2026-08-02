@@ -48,24 +48,40 @@ export function appendAudit(input: {
   meta?: Record<string, string | number | boolean>;
 }): string {
   fs.mkdirSync(path.dirname(CHAIN), { recursive: true });
-  const previous = head();
-  const body = {
-    seq: previous.seq + 1,
-    ts: new Date().toISOString(),
-    prev_hash: previous.hash,
-    actor: input.actor.slice(0, 64),
-    op: input.op.slice(0, 96),
-    resource: input.resource.slice(0, 180),
-    sensitivity: input.sensitivity,
-    payload_digest: digest(input.payload),
-    meta: input.meta || {},
-  };
-  const hash = digest(body);
-  fs.appendFileSync(CHAIN, `${JSON.stringify({ ...body, hash })}\n`, "utf8");
-  return hash;
+  return withChainLock(() => {
+    if (fs.existsSync(CHAIN) && fs.statSync(CHAIN).size > 0) {
+      const verified = verifyUnlocked();
+      if (!verified.ok) throw new Error(`refusing damaged audit chain: ${verified.detail}`);
+    }
+    const previous = head();
+    const body = {
+      seq: previous.seq + 1,
+      ts: new Date().toISOString(),
+      prev_hash: previous.hash,
+      actor: input.actor.slice(0, 64),
+      op: input.op.slice(0, 96),
+      resource: input.resource.slice(0, 180),
+      sensitivity: input.sensitivity,
+      payload_digest: digest(input.payload),
+      meta: input.meta || {},
+    };
+    const hash = digest(body);
+    const fd = fs.openSync(CHAIN, "a");
+    try {
+      fs.writeSync(fd, `${JSON.stringify({ ...body, hash })}\n`, undefined, "utf8");
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    return hash;
+  });
 }
 
 export function verifyAudit(): { ok: boolean; detail: string; records: number } {
+  return withChainLock(verifyUnlocked);
+}
+
+function verifyUnlocked(): { ok: boolean; detail: string; records: number } {
   if (!fs.existsSync(CHAIN)) return { ok: true, detail: "empty chain", records: 0 };
   let previous = GENESIS;
   let seq = 1;
@@ -86,5 +102,37 @@ export function verifyAudit(): { ok: boolean; detail: string; records: number } 
     return { ok: true, detail: `head ${previous.slice(0, 24)}…`, records: seq - 1 };
   } catch (error) {
     return { ok: false, detail: String(error), records: seq - 1 };
+  }
+}
+
+function withChainLock<T>(fn: () => T): T {
+  const lock = `${CHAIN}.lock`;
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  let fd: number | undefined;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      fd = fs.openSync(lock, "wx");
+      break;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST") throw error;
+      try {
+        if (Date.now() - fs.statSync(lock).mtimeMs > 30_000) fs.unlinkSync(lock);
+      } catch {
+        // Another process released it.
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+  if (fd == null) throw new Error("audit lock timeout");
+  try {
+    return fn();
+  } finally {
+    fs.closeSync(fd);
+    try {
+      fs.unlinkSync(lock);
+    } catch {
+      // The lock is advisory; failure is visible on the next timeout.
+    }
   }
 }

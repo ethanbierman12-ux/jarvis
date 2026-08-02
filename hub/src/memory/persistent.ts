@@ -30,30 +30,30 @@ export class PersistentMemory {
   rememberPreference(key: string, value: string, sensitivity: Sensitivity = "personal") {
     const file = path.join(this.vaultPath, "preferences", `${slug(key)}.md`);
     const body = `---\nsensitivity: ${sensitivity}\n---\n\n# Preference: ${key}\n\nUpdated: ${new Date().toISOString()}\n\n${value}\n`;
+    this._audit("memory.preference", file, { key, value }, sensitivity);
     fs.writeFileSync(file, body, "utf8");
     this._appendIndex("preferences", key, file);
-    this._audit("memory.preference", file, { key, value }, sensitivity);
   }
 
   rememberGoal(title: string, detail: string, sensitivity: Sensitivity = "work") {
     const file = path.join(this.vaultPath, "goals", `${slug(title)}.md`);
     const body = `---\nsensitivity: ${sensitivity}\n---\n\n# Goal: ${title}\n\nUpdated: ${new Date().toISOString()}\n\n${detail}\n`;
+    this._audit("memory.goal", file, { title, detail }, sensitivity);
     fs.writeFileSync(file, body, "utf8");
     this._appendIndex("goals", title, file);
-    this._audit("memory.goal", file, { title, detail }, sensitivity);
   }
 
   logInteraction(summary: string, sensitivity: Sensitivity = "personal") {
     const day = new Date().toISOString().slice(0, 10);
-    const file = path.join(this.vaultPath, "history", `${day}.md`);
+    const file = path.join(this.vaultPath, "history", `${day}-${sensitivity}.md`);
     const line = `\n## ${new Date().toISOString()} · ${sensitivity}\n\n${summary}\n`;
     const header = `---\nsensitivity: ${sensitivity}\n---\n\n# History ${day}\n`;
-    fs.appendFileSync(file, fs.existsSync(file) ? line : `${header}${line}`, "utf8");
     this._audit("memory.interaction", file, summary, sensitivity);
+    fs.appendFileSync(file, fs.existsSync(file) ? line : `${header}${line}`, "utf8");
   }
 
   /** Naive keyword retrieval over markdown vault (swap for embeddings later). */
-  search(query: string, limit = 6): string[] {
+  search(query: string, limit = 6, clearance: Sensitivity = "personal"): string[] {
     ensureVault(this.vaultPath);
     const q = query.toLowerCase();
     const hits: { score: number; text: string }[] = [];
@@ -63,6 +63,7 @@ export class PersistentMemory {
       for (const name of fs.readdirSync(dir)) {
         if (!name.endsWith(".md")) continue;
         const text = fs.readFileSync(path.join(dir, name), "utf8");
+        if (!this._mayRead(this._label(text), clearance)) continue;
         const low = text.toLowerCase();
         let score = 0;
         for (const token of q.split(/\s+/).filter(Boolean)) {
@@ -78,7 +79,8 @@ export class PersistentMemory {
   }
 
   contextBlock(query: string): string {
-    const hits = this.search(query, 5);
+    // Hub planning may call a remote LLM, so personal memory stays local.
+    const hits = this.search(query, 5, "work");
     if (!hits.length) return "(no persistent memories matched)";
     return hits.map((h, i) => `[mem ${i + 1}]\n${h}`).join("\n\n");
   }
@@ -89,23 +91,29 @@ export class PersistentMemory {
     fs.appendFileSync(index, fs.existsSync(index) ? line : `# Memory Index\n\n${line}`, "utf8");
   }
 
+  private _label(text: string): Sensitivity {
+    const match = text.match(/^sensitivity:\s*(personal|work|public)\s*$/im);
+    return (match?.[1]?.toLowerCase() as Sensitivity | undefined) || "personal";
+  }
+
+  private _mayRead(label: Sensitivity, clearance: Sensitivity): boolean {
+    const rank: Record<Sensitivity, number> = { public: 0, work: 1, personal: 2 };
+    return rank[label] <= rank[clearance];
+  }
+
   private _audit(
     op: string,
     file: string,
     payload: unknown,
     sensitivity: Sensitivity
   ) {
-    try {
-      appendAudit({
-        actor: "hub-memory",
-        op,
-        resource: path.relative(this.vaultPath, file),
-        payload,
-        sensitivity,
-      });
-    } catch (error) {
-      console.warn(`[audit] ${op}: ${String(error)}`);
-    }
+    appendAudit({
+      actor: "hub-memory",
+      op,
+      resource: path.relative(this.vaultPath, file),
+      payload,
+      sensitivity,
+    });
   }
 }
 
