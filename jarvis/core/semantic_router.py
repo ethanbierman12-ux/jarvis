@@ -115,10 +115,19 @@ _LANE_RULES: list[tuple[Lane, Complexity, str, re.Pattern[str]]] = [
         Complexity.LOCAL,
         "desk",
         re.compile(
-            r"\b(enrol+ (my )?face|security status|arm security|disarm security|"
-            r"intruder alerts? (on|off)|night vision|nvg|auto lock|presence lock|"
+            r"\b(enrol+ (my )?face|security status|security log|arm security|disarm security|"
+            r"intruder alerts? (on|off)|night vision|nvg|thermal assist|heat vision|"
+            r"auto lock|presence lock|"
             r"self[- ]?audit|autobug|"
-            r"fix this (bug|error)|intruder|router status|secure (the )?desk)\b",
+            r"fix this (bug|error)|intruder|router status|secure (the )?desk|"
+            r"ops hud|ops map|ops status|show (ops )?map|"
+            r"alert phone|send alert|desk alert|blast alert|secure blast|intruder blast|"
+            r"encrypt alert|"
+            r"open (last )?intrusion|open security log folder|"
+            r"defender status|security scan|harden processes|"
+            r"scan local network|lan status|network security status|net watch|"
+            r"satellite radio|satellite audio|weather radio|noaa radio|"
+            r"(open|find|pull up) (the )?file)\b",
             re.I,
         ),
     ),
@@ -203,10 +212,13 @@ _LANE_RULES: list[tuple[Lane, Complexity, str, re.Pattern[str]]] = [
 # Patterns that MUST stay local even if HubClient.wants_hub is noisy
 _FORCE_LOCAL = re.compile(
     r"\b(weather|what time|the time|lock|sleep|panic|copy|paste|save|"
-    r"enrol+|enroll|night vision|security status|open camera|play music|"
+    r"enrol+|enroll|night vision|thermal assist|heat vision|security status|"
+    r"security log|open camera|play music|"
     r"screenshot|volume|mute|help|status|auto lock|show stats|router status|"
     r"secure desk|open pdtester|look at my screen|check email|open map|"
-    r"pull up the news|away mode|self audit|fix this error)\b",
+    r"pull up the news|away mode|self audit|fix this error|"
+    r"ops hud|ops map|ops status|secure blast|intruder blast|encrypt alert|"
+    r"desk alert|blast alert)\b",
     re.I,
 )
 

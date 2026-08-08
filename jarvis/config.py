@@ -54,6 +54,8 @@ class Settings:
     night_vision_auto: bool = True
     night_vision_start_hour: int = 19  # 7 PM in settings.timezone
     night_vision_end_hour: int = 6  # 6 AM in settings.timezone
+    # Software false-color thermal assist on own webcam (not real FLIR)
+    thermal_assist: bool = False
     # Work mode / media personalization
     work_project_path: str = ""
     work_ide: str = "code"
@@ -66,13 +68,17 @@ class Settings:
     )
     focus_playlist: str = "focus"
     spotify_playlist_id: str = "0wAwIuOxCyimlomGUiAGQ2"
-    # Iconic boot: "Daddy's home" → Jarvis speaks → Iron Man workshop Spotify
+    # Iconic boot: "Daddy's home" → Jarvis speaks → Shoot to Thrill from 0:00
     stark_arrival_boot: bool = True
     stark_arrival_music: bool = True
     # Public scanner listening (Broadcastify page / optional pinned feed / RTL-SDR)
     scanner_feed_id: str = ""  # e.g. Broadcastify feed number you already chose
     scanner_feed_url: str = ""  # full listen or cdnstream URL (optional)
     scanner_rtl_freq: str = ""  # e.g. 154.430M when rtl_fm is installed
+    # Local desk/home mic impulse / bang watch (opt-in; NOT city CCTV audio)
+    danger_watch_enabled: bool = False
+    danger_watch_sensitivity: float = 1.0  # 0.3–3.0; higher = more sensitive
+    danger_watch_cooldown_sec: float = 60.0  # clamped 45–90 in DangerWatch
     # Smart home / intelligence
     hue_bridge_ip: str = ""
     hue_username: str = ""
@@ -298,6 +304,22 @@ class Settings:
     # Keep alerts on but security_gate enforces long cooldown + mismatch streak
     intruder_alert: bool = True
     intruder_alert_cooldown_sec: int = 720  # 12 min between spoken intruder alerts
+    # Home security pack — encrypted local log + phone photo push (desk only)
+    home_security_log: bool = True
+    home_security_phone_photo: bool = True
+    # Voice File Hub — local roots search + OS open
+    file_hub_enabled: bool = True
+    file_hub_roots: list[str] = field(default_factory=list)  # empty → auto Documents/Desktop/Downloads
+    # Alert desk — HUD + phone blast / encrypted notes
+    alert_desk_enabled: bool = True
+    # Ops HUD — owner sites map (home / edge / alert pins only)
+    ops_hud_enabled: bool = True
+    # Public traffic cams (PennDOT / 511PA stills + multi-region official DOT)
+    traffic_cams_enabled: bool = True
+    traffic_cams_city: str = "Philadelphia"  # Philadelphia|Miami|Florida|NYC|World
+    home_lat: float | None = None  # owner home pin; None → no default pin
+    home_lon: float | None = None
+    ops_sites: list[dict] = field(default_factory=list)  # [{name, lat, lon, kind}]
     # Advanced AI pack
     chat_memory_turns: int = 8  # short-term STM window for ask-me-anything
     ambient_duck_steps: int = 6  # Spotify/media vol steps while TTS speaks
@@ -309,6 +331,8 @@ class Settings:
     # Home ops / edge
     net_watch_enabled: bool = True
     net_watch_poll_sec: float = 45.0
+    # Defensive software security (Defender status / quick scan — soft-fail)
+    software_security_enabled: bool = True
     deadman_enabled: bool = False
     deadman_phrase: str = "jarvis clear"
     deadman_hours: float = 24.0

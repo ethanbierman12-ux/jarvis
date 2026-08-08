@@ -1,12 +1,18 @@
-"""LAN cyber watch — announce unknown MAC / new Wi‑Fi joiners (Windows arp)."""
+"""LAN cyber watch — announce unknown MAC / new Wi‑Fi joiners (Windows arp).
+
+Also: owner-LAN device list + optional IP-camera port presence check
+(ports 80 / 554 / 8554 only — report open hosts, never exploit).
+"""
 
 from __future__ import annotations
 
 import json
 import re
+import socket
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -14,6 +20,9 @@ from typing import Callable, Optional
 from jarvis.config import DATA_DIR
 
 STATE_PATH = DATA_DIR / "net_watch.json"
+
+# Common IP camera / NVR listen ports — presence only, no auth/exploit
+_CAM_PORTS = (80, 554, 8554)
 
 
 @dataclass
@@ -103,6 +112,208 @@ class NetWatch:
             self._known[d.mac] = d
         self.save()
         return f"Trusted {len(snap)} devices currently on the LAN."
+
+    def list_devices(self, *, limit: int = 24) -> list[NetDevice]:
+        """Merge live ARP with known table; prefer freshest IP per MAC."""
+        live = {d.mac: d for d in self.scan_once()}
+        now = time.time()
+        for mac, d in live.items():
+            prev = self._known.get(mac)
+            if prev is None:
+                d.first_seen = now
+                d.last_seen = now
+                self._known[mac] = d
+            else:
+                prev.ip = d.ip or prev.ip
+                prev.last_seen = now
+        # Prefer currently visible, then known
+        ordered: list[NetDevice] = []
+        seen: set[str] = set()
+        for d in live.values():
+            known = self._known.get(d.mac, d)
+            ordered.append(known)
+            seen.add(d.mac)
+        for mac, d in sorted(
+            self._known.items(),
+            key=lambda kv: kv[1].last_seen,
+            reverse=True,
+        ):
+            if mac in seen:
+                continue
+            ordered.append(d)
+            seen.add(mac)
+            if len(ordered) >= limit:
+                break
+        return ordered[:limit]
+
+    def speak_lan_status(self) -> str:
+        """Voice-friendly LAN / security status (owner network only)."""
+        try:
+            devices = self.list_devices(limit=20)
+        except Exception as e:
+            return f"LAN status soft-fail: {e}"
+        untrusted = [d for d in devices if not d.trusted]
+        bits = [
+            self.status(),
+            f"{len(devices)} devices listed",
+            f"{len(untrusted)} untrusted",
+        ]
+        if devices:
+            sample = ", ".join(
+                f"{d.ip or '?'} ({d.mac[-8:]})" for d in devices[:6]
+            )
+            bits.append(f"sample: {sample}")
+        bits.append("Owner LAN only — say scan local network for camera-port presence.")
+        return " · ".join(bits)
+
+    @staticmethod
+    def _local_ipv4() -> str:
+        """Best-effort primary IPv4 on the owner's machine."""
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                s.connect(("8.8.8.8", 80))
+                ip = s.getsockname()[0]
+            finally:
+                s.close()
+            if ip and not ip.startswith("127."):
+                return ip
+        except Exception:
+            pass
+        try:
+            host = socket.gethostname()
+            for info in socket.getaddrinfo(host, None, socket.AF_INET):
+                ip = info[4][0]
+                if ip and not ip.startswith("127."):
+                    return ip
+        except Exception:
+            pass
+        return ""
+
+    @staticmethod
+    def _is_private_lan(ip: str) -> bool:
+        try:
+            parts = [int(x) for x in ip.split(".")]
+            if len(parts) != 4:
+                return False
+            a, b = parts[0], parts[1]
+            if a == 10:
+                return True
+            if a == 192 and b == 168:
+                return True
+            if a == 172 and 16 <= b <= 31:
+                return True
+            return False
+        except Exception:
+            return False
+
+    def _candidate_hosts(self, *, max_hosts: int = 48) -> list[str]:
+        """ARP-known hosts + small /24 sweep around this PC (private LAN only)."""
+        local = self._local_ipv4()
+        if not local or not self._is_private_lan(local):
+            # Still allow ARP-known private IPs if local detect fails
+            hosts = []
+            for d in self.scan_once():
+                if self._is_private_lan(d.ip):
+                    hosts.append(d.ip)
+            return hosts[:max_hosts]
+
+        prefix = ".".join(local.split(".")[:3])
+        known = {d.ip for d in self.scan_once() if d.ip.startswith(prefix + ".")}
+        known.add(local)
+        # Limited sweep — owner /24 only, capped
+        sweep = [f"{prefix}.{i}" for i in range(1, 255)]
+        # Prioritize ARP-known, then nearby addresses
+        ordered: list[str] = []
+        for ip in sorted(known):
+            if ip not in ordered:
+                ordered.append(ip)
+        try:
+            base = int(local.split(".")[-1])
+        except Exception:
+            base = 1
+        near = sorted(range(1, 255), key=lambda i: abs(i - base))
+        for i in near:
+            ip = f"{prefix}.{i}"
+            if ip not in ordered:
+                ordered.append(ip)
+            if len(ordered) >= max_hosts:
+                break
+        return ordered[:max_hosts]
+
+    @staticmethod
+    def _port_open(ip: str, port: int, timeout: float) -> bool:
+        try:
+            with socket.create_connection((ip, port), timeout=timeout):
+                return True
+        except Exception:
+            return False
+
+    def scan_camera_ports(
+        self,
+        *,
+        timeout: float = 0.30,
+        max_hosts: int = 40,
+    ) -> list[dict]:
+        """Owner-LAN only: hosts with common IP-cam ports open (report only)."""
+        hosts = self._candidate_hosts(max_hosts=max_hosts)
+        if not hosts:
+            return []
+        found: list[dict] = []
+        lock = threading.Lock()
+
+        def _probe(ip: str) -> None:
+            open_ports = [
+                p for p in _CAM_PORTS if self._port_open(ip, p, timeout)
+            ]
+            if not open_ports:
+                return
+            with lock:
+                found.append({"ip": ip, "ports": open_ports})
+
+        try:
+            with ThreadPoolExecutor(max_workers=24) as pool:
+                futs = [pool.submit(_probe, ip) for ip in hosts]
+                for f in as_completed(futs):
+                    try:
+                        f.result()
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"[net-watch] cam-port scan: {e}")
+        found.sort(key=lambda r: r["ip"])
+        return found
+
+    def speak_local_network_scan(self) -> str:
+        """Voice: ARP devices + optional camera-port presence on owner LAN."""
+        try:
+            devices = self.list_devices(limit=16)
+        except Exception:
+            devices = []
+        try:
+            cams = self.scan_camera_ports()
+        except Exception as e:
+            return (
+                f"{self.status()}. Device list ok, camera-port scan soft-fail: {e}. "
+                "Owner LAN only — no exploit."
+            )
+        bits = [
+            self.status(),
+            f"{len(devices)} ARP/known devices",
+        ]
+        if cams:
+            cam_bits = ", ".join(
+                f"{c['ip']} ports {','.join(str(p) for p in c['ports'])}"
+                for c in cams[:8]
+            )
+            bits.append(f"possible IP-cam listeners: {cam_bits}")
+        else:
+            bits.append("no common IP-cam ports (80/554/8554) open on probed LAN hosts")
+        bits.append(
+            "Owner local network only — presence report, not an attack. "
+            "Say trust network to whitelist current MACs."
+        )
+        return " · ".join(bits)
 
     def scan_once(self) -> list[NetDevice]:
         devices: list[NetDevice] = []

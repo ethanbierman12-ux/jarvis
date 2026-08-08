@@ -1483,6 +1483,83 @@
       "weekday": "Saturday",
       "kind": "studio",
       "detail": "claude"
+    },
+    {
+      "ts": "2026-08-08T02:44:10",
+      "hour": 2,
+      "weekday": "Saturday",
+      "kind": "open_app",
+      "detail": "omegle"
+    },
+    {
+      "ts": "2026-08-08T02:45:00",
+      "hour": 2,
+      "weekday": "Saturday",
+      "kind": "open_app",
+      "detail": "chrome"
+    },
+    {
+      "ts": "2026-08-08T12:24:34",
+      "hour": 12,
+      "weekday": "Saturday",
+      "kind": "scanner",
+      "detail": "aviation"
+    },
+    {
+      "ts": "2026-08-08T12:27:32",
+      "hour": 12,
+      "weekday": "Saturday",
+      "kind": "scanner",
+      "detail": "aviation"
+    },
+    {
+      "ts": "2026-08-08T12:35:35",
+      "hour": 12,
+      "weekday": "Saturday",
+      "kind": "upgrade",
+      "detail": ""
+    },
+    {
+      "ts": "2026-08-08T12:54:24",
+      "hour": 12,
+      "weekday": "Saturday",
+      "kind": "scanner",
+      "detail": "dispatch"
+    },
+    {
+      "ts": "2026-08-08T12:57:15",
+      "hour": 12,
+      "weekday": "Saturday",
+      "kind": "scanner",
+      "detail": "truck"
+    },
+    {
+      "ts": "2026-08-08T13:23:47",
+      "hour": 13,
+      "weekday": "Saturday",
+      "kind": "scanner",
+      "detail": "satellite_weather"
+    },
+    {
+      "ts": "2026-08-08T13:23:47",
+      "hour": 13,
+      "weekday": "Saturday",
+      "kind": "scanner",
+      "detail": "satellite_weather"
+    },
+    {
+      "ts": "2026-08-08T13:25:23",
+      "hour": 13,
+      "weekday": "Saturday",
+      "kind": "scanner",
+      "detail": "satellite_weather"
+    },
+    {
+      "ts": "2026-08-08T13:25:23",
+      "hour": 13,
+      "weekday": "Saturday",
+      "kind": "scanner",
+      "detail": "satellite_weather"
     }
   ],
   "priorities": []

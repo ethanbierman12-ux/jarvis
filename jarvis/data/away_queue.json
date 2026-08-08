@@ -1,16 +1,6 @@
 {
   "jobs": [
     {
-      "id": "j1784408288700",
-      "kind": "system_pulse",
-      "label": "System pulse",
-      "payload": {},
-      "created": "2026-07-19T04:58:08",
-      "status": "done",
-      "finished": "2026-07-19T04:58:09",
-      "result": "PC pulse CPU 65% RAM 44%"
-    },
-    {
       "id": "j1784408288708",
       "kind": "prep_brief",
       "label": "Prep brief",
@@ -1309,6 +1299,16 @@
       "status": "done",
       "finished": "2026-08-07T22:44:51",
       "result": "Heartbeat ok at 22:44"
+    },
+    {
+      "id": "j1786129676849",
+      "kind": "heartbeat",
+      "label": "Steward online",
+      "payload": {},
+      "created": "2026-08-08T03:07:56",
+      "status": "done",
+      "finished": "2026-08-08T03:07:59",
+      "result": "Heartbeat ok at 03:07"
     }
   ]
 }

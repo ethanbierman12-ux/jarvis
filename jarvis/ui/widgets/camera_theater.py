@@ -144,22 +144,37 @@ allowfullscreen></iframe></body></html>"""
             except Exception:
                 pass
 
-    def _close(self) -> None:
+    def stop_live(self) -> None:
+        """Unload WebEngine to free GPU/CPU when news corner is hidden."""
+        try:
+            if self._web is not None:
+                self._web.setUrl(QUrl("about:blank"))
+        except Exception:
+            pass
         self.hide()
+
+    def _close(self) -> None:
+        self.stop_live()
         self.closed.emit()
 
 
 class JarvisDock(_DragPanel):
-    """Bottom-right Jarvis control chip — draggable."""
+    """Bottom-right Jarvis control chip — cam desk + security pack."""
 
     close_camera = pyqtSignal()
     toggle_news = pyqtSignal()
     scan = pyqtSignal()
     unlock_gestures = pyqtSignal()
+    # Desk pack: traffic cams + NOAA/SAT audio + LAN + Defender (not cam mics)
+    open_traffic = pyqtSignal()
+    play_listen = pyqtSignal()
+    play_sat = pyqtSignal()
+    scan_lan = pyqtSignal()
+    security_scan = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setFixedSize(300, 178)
+        self.setFixedSize(340, 228)
         self.setStyleSheet(
             "QFrame#GlassPanel { background: rgba(2,12,20,235);"
             " border: 1px solid rgba(0,232,255,160);"
@@ -167,7 +182,7 @@ class JarvisDock(_DragPanel):
         )
         lay = QVBoxLayout(self)
         lay.setContentsMargins(12, 10, 12, 10)
-        lay.setSpacing(6)
+        lay.setSpacing(5)
         brand = QLabel("J.A.R.V.I.S")
         brand.setStyleSheet(
             "color:#00e8ff; font-size:16px; font-weight:800; letter-spacing:4px;"
@@ -177,13 +192,18 @@ class JarvisDock(_DragPanel):
         self.status.setWordWrap(True)
         self.gesture = QLabel("Gesture: ready")
         self.gesture.setStyleSheet("color:#8aa4b8; font-size:11px;")
+        self.sec_line = QLabel("SEC · LAN · SAT ready · cam mic silent on traffic tiles")
+        self.sec_line.setStyleSheet("color:#5a7388; font-size:9px; letter-spacing:0.5px;")
+        self.sec_line.setWordWrap(True)
         tip = QLabel("Pinch = drag · Fist = lock")
         tip.setStyleSheet("color:#5a7388; font-size:9px; letter-spacing:1px;")
         lay.addWidget(brand)
         lay.addWidget(self.status)
         lay.addWidget(self.gesture)
+        lay.addWidget(self.sec_line)
         lay.addWidget(tip)
         row = QHBoxLayout()
+        row.setSpacing(4)
         for label, slot in (
             ("NEWS", self.toggle_news.emit),
             ("UNLOCK", self.unlock_gestures.emit),
@@ -192,11 +212,28 @@ class JarvisDock(_DragPanel):
         ):
             b = QPushButton(label)
             b.setObjectName("GhostBtn")
-            b.setMinimumHeight(28)
+            b.setMinimumHeight(26)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.clicked.connect(slot)
             row.addWidget(b)
         lay.addLayout(row)
+        desk = QHBoxLayout()
+        desk.setSpacing(4)
+        for label, tip_txt, slot in (
+            ("CAMS", "Public traffic stills + live map", self.open_traffic.emit),
+            ("LISTEN", "City scanner audio (cams have no mic)", self.play_listen.emit),
+            ("SAT", "NOAA / satellite weather radio", self.play_sat.emit),
+            ("LAN", "Owner LAN devices + IP-cam ports", self.scan_lan.emit),
+            ("SEC", "Defender status + security scan", self.security_scan.emit),
+        ):
+            b = QPushButton(label)
+            b.setObjectName("GhostBtn")
+            b.setMinimumHeight(26)
+            b.setToolTip(tip_txt)
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.clicked.connect(slot)
+            desk.addWidget(b)
+        lay.addLayout(desk)
 
     def set_status(self, text: str) -> None:
         self.status.setText(text)
@@ -204,13 +241,16 @@ class JarvisDock(_DragPanel):
     def set_gesture(self, text: str) -> None:
         self.gesture.setText(text)
 
+    def set_sec_line(self, text: str) -> None:
+        self.sec_line.setText((text or "")[:140])
+
 
 class CameraTheater(QFrame):
     """
     Full-screen camera mode:
       - live feed fills the window
       - ABC News Live video · top-left (draggable)
-      - Jarvis dock · bottom-right (draggable)
+      - Jarvis dock · bottom-right (draggable) with CAMS/LISTEN/SAT/LAN/SEC
       - clean gesture cursor
     """
 
@@ -219,6 +259,12 @@ class CameraTheater(QFrame):
     gesture = pyqtSignal(object)
     gesture_drag = pyqtSignal(float, float)
     gesture_swipe = pyqtSignal(str)
+    # Desk pack → main_window → brain (traffic / NOAA / LAN / Defender)
+    desk_traffic = pyqtSignal()
+    desk_listen = pyqtSignal()
+    desk_sat = pyqtSignal()
+    desk_lan = pyqtSignal()
+    desk_sec = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -238,6 +284,11 @@ class CameraTheater(QFrame):
         self.dock.toggle_news.connect(self._toggle_news_corner)
         self.dock.scan.connect(lambda: self.scan_clicked.emit(True))
         self.dock.unlock_gestures.connect(self._unlock_gestures)
+        self.dock.open_traffic.connect(self.desk_traffic.emit)
+        self.dock.play_listen.connect(self.desk_listen.emit)
+        self.dock.play_sat.connect(self.desk_sat.emit)
+        self.dock.scan_lan.connect(self.desk_lan.emit)
+        self.dock.security_scan.connect(self.desk_sec.emit)
 
         from jarvis.ui.widgets.stark_fabricator import StarkFabricator
 
@@ -257,6 +308,20 @@ class CameraTheater(QFrame):
         )
         self._ar_mode = False
 
+        try:
+            from jarvis.ui.widgets.ops_globe import OpsGlobePanel
+
+            self.ops_globe = OpsGlobePanel(self)
+            self.ops_globe.hide()
+            self.ops_globe.closed.connect(lambda: self._set_ops_hud(False))
+        except Exception as e:
+            print(f"[ops_globe] init: {e}")
+            self.ops_globe = None
+        self._ops_hud_on = False
+        self.traffic_board = None
+        self.traffic_live_map = None
+        self.scanner_audio = None
+
         self._cap = None
         self._index = -1
         self._backend = ""
@@ -265,6 +330,7 @@ class CameraTheater(QFrame):
         self._lock = threading.Lock()
         self._prefer = "EMEET"
         self._preferred_index = 0
+        self._opening = False  # True while probing devices — don't treat as failed yet
         self._device_names: list[str] = []
         self._mirror = True
         self._fail_streak = 0
@@ -278,6 +344,7 @@ class CameraTheater(QFrame):
         self._smooth_cursor = (0.85, 0.82)
         self._probe = None
         self._night_vision = False
+        self._thermal_assist = False
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._paint_frame)
         self.hide()
@@ -287,7 +354,18 @@ class CameraTheater(QFrame):
 
     def set_night_vision(self, on: bool) -> None:
         self._night_vision = bool(on)
-        if self._night_vision and self.isVisible():
+        if self._thermal_assist and self.isVisible():
+            self.dock.set_status("THERMAL ASSIST · ONLINE")
+        elif self._night_vision and self.isVisible():
+            self.dock.set_status("NIGHT VISION · ONLINE")
+        elif self.isVisible() and self._label:
+            self.dock.set_status(f"LIVE · {self._label} · fist locks panels")
+
+    def set_thermal_assist(self, on: bool) -> None:
+        self._thermal_assist = bool(on)
+        if self._thermal_assist and self.isVisible():
+            self.dock.set_status("THERMAL ASSIST · ONLINE")
+        elif self._night_vision and self.isVisible():
             self.dock.set_status("NIGHT VISION · ONLINE")
         elif self.isVisible() and self._label:
             self.dock.set_status(f"LIVE · {self._label} · fist locks panels")
@@ -303,6 +381,7 @@ class CameraTheater(QFrame):
     def open_feed(self, preferred_index: int = 0, prefer: str = "EMEET") -> None:
         self._prefer = prefer
         self._preferred_index = preferred_index if preferred_index >= 0 else 0
+        self._opening = True
         self._device_names = list_dshow_devices()
         self._gesture_locked = False
         self._fist_streak = 0
@@ -342,6 +421,7 @@ class CameraTheater(QFrame):
 
     def hide_feed(self, emit: bool = True) -> None:
         self._timer.stop()
+        self._opening = False
         try:
             self.close_aerospatial()
         except Exception:
@@ -350,13 +430,32 @@ class CameraTheater(QFrame):
             self.close_fabricator()
         except Exception:
             pass
+        try:
+            self.close_ops_hud()
+        except Exception:
+            pass
+        try:
+            self.close_traffic_board_panel()
+        except Exception:
+            pass
+        try:
+            self.close_traffic_live_map()
+        except Exception:
+            pass
+        try:
+            self.close_scanner_audio()
+        except Exception:
+            pass
         if self._cap is not None:
             try:
                 self._cap.release()
             except Exception:
                 pass
             self._cap = None
-        self.news.hide()
+        try:
+            self.news.stop_live()
+        except Exception:
+            self.news.hide()
         self.hide()
         if emit:
             self.closed.emit()
@@ -396,6 +495,11 @@ class CameraTheater(QFrame):
         self.view.setGeometry(self.rect())
         if self.isVisible():
             self._place_corners(keep_positions=True)
+            try:
+                if getattr(self, "ops_globe", None) is not None and self.ops_globe.isVisible():
+                    self._place_ops_globe()
+            except Exception:
+                pass
 
     def _enter_fullscreen(self) -> None:
         parent = self.parentWidget()
@@ -455,7 +559,7 @@ class CameraTheater(QFrame):
                 if idx in seen or idx < 0:
                     continue
                 seen.add(idx)
-                got = open_by_index(idx, reads=6)
+                got = open_by_index(idx, reads=6, max_width=960, max_height=540)
                 if not got:
                     continue
                 cap, backend = got
@@ -497,6 +601,7 @@ class CameraTheater(QFrame):
 
     def _open_best(self) -> None:
         self._timer.stop()
+        self._opening = True
         if self._cap is not None:
             try:
                 self._cap.release()
@@ -506,8 +611,38 @@ class CameraTheater(QFrame):
         try:
             import cv2  # noqa: F401
         except Exception as e:
+            self._opening = False
             self.view.setText(f"OpenCV missing: {e}")
             return
+
+        # Fast path: preferred index only (settings.camera_index, usually EMEET @ 1)
+        prefer_idx = self._preferred_index if self._preferred_index >= 0 else 0
+        try:
+            from jarvis.core.camera_io import open_by_index, silence_opencv_logs
+
+            with silence_opencv_logs():
+                got = open_by_index(prefer_idx, reads=6, max_width=960, max_height=540)
+            if got:
+                cap, backend = got
+                self._cap = cap
+                self._index = prefer_idx
+                self._backend = backend
+                self._label = f"index {prefer_idx}"
+                self._fail_streak = 0
+                self._opening = False
+                self.dock.set_status(
+                    f"LIVE · {self._label} · {backend} · fist locks panels"
+                )
+                self.view.setText("")
+                self._paint_ms = getattr(self, "_paint_ms", 66)
+                self._timer.start(self._paint_ms)
+                self._place_corners()
+                self.dock.raise_()
+                # News is lazy — user taps NEWS (no auto WebEngine on open)
+                print(f"[theater] fast open idx={prefer_idx} via {backend}")
+                return
+        except Exception as e:
+            print(f"[theater] fast open: {e}")
 
         # Preferred first, then scan a wider index range (EMEET often not 0)
         sources: list = []
@@ -531,6 +666,7 @@ class CameraTheater(QFrame):
             except Exception:
                 picked = None
             if not picked:
+                self._opening = False
                 self.view.setText(
                     "No camera feed.\nClose Zoom / Teams / OBS Virtual Camera,\n"
                     "unplug/replug EMEET, then say open camera again."
@@ -543,13 +679,14 @@ class CameraTheater(QFrame):
             self._backend = backend
             self._label = f"index {idx}"
             self._fail_streak = 0
+            self._opening = False
             self.dock.set_status(f"LIVE · {self._label} · {backend} · fist locks panels")
             self.view.setText("")
             self._paint_ms = getattr(self, "_paint_ms", 66)
             self._timer.start(self._paint_ms)
             self._place_corners()
             self.dock.raise_()
-            QTimer.singleShot(80, self._show_news_top_left)
+            # News is lazy — user taps NEWS (no auto WebEngine on open)
             print(f"[theater] fallback pick idx={idx} via {backend} score={score:.1f}")
             return
 
@@ -566,17 +703,18 @@ class CameraTheater(QFrame):
         self._backend = backend
         self._label = label
         self._fail_streak = 0
+        self._opening = False
         self.dock.set_status(f"LIVE · {label} · {backend} · fist locks panels")
         self.view.setText("")
         self._paint_ms = getattr(self, "_paint_ms", 66)
         self._timer.start(self._paint_ms)
         self._place_corners()
         self.dock.raise_()
-        QTimer.singleShot(80, self._show_news_top_left)
+        # News is lazy — user taps NEWS (no auto WebEngine on open)
         print(f"[theater] chose idx={self._index} via {backend} score={score:.1f}")
 
     def set_paint_interval(self, ms: int) -> None:
-        self._paint_ms = max(50, min(120, int(ms)))
+        self._paint_ms = max(66, min(120, int(ms)))
         if self._timer.isActive():
             self._timer.setInterval(self._paint_ms)
 
@@ -595,18 +733,45 @@ class CameraTheater(QFrame):
 
         try:
             import cv2
-            from jarvis.ui.widgets.night_vision import apply_night_vision
 
-            # Night vision only during night hours; otherwise day feed
-            mean = float(np.mean(frame[::8, ::8]))  # subsample mean
+            use_thermal = bool(getattr(self, "_thermal_assist", False))
+            use_nv = bool(self._night_vision)
             night_ok = False
-            try:
-                from jarvis.core.boot_biometrics import is_night_hours
+            if use_nv or use_thermal:
+                try:
+                    from jarvis.core.boot_biometrics import is_night_hours
 
-                night_ok = is_night_hours()
-            except Exception:
-                night_ok = False
-            if self._night_vision and night_ok:
+                    night_ok = is_night_hours()
+                except Exception:
+                    night_ok = False
+
+            if use_thermal:
+                from jarvis.ui.widgets.night_vision import apply_thermal_assist
+
+                draw = apply_thermal_assist(frame)
+                cv2.putText(
+                    draw,
+                    "THERMAL ASSIST",
+                    (18, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.85,
+                    (40, 180, 255),
+                    2,
+                    cv2.LINE_AA,
+                )
+                cv2.putText(
+                    draw,
+                    "software · not FLIR",
+                    (18, 68),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (180, 200, 255),
+                    1,
+                    cv2.LINE_AA,
+                )
+            elif use_nv and night_ok:
+                from jarvis.ui.widgets.night_vision import apply_night_vision
+
                 draw = apply_night_vision(frame)
                 cv2.putText(
                     draw,
@@ -618,25 +783,30 @@ class CameraTheater(QFrame):
                     2,
                     cv2.LINE_AA,
                 )
-            elif mean < 28:
-                draw = cv2.convertScaleAbs(frame, alpha=1.28, beta=16)
             else:
-                draw = frame.copy()
+                # Cheap brightness lift only when very dark; else skip full copy
+                mean = float(np.mean(frame[::16, ::16]))
+                if mean < 28:
+                    draw = cv2.convertScaleAbs(frame, alpha=1.28, beta=16)
+                else:
+                    draw = frame
 
             if self._mirror:
                 draw = cv2.flip(draw, 1)
+            elif draw is frame and self._gestures_on and self._tracker is not None:
+                # Avoid mutating the live capture buffer when drawing landmarks
+                draw = frame.copy()
 
             if self._gestures_on and self._tracker is not None:
-                # When locked, check rarely (just for open-hand unlock)
-                period = 5 if self._gesture_locked else 4
+                # Skip harder so MediaPipe never owns every paint
+                period = 8 if self._gesture_locked else 6
                 self._gesture_skip = (self._gesture_skip + 1) % period
                 if self._gesture_skip == 0:
                     state = self._tracker.process(
-                        frame, mirrored=True, max_width=320
+                        frame, mirrored=True, max_width=240
                     )
                     self._last_gesture = state
                     self._update_gesture_lock(state)
-                    # Emit label gestures to brain (fist / wave / thumbs)
                     try:
                         if state.label in ("fist", "thumbs_up", "wave_left"):
                             self.gesture.emit(state)
@@ -649,7 +819,6 @@ class CameraTheater(QFrame):
                             sx * 0.6 + cx * 0.4,
                             sy * 0.6 + cy * 0.4,
                         )
-                        # Stark fabricator lab owns gestures when open
                         if getattr(self, "_lab_mode", False) and getattr(
                             self, "fabricator", None
                         ) is not None and self.fabricator.is_lab_open():
@@ -668,7 +837,6 @@ class CameraTheater(QFrame):
                     self._refresh_gesture_label(state)
 
                 if not self._gesture_locked and self._last_gesture.active:
-                    # Lab / AR mode: show fuller landmark mesh
                     clean = not (
                         getattr(self, "_lab_mode", False)
                         or getattr(self, "_ar_mode", False)
@@ -693,22 +861,15 @@ class CameraTheater(QFrame):
             hh, ww, ch = rgb.shape
             img = QImage(rgb.data, ww, hh, ch * ww, QImage.Format.Format_RGB888).copy()
             self.view.setPixmap(QPixmap.fromImage(img))
-            self.view.setGeometry(self.rect())
-            self.view.lower()
+            # No per-frame raise_/lower — stacking only on show/toggle/drag
             if getattr(self, "fabricator", None) is not None and self.fabricator.isVisible():
                 self.fabricator.setGeometry(self.rect())
-                self.fabricator.raise_()
             if getattr(self, "aerospatial", None) is not None and self.aerospatial.isVisible():
                 try:
-                    # Mesh from pre-mirror frame for stabler geometry
                     self.aerospatial.ingest_frame(frame)
                 except Exception:
                     pass
                 self.aerospatial.setGeometry(self.rect())
-                self.aerospatial.raise_()
-            if self.news.isVisible():
-                self.news.raise_()
-            self.dock.raise_()
         except Exception as e:
             self.view.setText(str(e))
 
@@ -760,6 +921,184 @@ class CameraTheater(QFrame):
 
     def close_aerospatial(self) -> None:
         self._set_ar_mode(False)
+
+    def _set_ops_hud(self, on: bool) -> None:
+        self._ops_hud_on = bool(on)
+        if not on and getattr(self, "ops_globe", None) is not None:
+            try:
+                if self.ops_globe.isVisible():
+                    self.ops_globe.hide()
+            except Exception:
+                pass
+
+    def open_ops_hud(self, pins: list | None = None) -> None:
+        """Show owner-site ops map panel beside live camera feed."""
+        if not self.isVisible():
+            self.open_feed(self._preferred_index, prefer=self._prefer)
+        self._ops_hud_on = True
+        globe = getattr(self, "ops_globe", None)
+        if globe is not None:
+            if pins is not None:
+                try:
+                    globe.set_pins(pins)
+                except Exception:
+                    pass
+            self._place_ops_globe()
+            globe.open_panel()
+            globe.raise_()
+        self.dock.set_status("OPS HUD · owner map")
+        self.dock.raise_()
+
+    def close_ops_hud(self) -> None:
+        self._set_ops_hud(False)
+
+    def set_ops_pins(self, pins: list | None) -> None:
+        globe = getattr(self, "ops_globe", None)
+        if globe is not None:
+            try:
+                globe.set_pins(pins or [])
+            except Exception:
+                pass
+
+    def open_traffic_board_panel(self, fetcher=None, city: str = "Philadelphia") -> None:
+        """Show public traffic stills overlay (lazy create)."""
+        panel = getattr(self, "traffic_board", None)
+        if panel is None:
+            try:
+                from jarvis.ui.widgets.traffic_board import TrafficBoardPanel
+
+                panel = TrafficBoardPanel(self)
+                panel.hide()
+                panel.closed.connect(lambda: None)
+                panel.open_board.connect(self._emit_open_511)
+                panel.open_live_map.connect(self.open_traffic_live_map)
+                self.traffic_board = panel
+            except Exception as e:
+                print(f"[traffic_board] init: {e}")
+                return
+        try:
+            panel.set_city(city or "Philadelphia")
+            if fetcher is not None:
+                panel.set_fetcher(fetcher)
+            x = max(12, (self.width() - panel.width()) // 2)
+            y = max(40, (self.height() - panel.height()) // 2)
+            panel.move(x, y)
+            panel.open_panel()
+            panel.raise_()
+            self.dock.raise_()
+        except Exception as e:
+            print(f"[traffic_board] open: {e}")
+
+    def close_traffic_board_panel(self) -> None:
+        panel = getattr(self, "traffic_board", None)
+        if panel is not None:
+            try:
+                panel.close_panel()
+            except Exception:
+                pass
+
+    def open_scanner_audio(
+        self, url: str = "", title: str = "LIVE SCANNER AUDIO"
+    ) -> None:
+        """Embed Broadcastify / NOAA player on the camera theater."""
+        panel = getattr(self, "scanner_audio", None)
+        if panel is None:
+            try:
+                from jarvis.ui.widgets.traffic_board import ScannerAudioPanel
+
+                panel = ScannerAudioPanel(self)
+                panel.hide()
+                self.scanner_audio = panel
+            except Exception as e:
+                print(f"[scanner_audio] init: {e}")
+                return
+        try:
+            u = (url or "").strip() or "https://www.broadcastify.com/listen/ctid/2291"
+            panel.move(
+                max(12, self.width() - panel.width() - 24),
+                max(40, (self.height() - panel.height()) // 2),
+            )
+            panel.open_panel(u, title=title or "LIVE SCANNER AUDIO")
+            panel.raise_()
+            self.dock.set_sec_line(
+                "LISTEN/SAT · live radio (traffic cam tiles stay silent)"
+            )
+            self.dock.raise_()
+        except Exception as e:
+            print(f"[scanner_audio] open: {e}")
+
+    def close_scanner_audio(self) -> None:
+        panel = getattr(self, "scanner_audio", None)
+        if panel is not None:
+            try:
+                if hasattr(panel, "close_panel"):
+                    panel.close_panel()
+                else:
+                    panel.hide()
+            except Exception:
+                pass
+
+    def set_desk_sec_line(self, text: str) -> None:
+        try:
+            self.dock.set_sec_line(text)
+        except Exception:
+            pass
+
+    def open_traffic_live_map(self, url: str | None = None, title: str | None = None) -> None:
+        """Show embedded official 511/DOT interactive map."""
+        panel = getattr(self, "traffic_live_map", None)
+        if panel is None:
+            try:
+                from jarvis.ui.widgets.traffic_board import TrafficLiveMapPanel
+
+                panel = TrafficLiveMapPanel(self)
+                panel.hide()
+                panel.closed.connect(lambda: None)
+                self.traffic_live_map = panel
+            except Exception as e:
+                print(f"[traffic_live_map] init: {e}")
+                self._emit_open_511()
+                return
+        try:
+            if url:
+                panel.set_map_url(url, title=title)
+            elif title:
+                panel.title.setText(title)
+            x = max(12, (self.width() - panel.width()) // 2)
+            y = max(20, (self.height() - panel.height()) // 2)
+            panel.move(x, y)
+            panel.open_panel(url)
+            panel.raise_()
+            self.dock.raise_()
+        except Exception as e:
+            print(f"[traffic_live_map] open: {e}")
+            self._emit_open_511()
+
+    def close_traffic_live_map(self) -> None:
+        panel = getattr(self, "traffic_live_map", None)
+        if panel is not None:
+            try:
+                panel.close_panel()
+            except Exception:
+                pass
+
+    def _emit_open_511(self) -> None:
+        try:
+            from jarvis.core.traffic_cams import TRAFFIC_BOARD_URL
+            import webbrowser
+
+            webbrowser.open(TRAFFIC_BOARD_URL)
+        except Exception as e:
+            print(f"[traffic_board] 511: {e}")
+
+    def _place_ops_globe(self) -> None:
+        globe = getattr(self, "ops_globe", None)
+        if globe is None:
+            return
+        # Top-right, keep clear of news (top-left) and dock (bottom-right)
+        x = max(12, self.width() - globe.width() - 20)
+        y = 18
+        globe.move(x, y)
 
     def _update_gesture_lock(self, state: GestureState) -> None:
         if not state.active:

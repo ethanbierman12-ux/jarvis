@@ -44,14 +44,14 @@
 <body>
 <div class="hud">
   <h1>TACTICAL MAP · 3D</h1>
-  <p id="place">Philadelphia, United States</p>
+  <p id="place">Philadelphia</p>
 </div>
 <div id="scan" class=""></div>
 <div id="map"></div>
 <script>
-const center = [-75.1635262, 39.9527237];
+const center = [-75.1652, 39.9526];
 const markers = [];
-const placeName = "Philadelphia, United States";
+const placeName = "Philadelphia";
 const animateIntro = false;
 const startScanning = false;
 let markerObjs = [];
@@ -60,7 +60,7 @@ const map = new maplibregl.Map({
   container: 'map',
   style: 'https://tiles.openfreemap.org/styles/dark',
   center: center,
-  zoom: animateIntro ? 2.15 : 11.6,
+  zoom: animateIntro ? 2.15 : 14.2,
   pitch: animateIntro ? 0 : 62,
   bearing: animateIntro ? 0 : -18,
   antialias: true,
@@ -147,7 +147,7 @@ map.on('load', () => {
     setScan(true, startScanning ? 'SCANNING SECTOR…' : 'ACQUIRING TARGET…');
     map.flyTo({
       center: center,
-      zoom: 11.6,
+      zoom: 14.2,
       pitch: 62,
       bearing: -18,
       speed: 0.55,

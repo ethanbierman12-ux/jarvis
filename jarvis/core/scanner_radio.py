@@ -1,11 +1,15 @@
-"""Local public-safety / aviation scanner listening (personal desk use).
+"""Local public-safety / aviation / NOAA weather scanner listening (desk use).
 
 Dispatch / police / fire → Broadcastify city/county listen pages.
 Aviation / ATC → LiveATC.net (Broadcastify rarely indexes airport towers).
+Weather / "satellite radio" → NOAA Weather Radio on Broadcastify (+ optional SDR).
+
+Honest note: DOT traffic cam JPEGs have no microphones. SAT / weather audio is
+NOAA / Broadcastify / optional RTL-SDR — never camera audio or illegal downlinks.
 
 Optional:
   - settings.scanner_feed_url / scanner_feed_id → pinned Broadcastify feed
-  - settings.scanner_rtl_freq + rtl_fm → USB SDR
+  - settings.scanner_rtl_freq + rtl_fm → USB SDR (e.g. NOAA WX channel)
 
 Listening only — never for interference with emergency response.
 """
@@ -22,33 +26,136 @@ from typing import Optional
 
 
 # City → public listen hubs (personal desk; URLs are public pages)
+# Prefer /listen/feed/ID or /listen/ctid/ID — free-text /search/?q= often returns empty.
 _CITY_HUBS: dict[str, dict[str, str]] = {
     "philadelphia": {
         "broadcastify_county": "https://www.broadcastify.com/listen/ctid/2291",
         "broadcastify_police": "https://www.broadcastify.com/listen/ctid/2291",
+        # PennDOT District 8 (PA) — real feed; "Philadelphia DOT" search is empty
+        "broadcastify_truck": "https://www.broadcastify.com/listen/feed/42246",
+        # Closest live NOAA to Philly metro (Hibernia Park WNG704) — KIH28 has no BCFY feed
+        "broadcastify_noaa": "https://www.broadcastify.com/listen/feed/44541",
         "liveatc_icao": "kphl",
         "liveatc": "https://www.liveatc.net/search/?icao=kphl",
-        # Default tower feed page (user picks channel on LiveATC)
         "liveatc_play": "https://www.liveatc.net/listen/?mount=kphl_twr",
     },
     "philly": {
         "broadcastify_county": "https://www.broadcastify.com/listen/ctid/2291",
+        "broadcastify_police": "https://www.broadcastify.com/listen/ctid/2291",
+        "broadcastify_truck": "https://www.broadcastify.com/listen/feed/42246",
+        "broadcastify_noaa": "https://www.broadcastify.com/listen/feed/44541",
         "liveatc_icao": "kphl",
         "liveatc": "https://www.liveatc.net/search/?icao=kphl",
         "liveatc_play": "https://www.liveatc.net/listen/?mount=kphl_twr",
     },
+    # Miami-Dade County public feeds (Broadcastify ctid 328)
+    "miami": {
+        "broadcastify_county": "https://www.broadcastify.com/listen/ctid/328",
+        "broadcastify_police": "https://www.broadcastify.com/listen/ctid/328",
+        # FHP/DOT often encrypted — county public-safety hub is the usable listen page
+        "broadcastify_truck": "https://www.broadcastify.com/listen/ctid/328",
+        # Official NWS Miami audio (Broadcastify Miami NOAA search is empty)
+        "broadcastify_noaa": "https://www.weather.gov/mfl/nwraudio",
+        "liveatc_icao": "kmia",
+        "liveatc": "https://www.liveatc.net/search/?icao=kmia",
+        "liveatc_play": "https://www.liveatc.net/listen/?mount=kmia_twr",
+    },
+    "miami-dade": {
+        "broadcastify_county": "https://www.broadcastify.com/listen/ctid/328",
+        "broadcastify_police": "https://www.broadcastify.com/listen/ctid/328",
+        "broadcastify_truck": "https://www.broadcastify.com/listen/ctid/328",
+        "broadcastify_noaa": "https://www.weather.gov/mfl/nwraudio",
+        "liveatc_icao": "kmia",
+        "liveatc": "https://www.liveatc.net/search/?icao=kmia",
+    },
+    # Florida → Miami-Dade hub (primary FL public-safety listen page)
+    "florida": {
+        "broadcastify_county": "https://www.broadcastify.com/listen/ctid/328",
+        "broadcastify_police": "https://www.broadcastify.com/listen/ctid/328",
+        "broadcastify_truck": "https://www.broadcastify.com/listen/ctid/328",
+        "broadcastify_noaa": "https://www.weather.gov/mfl/nwraudio",
+        "liveatc_icao": "kmia",
+        "liveatc": "https://www.liveatc.net/search/?icao=kmia",
+    },
+    # NYC — KWO35 NOAA is a real feed; police search is brittle so prefer browse
+    "nyc": {
+        "broadcastify_county": "https://www.broadcastify.com/listen/stid/36",
+        "broadcastify_police": "https://www.broadcastify.com/listen/stid/36",
+        "broadcastify_truck": "https://www.broadcastify.com/listen/stid/36",
+        "broadcastify_noaa": "https://www.broadcastify.com/listen/feed/25412",
+        "liveatc_icao": "kjfk",
+        "liveatc": "https://www.liveatc.net/search/?icao=kjfk",
+        "liveatc_play": "https://www.liveatc.net/listen/?mount=kjfk_twr",
+    },
     "new york": {
+        "broadcastify_county": "https://www.broadcastify.com/listen/stid/36",
+        "broadcastify_police": "https://www.broadcastify.com/listen/stid/36",
+        "broadcastify_truck": "https://www.broadcastify.com/listen/stid/36",
+        "broadcastify_noaa": "https://www.broadcastify.com/listen/feed/25412",
+        "liveatc_icao": "kjfk",
+        "liveatc": "https://www.liveatc.net/search/?icao=kjfk",
+        "liveatc_play": "https://www.liveatc.net/listen/?mount=kjfk_twr",
+    },
+    "new york city": {
+        "broadcastify_county": "https://www.broadcastify.com/listen/stid/36",
+        "broadcastify_police": "https://www.broadcastify.com/listen/stid/36",
+        "broadcastify_truck": "https://www.broadcastify.com/listen/stid/36",
+        "broadcastify_noaa": "https://www.broadcastify.com/listen/feed/25412",
         "liveatc_icao": "kjfk",
         "liveatc": "https://www.liveatc.net/search/?icao=kjfk",
     },
     "los angeles": {
         "liveatc_icao": "klax",
         "liveatc": "https://www.liveatc.net/search/?icao=klax",
+        "broadcastify_truck": "https://www.broadcastify.com/listen/stid/6",
+        "broadcastify_noaa": "https://www.broadcastify.com/listen/stid/6",
     },
     "chicago": {
         "liveatc_icao": "kord",
         "liveatc": "https://www.liveatc.net/search/?icao=kord",
+        "broadcastify_truck": "https://www.broadcastify.com/listen/stid/17",
+        "broadcastify_noaa": "https://www.broadcastify.com/listen/stid/17",
     },
+}
+
+_TRUCK_KINDS = frozenset(
+    {"truck", "trucking", "trucker", "dot", "highway", "cb", "freight"}
+)
+
+# NOAA / weather / "satellite radio" (companion to traffic desk — not cam mics)
+_WEATHER_KINDS = frozenset(
+    {
+        "weather",
+        "satellite",
+        "noaa",
+        "wx",
+        "nwr",
+        "satellite radio",
+        "satellite audio",
+        "weather radio",
+        "noaa radio",
+    }
+)
+
+# Public NOAA Weather Radio — direct feeds beat empty city searches
+# Philly metro fallback: Hibernia Park WNG704 (KIH28 has no Broadcastify feed)
+_NOAA_WX_URL = "https://www.broadcastify.com/listen/feed/44541"
+_NOAA_FALLBACKS = (
+    "https://www.broadcastify.com/listen/feed/44541",  # Hibernia Park PA
+    "https://www.broadcastify.com/listen/feed/39868",  # Allentown PA
+    "https://www.broadcastify.com/listen/feed/25412",  # NYC KWO35
+    "https://www.weather.gov/mfl/nwraudio",  # Miami NWS official audio
+)
+
+# Traffic-cam region keys → scanner city label
+_REGION_TO_CITY: dict[str, str] = {
+    "philadelphia": "Philadelphia",
+    "philly": "Philadelphia",
+    "miami": "Miami",
+    "florida": "Florida",
+    "nyc": "NYC",
+    "new york": "NYC",
+    "new york city": "NYC",
 }
 
 
@@ -70,6 +177,22 @@ class ScannerRadio:
     @property
     def active(self) -> bool:
         return self._rtl_proc is not None and self._rtl_proc.poll() is None
+
+    def set_city(self, city: str) -> str:
+        """Update listen city (e.g. when traffic board region changes)."""
+        name = (city or "").strip()
+        if not name:
+            return self.city
+        key = name.lower()
+        if key in _REGION_TO_CITY:
+            self.city = _REGION_TO_CITY[key]
+        else:
+            self.city = name
+        return self.city
+
+    def follow_traffic_region(self, region: str) -> str:
+        """Map traffic-cam region → scanner city (miami / nyc / philly…)."""
+        return self.set_city(region or self.city)
 
     def _hub(self) -> dict[str, str]:
         key = self.city.lower().strip()
@@ -106,7 +229,7 @@ class ScannerRadio:
         *,
         query: str = "",
     ) -> str:
-        """Tune local dispatch / police / fire / EMS / ATC via public streams."""
+        """Tune local dispatch / police / fire / EMS / truck-DOT / ATC (listen only)."""
         kind = (kind or "dispatch").lower().strip()
         q = (query or "").strip()
         city = self.city
@@ -131,11 +254,21 @@ class ScannerRadio:
         if kind in ("aviation", "atc", "airport", "tower"):
             return self._open_liveatc(q)
 
+        # NOAA / satellite weather radio (not traffic-cam microphones)
+        if kind in _WEATHER_KINDS or kind.replace("_", " ") in _WEATHER_KINDS:
+            return self.play_satellite_audio(query=q)
+
+        # Truck / DOT / highway / CB — public Broadcastify only (never transmit)
+        if kind in _TRUCK_KINDS:
+            return self._open_truck(kind, query=q)
         # Known county / city hubs beat fragile free-text search
         if kind in ("dispatch", "scanner", "local") and hub.get("broadcastify_county"):
             url = hub["broadcastify_county"]
             self._last = url
-            webbrowser.open(url)
+            try:
+                webbrowser.open(url)
+            except Exception as e:
+                return f"Could not open Broadcastify: {e}"
             return (
                 f"Opening Broadcastify feeds for {city}. "
                 "Pick police, fire, or EMS. Listening only."
@@ -143,7 +276,10 @@ class ScannerRadio:
         if kind == "police" and hub.get("broadcastify_police"):
             url = hub["broadcastify_police"]
             self._last = url
-            webbrowser.open(url)
+            try:
+                webbrowser.open(url)
+            except Exception as e:
+                return f"Could not open Broadcastify: {e}"
             return f"Opening {city} public-safety feeds on Broadcastify."
 
         # Short search phrases that Broadcastify actually indexes
@@ -155,6 +291,11 @@ class ScannerRadio:
             "scanner": f"{city} Police",
             "weather": "NOAA Weather Radio",
             "rail": f"{city} Rail",
+            "truck": f"{city} Truck",
+            "trucking": f"{city} Truck",
+            "dot": f"{city} DOT",
+            "highway": "highway",
+            "cb": "CB",
         }
         search = q or phrases.get(kind, f"{city} Police")
         # Strip words that make Broadcastify return zero hits
@@ -180,10 +321,76 @@ class ScannerRadio:
             "ems": "EMS / fire",
             "weather": "weather radio",
             "rail": "rail",
+            "truck": "truck / DOT",
+            "dot": "DOT",
+            "highway": "highway",
+            "cb": "CB",
         }.get(kind, "scanner")
         return (
             f"Opening Broadcastify {label} for {city}. "
-            "Listening only — do not interfere with emergency response."
+            "Listening only — do not interfere with commercial or emergency radio."
+        )
+
+    def _open_truck(self, kind: str = "truck", *, query: str = "") -> str:
+        """Open public DOT / trucking / highway listen page for current city."""
+        city = self.city
+        hub = self._hub()
+        kind = (kind or "truck").lower().strip()
+        q = (query or "").strip()
+
+        # Prefer pinned hub URL (direct feed/ctid — not empty DOT searches)
+        if not q and hub.get("broadcastify_truck"):
+            url = hub["broadcastify_truck"]
+            self._last = url
+            try:
+                webbrowser.open(url)
+            except Exception as e:
+                return f"Could not open truck/DOT radio: {e}"
+            return (
+                f"Opening {city} highway / DOT public listen page. "
+                "Listening only — never transmit. "
+                "(City DOT free-text search on Broadcastify is often empty.)"
+            )
+
+        county = hub.get("broadcastify_county") or hub.get("broadcastify_police") or ""
+        if not q and county:
+            self._last = county
+            try:
+                webbrowser.open(county)
+            except Exception as e:
+                return f"Could not open highway listen page: {e}"
+            return (
+                f"Opening {city} public-safety / highway-adjacent feeds. "
+                "Listening only — FHP/DOT channels are often encrypted or unlisted."
+            )
+
+        if q:
+            search = q
+        elif kind == "cb":
+            search = "CB"
+        else:
+            # Never "{city} DOT" — that query returns zero hits on Broadcastify
+            search = "highway"
+
+        url = self._broadcastify_search(search)
+        self._last = url
+        try:
+            webbrowser.open(url)
+        except Exception as e:
+            if county:
+                try:
+                    webbrowser.open(county)
+                    self._last = county
+                    return (
+                        f"Truck search failed ({e}). Opened {city} county feeds instead. "
+                        "Listening only."
+                    )
+                except Exception:
+                    pass
+            return f"Could not open truck/DOT radio: {e}"
+        return (
+            f"Opening Broadcastify search for {search}. "
+            "Public listen only — do not jam, spoof, or inject into company/DOT radio."
         )
 
     def _open_liveatc(self, query: str = "") -> str:
@@ -218,6 +425,144 @@ class ScannerRadio:
         return (
             f"Opening LiveATC search for {self.city}. "
             "Airport ATC is on LiveATC, not Broadcastify."
+        )
+
+    def play_satellite_audio(self, *, query: str = "") -> str:
+        """NOAA Weather Radio / satellite weather companion (not cam mics).
+
+        Uses direct Broadcastify feed / NWS pages — city+NOAA search often
+        returns zero results on Broadcastify.
+        """
+        city = self.city
+        hub = self._hub()
+        q = (query or "").strip()
+
+        if q:
+            url = self._broadcastify_search(q)
+        else:
+            url = (
+                hub.get("broadcastify_noaa")
+                or _NOAA_WX_URL
+                or _NOAA_FALLBACKS[0]
+            )
+
+        self._last = url
+        try:
+            webbrowser.open(url)
+        except Exception as e:
+            for alt in _NOAA_FALLBACKS:
+                if alt == url:
+                    continue
+                try:
+                    webbrowser.open(alt)
+                    self._last = alt
+                    url = alt
+                    break
+                except Exception:
+                    continue
+            else:
+                return f"Could not open NOAA weather radio: {e}"
+
+        sdr_note = ""
+        if self.rtl_freq:
+            try:
+                sdr_msg = self.play_rtl()
+                low = (sdr_msg or "").lower()
+                if "tuned" in low or "sdr" in low:
+                    sdr_note = f" Also: {sdr_msg}"
+                elif "not found" not in low and "no sdr" not in low:
+                    sdr_note = f" SDR note: {sdr_msg}"
+            except Exception as e:
+                sdr_note = f" SDR soft-fail: {e}"
+
+        where = "Broadcastify feed" if "broadcastify.com" in url else "NWS audio page"
+        return (
+            f"Satellite / NOAA weather radio for {city} ({where}). "
+            "This is NOAA Weather Radio — not camera microphones. "
+            "Traffic cam tiles stay silent. Hit Play on the feed."
+            + sdr_note
+        )
+
+    def live_sat_url(self) -> str:
+        """URL for in-HUD NOAA / satellite weather player."""
+        hub = self._hub()
+        return (
+            hub.get("broadcastify_noaa")
+            or _NOAA_WX_URL
+            or _NOAA_FALLBACKS[0]
+        )
+
+    def play_traffic_audio(self) -> str:
+        """Live city scanner audio for the traffic desk.
+
+        DOT camera JPEGs have **no sound**. Broadcastify has no reliable
+        “traffic noise” search — we open the city's live public-safety /
+        DOT listen hub instead (real streams you can play immediately).
+        """
+        city = self.city
+        hub = self._hub()
+
+        # Prefer pinned stream when set
+        stream = self._resolved_stream()
+        if stream:
+            self._last = stream
+            try:
+                webbrowser.open(stream)
+            except Exception as e:
+                return f"Could not open pinned scanner: {e}"
+            return (
+                f"Live scanner audio for {city} (pinned feed). "
+                "Camera tiles stay silent — this is the live radio."
+            )
+
+        # Real live county page (always has playable feeds)
+        url = (
+            hub.get("broadcastify_county")
+            or hub.get("broadcastify_police")
+            or ""
+        )
+        if not url:
+            url = self._broadcastify_search(f"{city} Police")
+
+        self._last = url
+        opened = []
+        try:
+            webbrowser.open(url)
+            opened.append("city scanner")
+        except Exception as e:
+            return f"Could not open live scanner audio: {e}"
+
+        # Second tab: DOT / highway only when we have a real feed/ctid (not empty search)
+        truck = hub.get("broadcastify_truck") or ""
+        if (
+            truck
+            and truck != url
+            and "/search/" not in truck
+            and ("/listen/feed/" in truck or "/listen/ctid/" in truck or "/listen/stid/" in truck)
+        ):
+            try:
+                webbrowser.open(truck)
+                opened.append("DOT / highway")
+            except Exception:
+                pass
+
+        bits = " + ".join(opened)
+        return (
+            f"Live {city} scanner audio online ({bits}). "
+            "Click Play on a feed. Traffic cam pictures have no microphone — "
+            "this is real live radio for your area."
+        )
+
+    def live_audio_url(self) -> str:
+        """URL for the in-HUD scanner player (county listen page)."""
+        stream = self._resolved_stream()
+        if stream:
+            return stream
+        hub = self._hub()
+        return (
+            hub.get("broadcastify_county")
+            or hub.get("broadcastify_police")
+            or self._broadcastify_search(f"{self.city} Police")
         )
 
     def play_rtl(self) -> str:

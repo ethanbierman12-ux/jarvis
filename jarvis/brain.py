@@ -37,6 +37,7 @@ from jarvis.core.phone_bridge import PhoneBridge
 from jarvis.core.rlhf import RLHFEngine
 from jarvis.core.soundscape import Soundscape
 from jarvis.core.scanner_radio import ScannerRadio
+from jarvis.core.danger_watch import DangerWatch
 from jarvis.core.local_customizer import LocalCustomizer
 from jarvis.core.diary import Diary, VisualMemory
 from jarvis.core.memory import VectorMemory
@@ -122,6 +123,12 @@ from jarvis.core.price_monitor import PriceMonitor
 from jarvis.core.media_presence import MediaPresenceController
 from jarvis.core.voice_to_code import VoiceToCode
 from jarvis.core.security_gate import SecurityGate
+from jarvis.core.home_security import HomeSecurity
+from jarvis.core.file_hub import FileHub
+from jarvis.core.alert_desk import AlertDesk
+from jarvis.core.driver_dispatch import DriverDispatch
+from jarvis.core.ops_hud import OpsHud
+from jarvis.core.traffic_cams import TrafficCams
 from jarvis.core.voice_hotkeys import VoiceHotkeys
 from jarvis.core.gesture_commander import GestureCommander
 from jarvis.core.autobug import AutoBug
@@ -239,6 +246,27 @@ class Brain:
             feed_id=getattr(settings, "scanner_feed_id", "") or "",
             rtl_freq=getattr(settings, "scanner_rtl_freq", "") or "",
         )
+        self.danger_watch = None
+        try:
+            self.danger_watch = DangerWatch(
+                enabled=bool(getattr(settings, "danger_watch_enabled", False)),
+                sensitivity=float(
+                    getattr(settings, "danger_watch_sensitivity", 1.0) or 1.0
+                ),
+                cooldown_sec=float(
+                    getattr(settings, "danger_watch_cooldown_sec", 60.0) or 60.0
+                ),
+                mic_prefer=str(getattr(settings, "mic_prefer", "") or "auto"),
+                on_alert=self._on_danger_alert,
+            )
+            if getattr(settings, "danger_watch_enabled", False):
+                try:
+                    threading.Timer(2.5, self.danger_watch.start).start()
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[danger_watch] init: {e}")
+            self.danger_watch = None
         self.diary = Diary()
         self.vmemory = VisualMemory()
         self.pinecone = PineconeMemory(
@@ -500,6 +528,17 @@ class Brain:
             self.space_weather = None
             self.deadman = None
             self.net_watch = None
+        try:
+            from jarvis.core.software_security import SoftwareSecurity
+
+            self.software_security = SoftwareSecurity(
+                enabled=bool(getattr(settings, "software_security_enabled", True)),
+                process_harden=getattr(self, "process_harden", None),
+                on_alert=lambda msg: self._on_software_security_alert(msg),
+            )
+        except Exception as e:
+            print(f"[software-security] init: {e}")
+            self.software_security = None
         self.wake_brief = WakeBrief(
             spend=self.spend,
             steward=self.steward,
@@ -539,6 +578,14 @@ class Brain:
         self._night_vision_auto_on = False
         self._nv_user_off = False  # manual off — blocks auto re-enable until dawn or "on"
         self._nv_user_on = False  # manual on — survives day auto-disable
+        self._thermal_assist = bool(getattr(settings, "thermal_assist", False))
+        self.home_security = None
+        self.file_hub = None
+        self.alert_desk = None
+        self.driver_dispatch = None
+        self.ops_hud = None
+        self._ops_hud_on = False
+        self.traffic_cams = None
         self._lock = threading.Lock()
         self._last_frame = None
         self._start_cooldown = 0.0
@@ -712,6 +759,86 @@ class Brain:
             except Exception as e:
                 print(f"[security] init: {e}")
             try:
+                self.home_security = HomeSecurity(
+                    DATA_DIR,
+                    log_enabled=bool(getattr(settings, "home_security_log", True)),
+                    phone_photo=bool(
+                        getattr(settings, "home_security_phone_photo", True)
+                    ),
+                )
+                self.home_security.thermal_assist = bool(
+                    getattr(settings, "thermal_assist", False)
+                )
+                self._thermal_assist = bool(self.home_security.thermal_assist)
+                if self._thermal_assist:
+                    try:
+                        threading.Timer(
+                            3.0, lambda: self._emit("thermal_assist", True)
+                        ).start()
+                    except Exception:
+                        pass
+            except Exception as e:
+                print(f"[home_security] init: {e}")
+                self.home_security = None
+            try:
+                self.file_hub = FileHub(
+                    data_dir=DATA_DIR,
+                    project_root=ROOT,
+                    enabled=bool(getattr(settings, "file_hub_enabled", True)),
+                    extra_roots=list(getattr(settings, "file_hub_roots", None) or []),
+                )
+            except Exception as e:
+                print(f"[file_hub] init: {e}")
+                self.file_hub = None
+            try:
+                self.alert_desk = AlertDesk(
+                    data_dir=DATA_DIR,
+                    phone=self.phone,
+                    home_security=self.home_security,
+                    on_hud=lambda t: self._emit("hud_alert", t),
+                    guest_check=lambda: bool(
+                        getattr(getattr(self, "advanced", None), "guest", None)
+                        and getattr(self.advanced.guest, "on", False)
+                    ),
+                    enabled=bool(getattr(settings, "alert_desk_enabled", True)),
+                )
+            except Exception as e:
+                print(f"[alert_desk] init: {e}")
+                self.alert_desk = None
+            try:
+                self.driver_dispatch = DriverDispatch(
+                    phone=self.phone,
+                    alert_desk=self.alert_desk,
+                    on_hud=lambda t: self._emit("hud_alert", t),
+                )
+            except Exception as e:
+                print(f"[driver_dispatch] init: {e}")
+                self.driver_dispatch = None
+            try:
+                self.ops_hud = OpsHud(
+                    data_dir=DATA_DIR,
+                    settings=settings,
+                    home_security=self.home_security,
+                    enabled=bool(getattr(settings, "ops_hud_enabled", True)),
+                )
+            except Exception as e:
+                print(f"[ops_hud] init: {e}")
+                self.ops_hud = None
+            try:
+                self.traffic_cams = TrafficCams(
+                    data_dir=DATA_DIR,
+                    settings=settings,
+                    city=str(
+                        getattr(settings, "traffic_cams_city", None)
+                        or getattr(settings, "city", None)
+                        or "Philadelphia"
+                    ),
+                    enabled=bool(getattr(settings, "traffic_cams_enabled", True)),
+                )
+            except Exception as e:
+                print(f"[traffic_cams] init: {e}")
+                self.traffic_cams = None
+            try:
                 self.hotkeys = VoiceHotkeys(lock_fn=lambda: self.system.lock())
             except Exception as e:
                 print(f"[hotkeys] init: {e}")
@@ -786,6 +913,46 @@ class Brain:
                 self.registry.register("github_autocommit", version="1.0", note="AI-ish commit+push")
                 self.registry.register("smart_calendar", version="1.0", note="Spoken schedule → ICS")
                 self.registry.register("security_gate", version="1.0", note="Face greet + intruder")
+                self.registry.register(
+                    "home_security",
+                    version="1.0",
+                    note="Home desk: encrypted log, intrusion snaps, thermal assist, phone photo",
+                )
+                self.registry.register(
+                    "file_hub",
+                    version="1.0",
+                    note="Voice file search/open across Documents/Desktop/Downloads/DATA_DIR",
+                )
+                self.registry.register(
+                    "alert_desk",
+                    version="1.0",
+                    note="HUD + phone blast / secure+intruder blast / encrypted desk notes",
+                )
+                self.registry.register(
+                    "driver_dispatch",
+                    version="1.0",
+                    note="Owner ntfy driver notes (not fleet radio)",
+                )
+                self.registry.register(
+                    "ops_hud",
+                    version="1.0",
+                    note="Owner-site map pins + home security event dots (no stranger targets)",
+                )
+                self.registry.register(
+                    "traffic_cams",
+                    version="1.0",
+                    note="Public PennDOT/511PA traffic stills for owner city (no private CCTV)",
+                )
+                self.registry.register(
+                    "scanner_radio",
+                    version="1.2",
+                    note="Broadcastify/LiveATC + NOAA weather/satellite radio (not cam mics)",
+                )
+                self.registry.register(
+                    "danger_watch",
+                    version="1.0",
+                    note="Opt-in local desk mic impulse/bang watch (not CCTV audio)",
+                )
                 self.registry.register("autobug", version="1.0", note="Error log triage")
                 self.registry.register("self_audit", version="1.0", note="Nightly HITL proposals")
                 self.registry.register(
@@ -805,8 +972,13 @@ class Brain:
                 )
                 self.registry.register(
                     "net_watch",
+                    version="1.1",
+                    note="LAN ARP unknown-MAC alerts + owner-LAN cam-port presence",
+                )
+                self.registry.register(
+                    "software_security",
                     version="1.0",
-                    note="LAN ARP unknown-MAC alerts",
+                    note="Defender status / quick scan + process harden (defensive)",
                 )
                 self.registry.register(
                     "secure_backup",
@@ -934,6 +1106,11 @@ class Brain:
         try:
             if getattr(self, "net_watch", None):
                 self.net_watch.start()
+            if getattr(self, "software_security", None):
+                try:
+                    self.software_security.start()
+                except Exception as e:
+                    print(f"[software-security] start: {e}")
         except Exception as e:
             print(f"[net-watch] {e}")
         # Do NOT auto-apply Windows theme (was turning the taskbar white in daytime).
@@ -1026,7 +1203,7 @@ class Brain:
             ).start()
 
     def _run_stark_arrival(self) -> None:
-        """Daddy's home → Jarvis → research tabs → Highway to Hell + Play → help."""
+        """Daddy's home → Jarvis → research tabs → Shoot to Thrill + Play → help."""
         from jarvis.core.stark_arrival import run_stark_arrival
 
         def _sfx() -> None:
@@ -1054,19 +1231,18 @@ class Brain:
 
         def _play() -> str:
             try:
-                return self.music.play_highway_to_hell()
+                return self.music.play_shoot_to_thrill()
             except Exception as e:
                 print(f"[stark-arrival] music: {e}")
-                return f"Highway to Hell failed: {e}"
+                return f"Shoot to Thrill failed: {e}"
 
         def _press() -> str:
+            # Media Play only — music.press_play() reloads the track and can
+            # skip the start; play_shoot_to_thrill already seeks to 0:00.
             try:
-                return self.music.press_play()
-            except Exception:
-                try:
-                    return self.music.press_play_key()
-                except Exception as e:
-                    return str(e)
+                return self.music.press_play_key()
+            except Exception as e:
+                return str(e)
 
         # Never run on the Qt main thread — Spotify focus can stall the HUD
         threading.Thread(
@@ -1355,6 +1531,40 @@ class Brain:
             return msg
         return "Night vision already on." if on else "Night vision already off."
 
+    def set_thermal_assist(self, on: bool, announce: bool = False) -> str:
+        """Toggle software false-color thermal assist (own webcam only — not FLIR)."""
+        on = bool(on)
+        was = bool(getattr(self, "_thermal_assist", False))
+        self._thermal_assist = on
+        try:
+            if getattr(self, "home_security", None):
+                self.home_security.thermal_assist = on
+        except Exception:
+            pass
+        try:
+            self.settings.thermal_assist = on
+            self.settings.save()
+        except Exception:
+            pass
+        self._emit("thermal_assist", on)
+        if on and not was:
+            msg = "Thermal assist on — software false-color from your cam, not real FLIR."
+            self._emit("speak_ui", msg)
+            self._emit("hud_alert", "THERMAL ASSIST ONLINE")
+            self._emit("heard", "[optics] thermal assist online")
+            if announce:
+                self.say(msg)
+            return msg
+        if not on and was:
+            msg = "Thermal assist offline."
+            self._emit("speak_ui", msg)
+            self._emit("hud_alert", "THERMAL ASSIST OFF")
+            self._emit("heard", "[optics] thermal assist offline")
+            if announce:
+                self.say(msg)
+            return msg
+        return "Thermal assist already on." if on else "Thermal assist already off."
+
     def _grab_fresh_enroll_frame(self):
         """Best-effort BGR frames already in memory / on disk (no second camera)."""
         frames: list = []
@@ -1413,6 +1623,15 @@ class Brain:
                 "FACE ENROLLED" if "enrolled" in msg.lower() else "ENROLL FAILED",
             )
             self._emit("heard", f"[security] {msg}")
+            try:
+                if (
+                    getattr(self, "home_security", None)
+                    and "enrolled" in msg.lower()
+                    and "failed" not in msg.lower()
+                ):
+                    self.home_security.log_event("enroll", msg)
+            except Exception:
+                pass
             self.say(msg)
         except Exception as e:
             self.say(f"Enroll failed: {e}")
@@ -1447,6 +1666,15 @@ class Brain:
                 "FACE ENROLLED" if "enrolled" in msg.lower() else "ENROLL FAILED",
             )
             self._emit("heard", f"[security] {msg}")
+            try:
+                if (
+                    getattr(self, "home_security", None)
+                    and "enrolled" in msg.lower()
+                    and "failed" not in msg.lower()
+                ):
+                    self.home_security.log_event("enroll", msg)
+            except Exception:
+                pass
             self.say(msg)
         except Exception as e:
             self.say(f"Enroll failed: {e}")
@@ -1674,6 +1902,7 @@ class Brain:
         msg = getattr(ev, "message", "")
         snap = getattr(ev, "snapshot", "") or ""
         self._emit("heard", f"[security] {kind}: {msg}")
+        hs = getattr(self, "home_security", None)
         if kind == "intruder":
             adv = getattr(self, "advanced", None)
             if adv is not None and getattr(adv.guest, "on", False):
@@ -1683,15 +1912,34 @@ class Brain:
                     "do try not to let them break anything expensive."
                 )
                 return
+            archived = None
+            try:
+                if hs is not None:
+                    archived = hs.archive_intrusion(snap or None)
+                    hs.log_event(
+                        "intruder",
+                        msg or "Intruder alert at your desk",
+                        snapshot_path=str(archived or snap or ""),
+                    )
+            except Exception as e:
+                print(f"[home_security] intruder archive/log: {e}")
+            img_for_ui = str(archived) if archived else (snap or "")
             self._emit("hud_alert", "INTRUDER ALERT")
             self._emit("panic_ui", True)
             try:
-                if snap:
-                    self._emit("artifact", snap)
+                if img_for_ui:
+                    self._emit("artifact", img_for_ui)
             except Exception:
                 pass
             try:
-                self.phone.ping("Intruder alert at your desk")
+                if hs is not None:
+                    hs.notify_intrusion(
+                        self.phone,
+                        "Intruder alert at your desk",
+                        image_path=archived or snap or None,
+                    )
+                else:
+                    self.phone.ping("Intruder alert at your desk")
             except Exception:
                 pass
             self.say(msg)
@@ -1702,6 +1950,11 @@ class Brain:
             self.say(msg)
             return
         if kind == "greet":
+            try:
+                if hs is not None:
+                    hs.log_event("greet", msg or "Owner greeted")
+            except Exception:
+                pass
             self._emit("hud_alert", f"Welcome · {self.settings.user_name}")
             self._emit("panic_ui", False)
             # Light workspace unlock — restore listening / cancel lock countdown
@@ -1715,6 +1968,11 @@ class Brain:
             self.say(msg)
             return
         if kind == "lock":
+            try:
+                if hs is not None:
+                    hs.log_event("lock", msg or "Stepped away")
+            except Exception:
+                pass
             # Step-away: HUD only unless lock_on_absence is on
             self._emit("hud_alert", "AWAY")
             self._emit("heard", "[security] stepped away (auto-lock off)")
@@ -2462,8 +2720,12 @@ class Brain:
         )
 
     def _extract_map_zoom_place(self, t: str) -> str | None:
-        """Parse 'zoom in to Paris' / 'fly map to Japan' / 'go to Japan' style commands."""
+        """Parse zoom/fly/find-address / where-is / locate / show-on-map commands."""
         patterns = (
+            r"\bfind\s+address\s+(.+)$",
+            r"\blocate\s+(?:the\s+)?(?:address\s+(?:of|for)\s+)?(.+)$",
+            r"\bwhere\s+is\s+(.+)$",
+            r"\bnavigate\s+to\s+(.+)$",
             r"\bzoom\s+(?:in\s+)?(?:in\s+to|into|to|on)\s+(.+)$",
             r"\bfly\s+(?:the\s+)?(?:map\s+)?(?:to|into)\s+(.+)$",
             r"\bmap\s+(?:zoom\s+(?:in\s+)?(?:to|on)|focus\s+on|to)\s+(.+)$",
@@ -2501,6 +2763,11 @@ class Brain:
             "dinner",
             "meeting",
             "a meeting",
+            "my keys",
+            "my phone",
+            "that",
+            "this",
+            "it",
         }
         for pat in patterns:
             m = re.search(pat, t, flags=re.I)
@@ -2508,13 +2775,20 @@ class Brain:
                 continue
             dest = (m.group(1) or "").strip(" .,!?")
             dest = re.sub(
-                r"\b(on the map|in the map|please|for me|view|mode|3d|the map)\b",
+                r"\b(on the map|in the map|please|for me|view|mode|3d|the map|"
+                r"address of|address for)\b",
                 "",
                 dest,
                 flags=re.I,
             ).strip(" .,!?")
             low = dest.lower()
             if not dest or low in _non_geo:
+                continue
+            # Skip inventory / personal-item "where is" (handled elsewhere)
+            if re.search(
+                r"\b(my|our)\s+(keys?|phone|wallet|bag|laptop|remote|charger)\b",
+                low,
+            ):
                 continue
             # Skip obvious non-places: "go to sleep early", "go to the next track"
             if re.match(
@@ -2531,34 +2805,52 @@ class Brain:
         return None
 
     def _map_zoom_to(self, place: str) -> str:
-        """Geocode place, fly 3D map, speak a short location brief."""
+        """Geocode place via Nominatim, fly 3D map, speak a short location brief."""
         from jarvis.ui.widgets.map_view import _brief_for, _geocode_detail
 
         hit = _geocode_detail(place)
         if not hit:
             return self._flavor(
                 "ok",
-                f"I couldn't locate {place} on the tactical map.",
+                f"I couldn't find an address or place matching {place}. "
+                f"Try a clearer street, landmark, or city name.",
             )
         brief = _brief_for(hit)
         label = str(hit.get("name") or place)
-        self.habits.log("map_zoom", label[:40])
+        try:
+            self.habits.log("map_zoom", label[:40])
+        except Exception:
+            pass
+        markers = [
+            {
+                "lat": hit["lat"],
+                "lon": hit["lon"],
+                "label": label,
+                "name": label,
+            }
+        ]
         self._emit(
             "map_ui",
             {
                 "place": label,
                 "lat": hit["lat"],
                 "lon": hit["lon"],
-                "zoom": hit.get("zoom"),
+                "zoom": hit.get("zoom") or 15.5,
                 "label": label,
                 "brief": brief,
-                "markers": [],
+                "markers": markers,
                 "scanning": False,
                 "animate": True,
             },
         )
-        self._emit("hud_alert", f"Map · {label}")
-        return self._flavor("ok", f"Zooming to {label}. {brief}")
+        try:
+            self._emit("hud_alert", f"Locate · {label}")
+        except Exception:
+            pass
+        return self._flavor(
+            "ok",
+            f"Found it — {label}. Zooming the tactical map. {brief}",
+        )
 
     def _map_zoom_delta(self, delta: float) -> str:
         """Relative zoom in/out; opens map with intro if closed."""
@@ -2980,6 +3272,24 @@ class Brain:
             pass
         try:
             self.phone.notify(msg, title="JARVIS · Net Watch", priority=5, tags=["warning"])
+        except Exception:
+            pass
+
+    def _on_software_security_alert(self, msg: str) -> None:
+        """HUD + phone when Defender looks disabled (defensive only)."""
+        try:
+            self._emit("hud_alert", "DEFENDER · CHECK")
+            self._emit("heard", f"[software-security] {msg}")
+            self.say(msg)
+        except Exception:
+            pass
+        try:
+            self.phone.notify(
+                msg,
+                title="JARVIS · Software Security",
+                priority=5,
+                tags=["warning", "shield"],
+            )
         except Exception:
             pass
 
@@ -4605,6 +4915,15 @@ class Brain:
             t,
         ):
             return self._link_phone()
+        # Alert desk blasts — HUD + high-priority ping (before soft notify)
+        if re.search(
+            r"\b(alert phone|send alert|desk alert|blast alert|secure blast|"
+            r"intruder blast|encrypt alert)\b",
+            t,
+        ):
+            hub = self._route_desk_hub(t)
+            if hub is not None:
+                return hub
         # Text / notify with body: "text my phone hello there"
         m = re.search(
             r"\b(?:text|notify|ping|message|alert|sms|send)\s+"
@@ -4885,7 +5204,7 @@ class Brain:
                 bits.append(edge_status())
             except Exception:
                 pass
-            for attr in ("net_watch", "deadman", "backups"):
+            for attr in ("net_watch", "software_security", "deadman", "backups"):
                 obj = getattr(self, attr, None)
                 if obj is not None and hasattr(obj, "status"):
                     try:
@@ -4894,13 +5213,45 @@ class Brain:
                         pass
             return self._flavor("ok", " · ".join(bits) if bits else "Home ops offline.")
 
-        if re.search(r"\b(net watch status|network watch|lan scan|scan (the )?network|"
-                     r"unknown (devices|macs)|wifi intruder)\b", t):
+        if re.search(
+            r"\b(net watch status|network watch|lan scan|scan (the )?network|"
+            r"scan local network|lan status|network security status|"
+            r"unknown (devices|macs)|wifi intruder|list (lan |network )?devices)\b",
+            t,
+        ):
             nw = getattr(self, "net_watch", None)
             if nw is None:
                 return self._flavor("warn", "Net watch not loaded.")
             if "trust" in t:
                 return self._flavor("ok", nw.trust_all_current())
+
+            deep = bool(
+                re.search(
+                    r"\b(scan local network|lan scan|scan (the )?network|"
+                    r"network security status)\b",
+                    t,
+                )
+            )
+            if deep and hasattr(nw, "speak_local_network_scan"):
+
+                def _lan_scan() -> None:
+                    try:
+                        msg = nw.speak_local_network_scan()
+                        self._emit("heard", f"[lan] {msg}")
+                        self.say(msg)
+                    except Exception as e:
+                        print(f"[lan-scan] {e}")
+
+                threading.Thread(
+                    target=_lan_scan, daemon=True, name="jarvis-lan-scan"
+                ).start()
+                return self._flavor(
+                    "ok",
+                    "Scanning your local network (owner LAN only) — "
+                    "ARP devices plus common IP-cam ports. No exploit.",
+                )
+            if hasattr(nw, "speak_lan_status"):
+                return self._flavor("ok", nw.speak_lan_status())
             found = nw.scan_once()
             return self._flavor(
                 "ok",
@@ -4996,15 +5347,60 @@ class Brain:
                 return None
             return self._flavor("ok", sw.iss_overhead())
 
-        if re.search(r"\b(scan processes|process (harden|scan)|check (for )?miners|"
-                     r"background process(es)?)\b", t):
+        if re.search(
+            r"\b(defender status|windows defender status)\b",
+            t,
+        ):
+            ss = getattr(self, "software_security", None)
+            if ss is None:
+                return self._flavor("warn", "Software security module offline.")
+            return self._flavor("ok", ss.defender_status())
+        if re.search(
+            r"\b((run )?security scan|run (a )?quick (defender )?scan|"
+            r"defender (quick )?scan|start defender scan)\b",
+            t,
+        ):
+            ss = getattr(self, "software_security", None)
+            if ss is None:
+                return self._flavor("warn", "Software security module offline.")
+
+            def _sec_scan() -> None:
+                try:
+                    # User-initiated only: Defender quick scan + process harden
+                    quick = ss.start_quick_scan()
+                    status = ss.defender_status()
+                    proc = ss.harden_processes()
+                    msg = f"{quick} · {status} · {proc}"
+                    self._emit("heard", f"[software-security] {msg}")
+                    self.say(msg)
+                except Exception as e:
+                    print(f"[software-security] {e}")
+
+            threading.Thread(
+                target=_sec_scan, daemon=True, name="jarvis-sec-scan"
+            ).start()
+            return self._flavor(
+                "ok",
+                "Starting defensive security scan (Defender quick scan + process check).",
+            )
+        if re.search(
+            r"\b(harden processes|scan processes|process (harden|scan)|"
+            r"check (for )?miners|background process(es)?)\b",
+            t,
+        ):
             ph = getattr(self, "process_harden", None)
-            if ph is None:
+            ss = getattr(self, "software_security", None)
+            if ph is None and ss is None:
                 return None
 
             def _scan() -> None:
                 try:
-                    msg = ph.speak_scan()
+                    if ss is not None and "harden processes" in t:
+                        msg = ss.harden_processes()
+                    elif ph is not None:
+                        msg = ph.speak_scan()
+                    else:
+                        msg = ss.harden_processes()
                     self._emit("heard", f"[harden] {msg}")
                     self.say(msg)
                 except Exception as e:
@@ -5522,7 +5918,7 @@ class Brain:
             ).start()
             return self._flavor(
                 "ok",
-                "Daddy's home — Jarvis online, then Iron Man workshop music.",
+                "Daddy's home — Jarvis online, then Shoot to Thrill.",
             )
 
         # DUME / pushback easter eggs (before normal routing)
@@ -8065,6 +8461,542 @@ class Brain:
             "you already have a Tailscale travel companion built in.",
         )
 
+    def set_ops_hud(self, on: bool, announce: bool = False) -> str:
+        """Toggle owner-site ops map overlay beside live camera."""
+        on = bool(on)
+        self._ops_hud_on = on
+        pins: list = []
+        try:
+            oh = getattr(self, "ops_hud", None)
+            if oh is not None:
+                pins = oh.pins()
+        except Exception as e:
+            print(f"[ops_hud] pins: {e}")
+        try:
+            self._emit("ops_hud", on)
+            self._emit("ops_pins", pins)
+        except Exception:
+            pass
+        if on:
+            msg = "Ops HUD online — owner sites map."
+            if announce:
+                self._emit("hud_alert", "OPS HUD ONLINE")
+            return msg
+        msg = "Ops HUD offline."
+        if announce:
+            self._emit("hud_alert", "OPS HUD OFF")
+        return msg
+
+    def set_traffic_cams(self, on: bool = True, announce: bool = False) -> str:
+        """Show/hide public traffic stills HUD (official DOT / 511 only)."""
+        tc = getattr(self, "traffic_cams", None)
+        if tc is None or not getattr(tc, "enabled", True):
+            return "Traffic cams offline."
+        on = bool(on)
+        try:
+            self._emit("traffic_cams", on)
+        except Exception as e:
+            print(f"[traffic_cams] emit: {e}")
+        if on:
+            msg = (
+                f"Traffic live — {getattr(tc, 'city', 'Philadelphia')}. "
+                "Opening the official map for moving video, and scanner audio "
+                "(camera stills have no sound)."
+            )
+            if announce:
+                self._emit("hud_alert", "TRAFFIC CAMS")
+            return msg
+        msg = "Traffic cams closed."
+        if announce:
+            self._emit("hud_alert", "TRAFFIC OFF")
+        return msg
+
+    def set_traffic_region(self, region: str, *, open_board: bool = True) -> str:
+        """Switch traffic cam region (PHL / Miami / FL / NYC / World)."""
+        tc = getattr(self, "traffic_cams", None)
+        if tc is None or not getattr(tc, "enabled", True):
+            return "Traffic cams offline."
+        msg = tc.set_region(region)
+        # Keep scanner city in sync with traffic board region when known
+        try:
+            sr = getattr(self, "scanner_radio", None)
+            if sr is not None and hasattr(sr, "follow_traffic_region"):
+                r = getattr(tc, "region", region) or region
+                if str(r).lower() not in ("world", ""):
+                    sr.follow_traffic_region(str(r))
+        except Exception as e:
+            print(f"[scanner_radio] region sync: {e}")
+        try:
+            self._emit("traffic_region", getattr(tc, "region", region))
+        except Exception as e:
+            print(f"[traffic_cams] region emit: {e}")
+        if open_board:
+            try:
+                self._emit("traffic_cams", True)
+            except Exception:
+                pass
+        try:
+            self._emit("hud_alert", f"TRAFFIC · {getattr(tc, 'city', region).upper()}")
+        except Exception:
+            pass
+        return msg
+
+    def _on_danger_alert(self, kind: str, message: str, level: str = "warn") -> None:
+        """Local mic impulse → HUD + speak + phone ping + home_security log."""
+        kind = (kind or "impulse").strip() or "impulse"
+        msg = (message or "Sudden bang on desk mic.").strip()
+        level = (level or "warn").strip()
+        try:
+            self._emit("hud_alert", f"DANGER · {kind.upper().replace('_', ' ')}")
+        except Exception:
+            pass
+        try:
+            self.say(msg)
+        except Exception as e:
+            print(f"[danger_watch] say: {e}")
+        # Prefer AlertDesk.blast (HUD+phone); fall back to PhoneBridge.ping
+        blasted = False
+        try:
+            desk = getattr(self, "alert_desk", None)
+            if desk is not None and getattr(desk, "enabled", True):
+                desk.blast(msg, title=f"JARVIS · {kind.upper()}")
+                blasted = True
+        except Exception as e:
+            print(f"[danger_watch] alert_desk: {e}")
+        if not blasted:
+            try:
+                phone = getattr(self, "phone", None)
+                if phone is not None:
+                    phone.ping(msg, title=f"JARVIS · {kind.upper()}")
+            except Exception as e:
+                print(f"[danger_watch] phone: {e}")
+        try:
+            hs = getattr(self, "home_security", None)
+            if hs is not None and hasattr(hs, "log_event"):
+                hs.log_event(
+                    "danger_watch",
+                    msg,
+                    meta={"kind": kind, "level": level, "source": "local_mic"},
+                )
+        except Exception as e:
+            print(f"[danger_watch] home_security log: {e}")
+
+    def set_danger_watch(self, on: bool = True) -> str:
+        dw = getattr(self, "danger_watch", None)
+        if dw is None:
+            try:
+                self.danger_watch = DangerWatch(
+                    enabled=bool(on),
+                    sensitivity=float(
+                        getattr(self.settings, "danger_watch_sensitivity", 1.0) or 1.0
+                    ),
+                    cooldown_sec=float(
+                        getattr(self.settings, "danger_watch_cooldown_sec", 60.0) or 60.0
+                    ),
+                    mic_prefer=str(getattr(self.settings, "mic_prefer", "") or "auto"),
+                    on_alert=self._on_danger_alert,
+                )
+                dw = self.danger_watch
+            except Exception as e:
+                return f"Danger watch unavailable: {e}"
+        try:
+            self.settings.danger_watch_enabled = bool(on)
+        except Exception:
+            pass
+        if on:
+            msg = dw.start()
+            try:
+                self._emit("hud_alert", "DANGER WATCH ON")
+            except Exception:
+                pass
+            return msg
+        msg = dw.stop()
+        try:
+            self._emit("hud_alert", "DANGER WATCH OFF")
+        except Exception:
+            pass
+        return msg
+
+    def danger_watch_status(self) -> str:
+        dw = getattr(self, "danger_watch", None)
+        if dw is None:
+            return "Danger watch offline (not initialized)."
+        return dw.status()
+
+    def play_traffic_audio(self) -> str:
+        """Live city scanner audio (cams have no mic) + in-HUD player."""
+        sr = getattr(self, "scanner_radio", None)
+        if sr is None:
+            return "Scanner radio offline."
+        try:
+            if hasattr(sr, "play_traffic_audio"):
+                msg = sr.play_traffic_audio()
+            else:
+                msg = sr.play("dispatch")
+            url = ""
+            try:
+                url = sr.live_audio_url() if hasattr(sr, "live_audio_url") else ""
+            except Exception:
+                url = getattr(sr, "_last", "") or ""
+            try:
+                self._emit(
+                    "scanner_live",
+                    {
+                        "url": url,
+                        "title": f"LIVE SCANNER · {getattr(sr, 'city', 'CITY')}",
+                    },
+                )
+            except Exception as e:
+                print(f"[scanner_live] emit: {e}")
+            self._emit("track", "Scanner · live audio")
+            return msg
+        except Exception as e:
+            return f"Traffic audio failed: {e}"
+
+    def play_local_dispatch(self, kind: str = "dispatch") -> str:
+        """Open public Broadcastify/LiveATC for current scanner city."""
+        sr = getattr(self, "scanner_radio", None)
+        if sr is None:
+            return "Scanner radio offline."
+        k = (kind or "dispatch").strip().lower() or "dispatch"
+        try:
+            self.habits.log("scanner", k)
+        except Exception:
+            pass
+        try:
+            self._emit("track", f"Scanner · {k}")
+        except Exception:
+            pass
+        # Weather / satellite → dedicated path (honest NOAA messaging)
+        if k in (
+            "weather",
+            "satellite",
+            "noaa",
+            "wx",
+            "nwr",
+            "satellite radio",
+            "satellite audio",
+            "weather radio",
+            "noaa radio",
+        ):
+            return self.play_satellite_audio()
+        return sr.play(k)
+
+    def play_satellite_audio(self) -> str:
+        """NOAA / satellite weather radio companion — not traffic-cam mics."""
+        sr = getattr(self, "scanner_radio", None)
+        if sr is None:
+            return "Scanner radio offline."
+        try:
+            self.habits.log("scanner", "satellite_weather")
+        except Exception:
+            pass
+        try:
+            if hasattr(sr, "play_satellite_audio"):
+                msg = sr.play_satellite_audio()
+            else:
+                msg = sr.play("weather")
+            url = ""
+            try:
+                if hasattr(sr, "live_sat_url"):
+                    url = sr.live_sat_url()
+                else:
+                    url = getattr(sr, "_last", "") or ""
+            except Exception:
+                url = getattr(sr, "_last", "") or ""
+            try:
+                self._emit(
+                    "scanner_live",
+                    {
+                        "url": url,
+                        "title": f"NOAA / SAT WEATHER · {getattr(sr, 'city', 'CITY')}",
+                    },
+                )
+            except Exception as e:
+                print(f"[scanner_live] sat emit: {e}")
+            self._emit("track", "Scanner · NOAA / satellite weather (cams silent)")
+            return msg
+        except Exception as e:
+            return f"Satellite / NOAA weather radio failed: {e}"
+
+    def dispatch_driver(self, message: str = "") -> str:
+        """Owner ntfy phone ping for own drivers — not fleet/company radio."""
+        dd = getattr(self, "driver_dispatch", None)
+        if dd is None:
+            # Soft recreate if init race
+            try:
+                self.driver_dispatch = DriverDispatch(
+                    phone=getattr(self, "phone", None),
+                    alert_desk=getattr(self, "alert_desk", None),
+                    on_hud=lambda t: self._emit("hud_alert", t),
+                )
+                dd = self.driver_dispatch
+            except Exception as e:
+                return f"Driver dispatch offline: {e}"
+        msg = (message or "").strip()
+        try:
+            self.habits.log("driver_dispatch", msg[:40] if msg else "empty")
+        except Exception:
+            pass
+        try:
+            if hasattr(dd, "dispatch_driver"):
+                return dd.dispatch_driver(msg)
+            return dd.dispatch(msg)
+        except Exception as e:
+            return f"Driver dispatch failed: {e}"
+
+    def open_traffic_board(self) -> str:
+        tc = getattr(self, "traffic_cams", None)
+        if tc is None:
+            return "Traffic cams offline."
+        try:
+            self._emit("traffic_board", True)
+        except Exception:
+            pass
+        return tc.open_traffic_board()
+
+    def open_traffic_live_map(self) -> str:
+        """Show embedded official 511/DOT interactive map for current region."""
+        tc = getattr(self, "traffic_cams", None)
+        if tc is None or not getattr(tc, "enabled", True):
+            return "Traffic cams offline."
+        try:
+            self._emit("traffic_live_map", True)
+        except Exception as e:
+            print(f"[traffic_live_map] emit: {e}")
+            return tc.open_traffic_board()
+        try:
+            self._emit("hud_alert", "LIVE TRAFFIC MAP")
+        except Exception:
+            pass
+        city = getattr(tc, "city", "Philadelphia")
+        return f"Live traffic map online — {city} official DOT / 511."
+
+    def next_traffic_cams(self) -> str:
+        """Rotate traffic board to the next page of cams."""
+        tc = getattr(self, "traffic_cams", None)
+        if tc is None or not getattr(tc, "enabled", True):
+            return "Traffic cams offline."
+        try:
+            self._emit("traffic_cams_next", True)
+        except Exception as e:
+            print(f"[traffic_cams] next emit: {e}")
+            return "Could not rotate traffic cams."
+        return "Rotating traffic cams."
+
+    def find_address_on_map(self, place: str = "") -> str:
+        """Geocode a place/address and fly the tactical map (Nominatim)."""
+        q = (place or "").strip()
+        if not q:
+            # Open map focused on home city — user can voice a place next
+            city = getattr(self.settings, "city", None) or "Philadelphia"
+            self._emit("map_ui", {"place": city, "markers": None, "animate": True})
+            return self._flavor(
+                "ok",
+                f"Map online — say find address, where is, or locate a place. "
+                f"Centered on {city}.",
+            )
+        return self._map_zoom_to(q)
+
+    def traffic_cams_status(self) -> str:
+        tc = getattr(self, "traffic_cams", None)
+        if tc is None:
+            return "Traffic cams offline."
+        return tc.status()
+
+    def _route_desk_hub(self, t: str) -> str | None:
+        """File hub / alert desk / ops HUD / traffic cams voice intents."""
+        if not t:
+            return None
+        # Multi-region traffic cams (official DOT / 511 only)
+        if re.search(
+            r"\b(miami traffic( cams?)?|show miami cams?|miami cams?)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_traffic_region("miami"))
+        if re.search(
+            r"\b(florida traffic( cams?)?|fl traffic( cams?)?|show florida cams?)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_traffic_region("florida"))
+        if re.search(
+            r"\b(nyc traffic( cams?)?|new york traffic( cams?)?|show nyc cams?)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_traffic_region("nyc"))
+        if re.search(
+            r"\b(world traffic( cams?)?|global traffic( cams?)?)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_traffic_region("world"))
+        if re.search(
+            r"\b(philly traffic|philadelphia traffic( cams?)?)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_traffic_region("philadelphia"))
+        if re.search(
+            r"\b(live traffic map|traffic live map|show live traffic( map)?)\b",
+            t,
+        ):
+            return self._flavor("ok", self.open_traffic_live_map())
+        if re.search(
+            r"\b(next traffic cams?|next traffic cameras?|rotate traffic cams?)\b",
+            t,
+        ):
+            return self._flavor("ok", self.next_traffic_cams())
+        if re.search(
+            r"\b(open traffic board|traffic board|511(pa)?( traffic)?|philly traffic board)\b",
+            t,
+        ):
+            return self._flavor("ok", self.open_traffic_board())
+        if re.search(
+            r"\b(traffic cams? status|traffic camera status)\b",
+            t,
+        ):
+            return self._flavor("ok", self.traffic_cams_status())
+        if re.search(
+            r"\b(hide traffic cams?|close traffic cams?|traffic cams? off|"
+            r"close (live )?traffic map|hide (live )?traffic map)\b",
+            t,
+        ):
+            if re.search(r"\b(live )?traffic map\b", t) and not re.search(
+                r"\btraffic cams?\b", t
+            ):
+                try:
+                    self._emit("traffic_live_map", False)
+                except Exception:
+                    pass
+                return self._flavor("ok", "Live traffic map closed.")
+            return self._flavor("ok", self.set_traffic_cams(False))
+        if re.search(
+            r"\b(show traffic cams?|traffic cameras?|"
+            r"traffic cams?( on)?)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_traffic_cams(True))
+        # Traffic / dispatch audio via public Broadcastify (DOT cams have no audio)
+        if re.search(
+            r"\b(listen to traffic|traffic audio|play traffic audio)\b",
+            t,
+        ):
+            return self._flavor("ok", self.play_traffic_audio())
+        if re.search(
+            r"\b(police dispatch|live dispatch|put on local dispatch)\b",
+            t,
+        ):
+            return self._flavor("ok", self.play_local_dispatch("dispatch"))
+        # Truck / DOT / highway scanner (Broadcastify public listen)
+        if re.search(
+            r"\b((put on |play |listen to )?(truck(er)? (dispatch|radio)|"
+            r"truck dispatch)|trucker radio)\b",
+            t,
+        ):
+            return self._flavor("ok", self.play_local_dispatch("truck"))
+        if re.search(r"\b(dot radio|d\.?o\.?t\.? radio)\b", t):
+            return self._flavor("ok", self.play_local_dispatch("dot"))
+        if re.search(r"\b(highway radio)\b", t):
+            return self._flavor("ok", self.play_local_dispatch("highway"))
+        if re.search(r"\b((put on |play |listen to )?(the )?cb( radio)?)\b", t):
+            return self._flavor("ok", self.play_local_dispatch("cb"))
+        # Owner phone → driver note (ntfy only)
+        m_drv = re.search(
+            r"\b(?:dispatch driver|tell the driver|send driver)\s+(.+)$",
+            t,
+            flags=re.I,
+        )
+        if m_drv:
+            body = m_drv.group(1).strip(" .,!?")
+            return self._flavor("ok", self.dispatch_driver(body))
+        if re.search(r"\b(driver dispatch status)\b", t):
+            dd = getattr(self, "driver_dispatch", None)
+            if dd is None:
+                return self._flavor("ok", "Driver dispatch offline.")
+            return self._flavor("ok", dd.status())
+        if re.fullmatch(r"\s*(dispatch driver|tell the driver|send driver)\s*", t):
+            return self._flavor("ok", "What should I tell the driver?")
+        # Danger / gunshot-like watch (local mic)
+        if re.search(
+            r"\b((danger|gunshot) watch (off|stop)|stop (danger|gunshot) watch)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_danger_watch(False))
+        if re.search(
+            r"\b((danger|gunshot) watch( on)?|start (danger|gunshot) watch)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_danger_watch(True))
+        if re.search(r"\b(danger status|danger watch status)\b", t):
+            return self._flavor("ok", self.danger_watch_status())
+        # Address find (also caught later by _extract_map_zoom_place; early clear intent)
+        m = re.search(
+            r"\b(?:find\s+address|locate(?:\s+address)?|where\s+is)\s+(.+)$",
+            t,
+            flags=re.I,
+        )
+        if m:
+            place = (m.group(1) or "").strip(" .,!?")
+            if place and not re.search(
+                r"\b(my|our)\s+(keys?|phone|wallet)\b", place, flags=re.I
+            ):
+                return self.find_address_on_map(place)
+        # Ops HUD
+        if re.search(r"\b(ops hud off|hide ops (hud|map)|close ops (hud|map))\b", t):
+            return self._flavor("ok", self.set_ops_hud(False))
+        if re.search(
+            r"\b(ops hud( on)?|show ops (hud|map)|show (the )?ops map|"
+            r"ops map( on)?)\b",
+            t,
+        ) or re.fullmatch(r"show map", t.strip()):
+            return self._flavor("ok", self.set_ops_hud(True))
+        if re.search(r"\b(ops status|ops hud status)\b", t):
+            oh = getattr(self, "ops_hud", None)
+            if oh is None:
+                return self._flavor("ok", "Ops HUD offline.")
+            return self._flavor("ok", oh.status())
+        # Alert desk blasts
+        desk = getattr(self, "alert_desk", None)
+        if desk is not None:
+            if re.search(r"\b(alert desk status|blast status)\b", t):
+                return self._flavor("ok", desk.status())
+            if re.search(r"\b(secure blast)\b", t):
+                m = re.search(r"\bsecure blast\s+(.+)$", t)
+                body = m.group(1).strip(" .,!?") if m else ""
+                return self._flavor("ok", desk.secure_blast(body))
+            if re.search(r"\b(intruder blast)\b", t):
+                m = re.search(r"\bintruder blast\s+(.+)$", t)
+                body = m.group(1).strip(" .,!?") if m else ""
+                return self._flavor("ok", desk.intruder_blast(body))
+            m = re.search(r"\bencrypt alert\s+(.+)$", t)
+            if m:
+                return self._flavor("ok", desk.encrypt_alert(m.group(1).strip(" .,!?")))
+            if re.search(r"\bencrypt alert\b", t):
+                return self._flavor("ok", "What should I encrypt and send?")
+            m = re.search(
+                r"\b(?:alert phone|send alert|desk alert|blast alert)\s+(.+)$",
+                t,
+            )
+            if m:
+                body = m.group(1).strip(" .,!?")
+                if body:
+                    return self._flavor("ok", desk.blast(body))
+            if re.search(
+                r"\b(?:alert phone|send alert|desk alert|blast alert)\b",
+                t,
+            ):
+                return self._flavor("ok", "What alert should I blast?")
+        # File hub
+        fh = getattr(self, "file_hub", None)
+        if fh is not None:
+            if re.search(r"\b(file hub status)\b", t):
+                return self._flavor("ok", fh.status())
+            try:
+                reply = fh.handle_voice(t)
+                if reply is not None:
+                    return self._flavor("ok", reply)
+            except Exception as e:
+                print(f"[file_hub] voice: {e}")
+        return None
+
     def _route_desk_lane(self, t: str) -> str | None:
         """High-priority desk/security/NV intents — returns None if not matched."""
         if getattr(self, "security", None) and re.search(
@@ -8075,7 +9007,42 @@ class Brain:
         if getattr(self, "security", None) and re.search(
             r"\b(security status|biometric status|intruder status)\b", t
         ):
-            return self._flavor("ok", self.security.status())
+            base = self.security.status()
+            try:
+                hs = getattr(self, "home_security", None)
+                if hs is not None:
+                    extra = hs.status(
+                        night_vision=bool(getattr(self, "_night_vision", False)),
+                        thermal=bool(getattr(self, "_thermal_assist", False)),
+                    )
+                    base = f"{base} · {extra}"
+            except Exception:
+                pass
+            return self._flavor("ok", base)
+        if re.search(
+            r"\b(security log|show security log|recent security events)\b", t
+        ):
+            hs = getattr(self, "home_security", None)
+            if hs is None:
+                return self._flavor("ok", "Home security log offline.")
+            return self._flavor("ok", hs.speak_recent(5))
+        # --- Advanced desk hub: ops HUD / alert desk / file hub ---
+        hub = self._route_desk_hub(t)
+        if hub is not None:
+            return hub
+        if re.search(
+            r"\b(thermal assist off|disable (the )?thermal( assist)?|"
+            r"turn(ing)? off (the )?thermal( assist)?|heat vision off|"
+            r"no (thermal|heat) vision)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_thermal_assist(False, announce=False))
+        if re.search(
+            r"\b(thermal assist( on)?|enable (the )?thermal( assist)?|"
+            r"turn(ing)? on (the )?thermal( assist)?|heat vision( on)?)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_thermal_assist(True, announce=False))
         if getattr(self, "security", None) and re.search(
             r"\b(arm security|security on|enable (face )?security)\b", t
         ):
@@ -9082,12 +10049,29 @@ class Brain:
 
         # Local dispatch / scanner (Broadcastify public feeds — listen only)
         if re.search(
-            r"\b(stop (the )?(scanner|dispatch|police radio|sdr|rtl))\b",
+            r"\b(stop (the )?(scanner|dispatch|police radio|sdr|rtl|"
+            r"weather radio|satellite radio|noaa)|"
+            r"stop dispatch)\b",
             t,
         ):
             return self._flavor("ok", self.scanner_radio.stop())
         if re.search(r"\b(scanner status|dispatch status)\b", t):
             return self._flavor("ok", self.scanner_radio.status())
+        if re.search(
+            r"\b(satellite radio|satellite audio|noaa( weather)? radio|"
+            r"weather radio|play satellite|put on (the )?satellite|"
+            r"listen to (the )?(satellite|noaa|weather) radio)\b",
+            t,
+        ):
+            self.habits.log("scanner", "satellite_weather")
+            return self._flavor("ok", self.play_satellite_audio())
+        if re.search(
+            r"\b(listen to traffic|traffic audio|play traffic audio|"
+            r"hear (the )?traffic|traffic (radio|scanner))\b",
+            t,
+        ):
+            self.habits.log("scanner", "traffic_audio")
+            return self._flavor("ok", self.play_traffic_audio())
         if re.search(
             r"\b((put on|play|tune|open|listen to) (the )?(local )?sdr|"
             r"rtl[- ]?sdr|software defined radio)\b",
@@ -9097,13 +10081,20 @@ class Brain:
             return self._flavor("ok", self.scanner_radio.play_rtl())
         m_scan = re.search(
             r"\b(?:put on|play|tune|open|listen to|pull up)\s+(?:the\s+)?"
-            r"(local\s+dispatch|police\s+radio|fire\s+dispatch|ems(?:\s+dispatch)?|"
+            r"(local\s+dispatch|police\s+radio|police\s+dispatch|live\s+dispatch|"
+            r"fire\s+dispatch|ems(?:\s+dispatch)?|"
+            r"truck(?:er)?\s+(?:dispatch|radio)|truck\s+dispatch|dot\s+radio|"
+            r"highway\s+radio|cb(?:\s+radio)?|"
             r"air\s+traffic(?:\s+control)?|aviation(?:\s+radio)?|scanner|"
-            r"weather\s+radio|dispatch)\b",
+            r"weather\s+radio|satellite\s+radio|satellite\s+audio|noaa\s+radio|"
+            r"dispatch)\b",
             t,
         )
         if m_scan or re.search(
-            r"\b(local dispatch|police radio|fire scanner|scanner feed)\b", t
+            r"\b(local dispatch|police radio|police dispatch|live dispatch|"
+            r"truck(er)? radio|truck dispatch|dot radio|highway radio|cb radio|"
+            r"fire scanner|scanner feed)\b",
+            t,
         ):
             phrase = (m_scan.group(1) if m_scan else "dispatch").lower()
             kind = "dispatch"
@@ -9113,15 +10104,47 @@ class Brain:
                 kind = "fire"
             elif "ems" in phrase:
                 kind = "ems"
+            elif "truck" in phrase:
+                kind = "truck"
+            elif "dot" in phrase:
+                kind = "dot"
+            elif "highway" in phrase:
+                kind = "highway"
+            elif re.search(r"\bcb\b", phrase):
+                kind = "cb"
             elif "air" in phrase or "aviation" in phrase or "atc" in phrase:
                 kind = "aviation"
-            elif "weather" in phrase:
+            elif "satellite" in phrase or "noaa" in phrase or "weather" in phrase:
                 kind = "weather"
             elif "scanner" in phrase:
                 kind = "scanner"
-            self.habits.log("scanner", kind)
-            self._emit("track", f"Scanner · {kind}")
-            return self._flavor("ok", self.scanner_radio.play(kind))
+            return self._flavor("ok", self.play_local_dispatch(kind))
+
+        # Owner driver note (ntfy phone) — late catch if early lane missed
+        m_drv2 = re.search(
+            r"\b(?:dispatch driver|tell the driver|send driver)\s+(.+)$",
+            t,
+            flags=re.I,
+        )
+        if m_drv2:
+            return self._flavor(
+                "ok", self.dispatch_driver(m_drv2.group(1).strip(" .,!?"))
+            )
+
+        # Local desk mic danger / gunshot-like bang watch (opt-in)
+        if re.search(
+            r"\b((danger|gunshot) watch (off|stop)|stop (danger|gunshot) watch)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_danger_watch(False))
+        if re.search(
+            r"\b((danger|gunshot) watch( on)?|start (danger|gunshot) watch|"
+            r"arm (danger|gunshot) watch)\b",
+            t,
+        ):
+            return self._flavor("ok", self.set_danger_watch(True))
+        if re.search(r"\b(danger status|danger watch status|gunshot watch status)\b", t):
+            return self._flavor("ok", self.danger_watch_status())
 
         # Local-only code customize (never remote public sites)
         if re.search(
@@ -9763,7 +10786,7 @@ class Brain:
             self.habits.log("activity")
             return self._describe_activity()
 
-        # Google Maps directions (CTK: navigate to …)
+        # Google Maps directions + tactical map fly (CTK: navigate to …)
         m = re.search(
             r"\b(?:navigate(?:\s+to)?|directions(?:\s+to)?|take me to|drive to|route to)\s+(.+)$",
             t,
@@ -9772,6 +10795,11 @@ class Brain:
             dest = m.group(1).strip(" .")
             dest = re.sub(r"\b(please|for me|now)\b", "", dest, flags=re.I).strip(" .")
             if dest:
+                # Prefer tactical map pin/fly; also open Google dirs as transit aid
+                try:
+                    map_msg = self._map_zoom_to(dest)
+                except Exception:
+                    map_msg = ""
                 url = (
                     "https://www.google.com/maps/dir/?api=1&destination="
                     + urllib.parse.quote_plus(dest)
@@ -9779,8 +10807,13 @@ class Brain:
                 try:
                     webbrowser.open(url)
                 except Exception:
-                    self.apps.open(url)
+                    try:
+                        self.apps.open(url)
+                    except Exception:
+                        pass
                 self.habits.log("navigate", dest[:40])
+                if map_msg and "couldn't find" not in map_msg.lower():
+                    return map_msg
                 return self._flavor(
                     "ok", f"Plotting transit vectors for {dest}."
                 )
@@ -10719,8 +11752,12 @@ class Brain:
                 "Morning: good morning — greet + YouTube + research tabs. "
                 "AR: open aerospatial · cinematic ar · upgrade everything · scan room · web shooter. "
                 "Reminders: remind me at 10 pm California to … · list reminders. "
-                "Home ops: net watch · trust network · run backup · arm deadman · "
-                "space weather · iss · grab voice · list voice clones · scan processes · edge setup · translate to Spanish …. "
+                "Home ops: net watch · scan local network · lan status · trust network · "
+                "run backup · arm deadman · space weather · iss · grab voice · "
+                "list voice clones · scan processes · defender status · security scan · "
+                "harden processes · edge setup · translate to Spanish …. "
+                "Scanner: listen to traffic · satellite radio · weather radio · NOAA radio "
+                "(cam tiles stay silent). "
                 "Snap / phone: snapchat setup · test snapchat call · live comms setup · "
                 "ping my phone · setup phone link. "
                 "Smart: quiet mode · desk ready · full status · optimize jarvis · upgrade everything. "

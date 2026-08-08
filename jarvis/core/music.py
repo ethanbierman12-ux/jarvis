@@ -271,26 +271,71 @@ class MusicPlayer:
         self.press_play_key()
         return "Opened Highway to Hell on Spotify."
 
-    def play_shoot_to_thrill(self) -> str:
-        """Play AC/DC Shoot to Thrill (Iron Man 2) on Spotify."""
+    def _start_track_from_beginning(self, track_uri: str) -> bool:
+        """Web API: start a track at 0:00 (seek if Spotify resumes mid-track)."""
         sp = self._api()
-        if sp is not None:
+        if sp is None:
+            return False
+        try:
+            sp.start_playback(uris=[track_uri], position_ms=0)
+        except TypeError:
             try:
-                sp.start_playback(uris=[DEFAULT_TRACK_URI])
-                return "Playing Shoot to Thrill on Spotify."
+                sp.start_playback(uris=[track_uri])
             except Exception as e:
-                print(f"[music] API track play: {e}")
-        api_msg = self._api_play_search(DEFAULT_TRACK_QUERY)
-        if api_msg:
-            return api_msg
+                print(f"[music] start_playback: {e}")
+                return False
+        except Exception as e:
+            print(f"[music] start_playback: {e}")
+            return False
+        try:
+            time.sleep(0.25)
+            sp.seek_track(0)
+        except Exception as e:
+            print(f"[music] seek 0:00: {e}")
+        self.press_play_key()
+        return True
+
+    def play_shoot_to_thrill(self) -> str:
+        """Play AC/DC Shoot to Thrill (Iron Man 2) from the beginning."""
+        if self._start_track_from_beginning(DEFAULT_TRACK_URI):
+            return "Playing Shoot to Thrill on Spotify."
+        # Prefer pinned URI over search (search can pick a cover / resume mid-song)
         if self._launch_uri(DEFAULT_TRACK_URI):
             self._ensure_playing(wait_s=1.8, retries=2)
+            self.press_play_key()
+            # API seek after desktop open, if auth is available
+            try:
+                sp = self._api()
+                if sp is not None:
+                    time.sleep(0.4)
+                    sp.seek_track(0)
+            except Exception:
+                pass
             return "Playing Shoot to Thrill on Spotify."
+        api_msg = self._api_play_search(DEFAULT_TRACK_QUERY)
+        if api_msg:
+            try:
+                sp = self._api()
+                if sp is not None:
+                    sp.seek_track(0)
+            except Exception:
+                pass
+            self._ensure_playing(wait_s=1.2, retries=2)
+            self.press_play_key()
+            return (
+                api_msg
+                if "thrill" in api_msg.lower()
+                else "Playing Shoot to Thrill on Spotify."
+            )
         if self._spotify.exists():
             try:
-                search = "spotify:search:" + urllib.parse.quote(DEFAULT_TRACK_QUERY)
-                subprocess.Popen([str(self._spotify), f"--uri={search}"], shell=False)
+                # Open the track URI directly — not a search page
+                subprocess.Popen(
+                    [str(self._spotify), f"--uri={DEFAULT_TRACK_URI}"],
+                    shell=False,
+                )
                 self._ensure_playing(wait_s=2.0, retries=2)
+                self.press_play_key()
                 return "Playing Shoot to Thrill on Spotify."
             except Exception:
                 pass
@@ -298,6 +343,7 @@ class MusicPlayer:
             "https://open.spotify.com/track/6GzCkTddOn1vSln1gbSr8y"
         )
         self._ensure_playing(wait_s=2.0, retries=2)
+        self.press_play_key()
         return "Opened Shoot to Thrill on Spotify."
 
     def play_workshop(self) -> str:

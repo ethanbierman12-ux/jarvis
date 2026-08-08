@@ -52,12 +52,19 @@ def is_obs_placeholder(frame: np.ndarray) -> bool:
         return False
 
 
-def configure_capture(cap: Any) -> None:
+def configure_capture(
+    cap: Any,
+    *,
+    max_width: int = 1280,
+    max_height: int = 720,
+) -> None:
     try:
         import cv2
 
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        w = max(320, min(1920, int(max_width or 1280)))
+        h = max(240, min(1080, int(max_height or 720)))
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         for prop, val in (
             (cv2.CAP_PROP_AUTO_EXPOSURE, 0.75),
@@ -71,7 +78,13 @@ def configure_capture(cap: Any) -> None:
         pass
 
 
-def open_by_index(index: int, *, reads: int = 3) -> tuple[Any, str] | None:
+def open_by_index(
+    index: int,
+    *,
+    reads: int = 3,
+    max_width: int = 1280,
+    max_height: int = 720,
+) -> tuple[Any, str] | None:
     """Open a camera by numeric index. Tries DSHOW then MSMF. Never opens by name."""
     try:
         import cv2
@@ -98,7 +111,7 @@ def open_by_index(index: int, *, reads: int = 3) -> tuple[Any, str] | None:
                 except Exception:
                     pass
                 continue
-            configure_capture(cap)
+            configure_capture(cap, max_width=max_width, max_height=max_height)
             ok_frame = None
             for _ in range(max(1, reads)):
                 ok, fr = cap.read()

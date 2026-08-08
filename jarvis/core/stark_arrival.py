@@ -1,4 +1,4 @@
-"""Iconic Stark arrival — Daddy's home → Jarvis helps → Highway to Hell + research."""
+"""Iconic Stark arrival — Daddy's home → Jarvis helps → Shoot to Thrill + research."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def run_stark_arrival(
 ) -> str:
     """Blocking cinematic sequence. Call from a daemon thread.
 
-    Order: Daddy's home → Jarvis talks → research tabs → Highway to Hell + Play → help brief.
+    Order: Daddy's home → Jarvis talks → research tabs → Shoot to Thrill + Play → help brief.
     """
     notify = on_status or (lambda _s: None)
     hud = on_hud or (lambda _s: None)
@@ -80,13 +80,13 @@ def run_stark_arrival(
         except Exception as e:
             print(f"[stark-arrival] research tabs: {e}")
 
-    # 4) Highway to Hell + force Play
+    # 4) Shoot to Thrill from the top + force Play
     if play_music_enabled and music_fn is not None:
         time.sleep(max(0.0, pause_before_music))
         try:
             if on_track:
-                on_track("Highway to Hell")
-            msg = music_fn() or "Playing Highway to Hell."
+                on_track("Shoot to Thrill")
+            msg = music_fn() or "Playing Shoot to Thrill."
             notify(str(msg)[:120])
             bits.append(str(msg))
             if press_play is not None:

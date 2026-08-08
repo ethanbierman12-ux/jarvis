@@ -129,3 +129,7 @@
 {"event": "ask", "id": "d3845106bf83", "kind": "clarify", "action": "clarify", "agent": "healer"}
 {"event": "ask", "id": "1f636bccb4af", "kind": "clarify", "action": "clarify", "agent": "healer"}
 {"event": "resolve", "id": "1f636bccb4af", "approve": true, "answer": "Terminate MsMpEng.exe"}
+{"event": "ask", "id": "83472f97bca9", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "8b44b97846ae", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "8b44b97846ae", "approve": true, "answer": "Terminate MsMpEng.exe"}
+{"event": "ask", "id": "269e3d3506d5", "kind": "clarify", "action": "clarify", "agent": "healer"}

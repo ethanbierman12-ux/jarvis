@@ -5,7 +5,7 @@
       "mac": "f8:d0:0e:66:1a:6f",
       "vendor": "",
       "first_seen": 1786060639.7690544,
-      "last_seen": 1786063146.1338472,
+      "last_seen": 1786129024.1114235,
       "last_alert": 0.0,
       "trusted": true
     },
@@ -14,7 +14,7 @@
       "mac": "f8:fc:e1:8c:f7:14",
       "vendor": "",
       "first_seen": 1786060639.7690687,
-      "last_seen": 1786062421.4590318,
+      "last_seen": 1786124007.7114618,
       "last_alert": 0.0,
       "trusted": true
     },
@@ -23,7 +23,7 @@
       "mac": "44:6d:7f:e5:74:e8",
       "vendor": "",
       "first_seen": 1786060639.7690773,
-      "last_seen": 1786062421.4590318,
+      "last_seen": 1786124007.7114618,
       "last_alert": 0.0,
       "trusted": true
     },
@@ -32,7 +32,7 @@
       "mac": "50:07:c3:24:f8:53",
       "vendor": "",
       "first_seen": 1786060639.7690854,
-      "last_seen": 1786063146.1338472,
+      "last_seen": 1786129024.1114235,
       "last_alert": 0.0,
       "trusted": true
     },
@@ -41,7 +41,7 @@
       "mac": "78:80:38:42:45:3a",
       "vendor": "",
       "first_seen": 1786060639.7690947,
-      "last_seen": 1786063146.1338472,
+      "last_seen": 1786129024.1114235,
       "last_alert": 0.0,
       "trusted": true
     },
@@ -50,7 +50,7 @@
       "mac": "d4:3a:2f:a6:54:f8",
       "vendor": "",
       "first_seen": 1786060639.7691042,
-      "last_seen": 1786063146.1338472,
+      "last_seen": 1786129024.1114235,
       "last_alert": 0.0,
       "trusted": true
     },
@@ -59,7 +59,7 @@
       "mac": "08:6a:e5:27:da:76",
       "vendor": "",
       "first_seen": 1786060639.7691126,
-      "last_seen": 1786062421.4590318,
+      "last_seen": 1786124007.7114618,
       "last_alert": 0.0,
       "trusted": true
     },
@@ -70,6 +70,15 @@
       "first_seen": 1786063146.1338472,
       "last_seen": 1786063146.1338472,
       "last_alert": 1786063146.1338472,
+      "trusted": false
+    },
+    "e6:e7:a7:bd:90:c9": {
+      "ip": "10.0.0.46",
+      "mac": "e6:e7:a7:bd:90:c9",
+      "vendor": "",
+      "first_seen": 1786129024.1114235,
+      "last_seen": 1786129024.1114235,
+      "last_alert": 1786129024.1114235,
       "trusted": false
     }
   }

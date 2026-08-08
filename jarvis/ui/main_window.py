@@ -291,6 +291,17 @@ class MainWindow(QMainWindow):
         self.camera.gesture.connect(self._on_gesture_state)
         self.camera.gesture_drag.connect(self._on_gesture_drag)
         self.camera.gesture_swipe.connect(self._on_gesture_swipe)
+        # Camera dock desk pack → traffic / NOAA / LAN / Defender
+        try:
+            self.camera.desk_traffic.connect(
+                lambda: self._dispatch_brain("show traffic cams")
+            )
+            self.camera.desk_listen.connect(self._traffic_play_listen)
+            self.camera.desk_sat.connect(self._traffic_play_sat)
+            self.camera.desk_lan.connect(self._camera_desk_lan)
+            self.camera.desk_sec.connect(self._camera_desk_sec)
+        except Exception as e:
+            print(f"[camera] desk pack wire: {e}")
 
         self._spatial = None
         try:
@@ -525,6 +536,25 @@ class MainWindow(QMainWindow):
                 "night_vision": lambda on: QTimer.singleShot(
                     0, lambda: self._set_night_vision(bool(on))
                 ),
+                "thermal_assist": lambda on: QTimer.singleShot(
+                    0, lambda: self._set_thermal_assist(bool(on))
+                ),
+                "ops_hud": lambda on: self.request_ui.emit("ops_hud", bool(on)),
+                "traffic_cams": lambda on: self.request_ui.emit("traffic_cams", bool(on)),
+                "traffic_board": lambda on: self.request_ui.emit("traffic_board", bool(on)),
+                "traffic_live_map": lambda on: self.request_ui.emit(
+                    "traffic_live_map", bool(on)
+                ),
+                "scanner_live": lambda payload: self.request_ui.emit(
+                    "scanner_live", payload
+                ),
+                "traffic_cams_next": lambda _: self.request_ui.emit(
+                    "traffic_cams_next", True
+                ),
+                "traffic_region": lambda r: self.request_ui.emit(
+                    "traffic_region", str(r or "")
+                ),
+                "ops_pins": lambda pins: self.request_ui.emit("ops_pins", pins),
                 "spatial_ui": lambda on: QTimer.singleShot(
                     0, lambda: self._set_spatial(bool(on))
                 ),
@@ -1567,7 +1597,8 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         try:
-            self.nv_badge.set_active(on)
+            self.nv_badge.set_mode("nv")
+            self.nv_badge.set_active(on, mode="nv")
             self.nv_badge.move(24, 72)
             self.nv_badge.raise_()
         except Exception:
@@ -1586,8 +1617,50 @@ class MainWindow(QMainWindow):
         else:
             self.append_log("OPTICS › day feed / night vision offline")
             if not self.countdown.isVisible():
-                self.status.setText("● OPTIMAL")
-                self.status.setStyleSheet("color:#00f0ff; font-size:11px;")
+                # Keep thermal status if that is still on
+                if getattr(self.camera, "_thermal_assist", False):
+                    self.status.setText("● THERMAL ASSIST")
+                    self.status.setStyleSheet("color:#ff9a4a; font-size:11px;")
+                else:
+                    self.status.setText("● OPTIMAL")
+                    self.status.setStyleSheet("color:#00f0ff; font-size:11px;")
+
+    def _set_thermal_assist(self, on: bool) -> None:
+        on = bool(on)
+        try:
+            if on:
+                self.nv_badge.set_mode("thermal")
+                self.nv_badge.set_active(True, mode="thermal")
+            else:
+                # If night vision still on, restore NV badge; else hide
+                nv_on = bool(getattr(self.camera, "_night_vision", False))
+                if nv_on:
+                    self.nv_badge.set_active(True, mode="nv")
+                else:
+                    self.nv_badge.set_active(False)
+            self.nv_badge.move(24, 72)
+            self.nv_badge.raise_()
+        except Exception:
+            pass
+        try:
+            self.camera.set_thermal_assist(on)
+        except Exception:
+            pass
+        if on:
+            self.append_log("OPTICS › thermal assist online (software · not FLIR)")
+            self.status.setText("● THERMAL ASSIST")
+            self.status.setStyleSheet("color:#ff9a4a; font-size:11px;")
+            if not self.camera.isVisible():
+                self._toggle_camera(True)
+        else:
+            self.append_log("OPTICS › thermal assist offline")
+            if not self.countdown.isVisible():
+                if getattr(self.camera, "_night_vision", False):
+                    self.status.setText("● NIGHT VISION")
+                    self.status.setStyleSheet("color:#39ff7a; font-size:11px;")
+                else:
+                    self.status.setText("● OPTIMAL")
+                    self.status.setStyleSheet("color:#00f0ff; font-size:11px;")
 
     def _boot_optics_auto(self) -> None:
         """After HUD boot: arm night vision automatically only at night."""
@@ -1686,6 +1759,22 @@ class MainWindow(QMainWindow):
             self._fabricator_build()
         elif key == "aerospatial_ui":
             self._toggle_aerospatial(bool(payload))
+        elif key == "ops_hud":
+            self._toggle_ops_hud(bool(payload))
+        elif key == "traffic_cams":
+            self._toggle_traffic_cams(bool(payload))
+        elif key == "traffic_board":
+            self._open_traffic_board_ui()
+        elif key == "traffic_live_map":
+            self._toggle_traffic_live_map(bool(payload))
+        elif key == "scanner_live":
+            self._open_scanner_live(payload)
+        elif key == "traffic_cams_next":
+            self._next_traffic_cams_page()
+        elif key == "traffic_region":
+            self._set_traffic_region(str(payload or ""))
+        elif key == "ops_pins":
+            self._set_ops_pins(payload)
         elif key == "aerospatial_scan":
             self._aerospatial_scan()
         elif key == "aerospatial_deploy":
@@ -1777,6 +1866,7 @@ class MainWindow(QMainWindow):
             self.append_log("CAMERA › full-screen theater — news + Jarvis dock")
             self.status.setText("● CAMERA THEATER")
             self._cam_open_retries = 0
+            self._cam_live_raised = False
 
             # Bring Jarvis to the front — otherwise it "opens" behind Chrome/etc.
             try:
@@ -1826,12 +1916,14 @@ class MainWindow(QMainWindow):
                         self.camera.set_night_vision(True)
                 except Exception:
                     pass
-                # Confirm live feed (or retry) — don't leave a blank black panel
-                QTimer.singleShot(2800, self._ensure_camera_visible)
-                QTimer.singleShot(3000, self._persist_camera_index)
+                # Soft-load Defender / LAN line onto camera dock
+                QTimer.singleShot(2800, self._refresh_camera_desk_sec)
+                # Probe can take several seconds — don't fail while still opening
+                QTimer.singleShot(4500, self._ensure_camera_visible)
+                QTimer.singleShot(5000, self._persist_camera_index)
 
             # Give the vision worker time to fully release the USB device
-            QTimer.singleShot(1400, _open)
+            QTimer.singleShot(2200, _open)
         else:
             self.camera.hide_feed(emit=False)
             try:
@@ -1845,26 +1937,33 @@ class MainWindow(QMainWindow):
                 QTimer.singleShot(900, self.brain.vision.start)
 
     def _ensure_camera_visible(self) -> None:
-        """After open attempt: keep theater up, or retry once, else restore HUD."""
+        """After open attempt: keep theater up, or retry, else restore HUD."""
         if not self.camera.isVisible():
             return
         cap = getattr(self.camera, "_cap", None)
         if cap is not None:
-            self.camera.raise_()
-            try:
-                self.raise_()
-                self.activateWindow()
-            except Exception:
-                pass
+            # Coalesce — one raise pass when live; avoid activate storms
+            if not getattr(self, "_cam_live_raised", False):
+                self._cam_live_raised = True
+                try:
+                    self.camera.raise_()
+                except Exception:
+                    pass
             self._cam_open_retries = 0
             self.append_log("CAMERA › live")
             self.status.setText("● CAMERA LIVE")
             return
-        # First failure — retry once after another release window
+        # Still probing — wait, don't declare failure yet
+        if bool(getattr(self.camera, "_opening", False)):
+            self.append_log("CAMERA › still opening…")
+            self.status.setText("● CAMERA OPENING")
+            QTimer.singleShot(2500, self._ensure_camera_visible)
+            return
+        # Retry a few times after release windows (USB often busy right after vision.stop)
         retries = int(getattr(self, "_cam_open_retries", 0) or 0)
-        if retries < 1:
+        if retries < 3:
             self._cam_open_retries = retries + 1
-            self.append_log("CAMERA › retrying open…")
+            self.append_log(f"CAMERA › retrying open ({self._cam_open_retries}/3)…")
             self.status.setText("● CAMERA RETRY")
             try:
                 if self.brain:
@@ -1876,9 +1975,9 @@ class MainWindow(QMainWindow):
 
             def _retry():
                 self.camera.open_feed(preferred_index=idx, prefer=prefer)
-                QTimer.singleShot(2200, self._ensure_camera_visible)
+                QTimer.singleShot(4000, self._ensure_camera_visible)
 
-            QTimer.singleShot(900, _retry)
+            QTimer.singleShot(1200, _retry)
             return
         self._cam_open_retries = 0
         # Failed to grab a device — don't leave a blank overlay
@@ -1949,6 +2048,465 @@ class MainWindow(QMainWindow):
             return
         self.append_log("AEROSPATIAL › cinematic room mesh online")
         self.status.setText("● AR AEROSPATIAL")
+
+    def _toggle_ops_hud(self, open_it: bool) -> None:
+        """Owner-site ops map overlay on live camera theater."""
+        if not open_it:
+            try:
+                self.camera.close_ops_hud()
+            except Exception:
+                pass
+            self.append_log("OPS HUD › map offline")
+            self.status.setText("● OPTIMAL")
+            return
+        if not self.camera.isVisible():
+            self._toggle_camera(True)
+        pins = None
+        try:
+            if self.brain and getattr(self.brain, "ops_hud", None):
+                pins = self.brain.ops_hud.pins()
+        except Exception:
+            pins = None
+        try:
+            self.camera.open_ops_hud(pins)
+        except Exception as e:
+            self.append_log(f"OPS HUD › failed: {e}")
+            return
+        self.append_log("OPS HUD › owner map online")
+        self.status.setText("● OPS HUD")
+
+    def _set_ops_pins(self, pins) -> None:
+        try:
+            self.camera.set_ops_pins(list(pins or []))
+        except Exception as e:
+            print(f"[ops_hud] set pins: {e}")
+
+
+    def _toggle_traffic_cams(self, open_it: bool) -> None:
+        """Public official DOT/511 traffic stills overlay (no private CCTV)."""
+        if not open_it:
+            try:
+                if getattr(self.camera, "close_traffic_board_panel", None):
+                    self.camera.close_traffic_board_panel()
+            except Exception:
+                pass
+            panel = getattr(self, "traffic_board", None)
+            if panel is not None:
+                try:
+                    panel.close_panel()
+                except Exception:
+                    pass
+            try:
+                self._toggle_traffic_live_map(False)
+            except Exception:
+                pass
+            self.append_log("TRAFFIC › cams closed")
+            self.status.setText("● OPTIMAL")
+            return
+        city = "Philadelphia"
+        fetcher = None
+        panel_ref: list = [None]
+        try:
+            tc = getattr(self.brain, "traffic_cams", None) if self.brain else None
+            if tc is not None:
+                city = getattr(tc, "city", city) or city
+
+                def fetcher():
+                    panel = panel_ref[0]
+                    off = 0
+                    if panel is not None and hasattr(panel, "page_offset"):
+                        try:
+                            off = int(panel.page_offset())
+                        except Exception:
+                            off = 0
+                    if hasattr(tc, "live_grid"):
+                        return tc.live_grid(4, offset=off)
+                    return tc.grid(4, offset=off)
+
+        except Exception as e:
+            print(f"[traffic_cams] ui: {e}")
+
+        def _wire_panel(panel) -> None:
+            panel_ref[0] = panel
+            try:
+                panel.region_changed.disconnect()
+            except Exception:
+                pass
+            try:
+                panel.find_address.disconnect()
+            except Exception:
+                pass
+            try:
+                panel.open_live_map.disconnect()
+            except Exception:
+                pass
+            try:
+                panel.open_board.disconnect()
+            except Exception:
+                pass
+            try:
+                panel.play_dispatch.disconnect()
+            except Exception:
+                pass
+            try:
+                panel.play_listen.disconnect()
+            except Exception:
+                pass
+            try:
+                panel.play_truck.disconnect()
+            except Exception:
+                pass
+            try:
+                panel.play_sat.disconnect()
+            except Exception:
+                pass
+            panel.open_board.connect(self._open_traffic_board_ui)
+            panel.open_live_map.connect(lambda: self._toggle_traffic_live_map(True))
+            panel.find_address.connect(self._traffic_find_address)
+            panel.region_changed.connect(self._set_traffic_region)
+            try:
+                panel.play_dispatch.connect(self._traffic_play_dispatch)
+            except Exception:
+                pass
+            try:
+                panel.play_listen.connect(self._traffic_play_listen)
+            except Exception:
+                pass
+            try:
+                panel.play_truck.connect(self._traffic_play_truck)
+            except Exception:
+                pass
+            try:
+                panel.play_sat.connect(self._traffic_play_sat)
+            except Exception:
+                pass
+            try:
+                tc = getattr(self.brain, "traffic_cams", None) if self.brain else None
+                if tc is not None:
+                    panel.set_region(getattr(tc, "region", city))
+            except Exception:
+                panel.set_city(city)
+
+        # Prefer overlay on camera theater if live; else root panel
+        opened = False
+        try:
+            if self.camera.isVisible() and hasattr(self.camera, "open_traffic_board_panel"):
+                self.camera.open_traffic_board_panel(fetcher=fetcher, city=city)
+                try:
+                    panel = getattr(self.camera, "traffic_board", None)
+                    if panel is not None:
+                        _wire_panel(panel)
+                except Exception:
+                    pass
+                opened = True
+        except Exception as e:
+            print(f"[traffic_cams] theater: {e}")
+        if not opened:
+            try:
+                from jarvis.ui.widgets.traffic_board import TrafficBoardPanel
+
+                if getattr(self, "traffic_board", None) is None:
+                    root = self.centralWidget() or self._root
+                    self.traffic_board = TrafficBoardPanel(root)
+                    self.traffic_board.hide()
+                panel = self.traffic_board
+                _wire_panel(panel)
+                if fetcher is not None:
+                    panel.set_fetcher(fetcher)
+                root = panel.parentWidget() or self
+                panel.move(max(12, (root.width() - panel.width()) // 2), 40)
+                panel.open_panel()
+                panel.raise_()
+                opened = True
+            except Exception as e:
+                self.append_log(f"TRAFFIC › failed: {e}")
+                self._open_traffic_board_ui()
+                return
+
+        self.append_log(f"TRAFFIC › {city} live map + audio")
+        self.status.setText("● TRAFFIC LIVE")
+        # JPEG stills often don't move (CDN). Official MAP has real video.
+        QTimer.singleShot(250, lambda: self._toggle_traffic_live_map(True))
+        # Traffic cams have no audio track — start public scanner listen.
+        QTimer.singleShot(600, self._traffic_play_listen)
+    def _set_traffic_region(self, region: str) -> None:
+        """Switch TrafficCams region and refresh open board."""
+        region = (region or "").strip()
+        if not region:
+            return
+        try:
+            tc = getattr(self.brain, "traffic_cams", None) if self.brain else None
+            if tc is not None and hasattr(tc, "set_region"):
+                msg = tc.set_region(region)
+                self.append_log(f"TRAFFIC › {msg}")
+            # Keep scanner city aligned with board region
+            try:
+                if self.brain and hasattr(self.brain, "set_traffic_region"):
+                    # Already set on tc; just sync scanner without re-opening board
+                    sr = getattr(self.brain, "scanner_radio", None)
+                    if sr is not None and hasattr(sr, "follow_traffic_region"):
+                        if region.lower() not in ("world", ""):
+                            sr.follow_traffic_region(region)
+                elif self.brain:
+                    sr = getattr(self.brain, "scanner_radio", None)
+                    if sr is not None and hasattr(sr, "follow_traffic_region"):
+                        if region.lower() not in ("world", ""):
+                            sr.follow_traffic_region(region)
+            except Exception as e:
+                print(f"[scanner_radio] ui region: {e}")
+            for panel in (
+                getattr(self.camera, "traffic_board", None) if self.camera else None,
+                getattr(self, "traffic_board", None),
+            ):
+                if panel is not None and hasattr(panel, "set_region"):
+                    try:
+                        # Avoid re-emitting region_changed loop: set UI only
+                        panel.set_region(region)
+                        panel._page = 0
+                        panel._had_pixmap = [False] * 4
+                        panel._busy = False
+                        QTimer.singleShot(80, panel._refresh)
+                    except Exception:
+                        pass
+            self.status.setText(f"● TRAFFIC · {region.upper()[:12]}")
+        except Exception as e:
+            print(f"[traffic_cams] region: {e}")
+
+    def _traffic_play_dispatch(self) -> None:
+        """DISPATCH button → public Broadcastify local dispatch."""
+        try:
+            self.append_log("SCANNER › local dispatch")
+            self._dispatch_brain("put on local dispatch")
+        except Exception as e:
+            print(f"[traffic_dispatch] {e}")
+
+    def _traffic_play_listen(self) -> None:
+        """LISTEN → live city scanner audio (not a dead 'traffic' search)."""
+        try:
+            self.append_log("SCANNER › live city audio")
+            self._dispatch_brain("listen to traffic")
+        except Exception as e:
+            print(f"[traffic_listen] {e}")
+
+    def _open_scanner_live(self, payload=None) -> None:
+        """Embed Broadcastify/NOAA player — prefer camera theater when live."""
+        url = "https://www.broadcastify.com/listen/ctid/2291"
+        title = "LIVE SCANNER AUDIO"
+        if isinstance(payload, dict):
+            url = (payload.get("url") or url).strip() or url
+            title = (payload.get("title") or title).strip() or title
+        elif isinstance(payload, str) and payload.startswith("http"):
+            url = payload
+        try:
+            if (
+                self.camera is not None
+                and self.camera.isVisible()
+                and hasattr(self.camera, "open_scanner_audio")
+            ):
+                self.camera.open_scanner_audio(url, title=title)
+                self.append_log(f"SCANNER › camera player {url[:60]}")
+                self.status.setText("● LIVE SCANNER · CAM")
+                return
+        except Exception as e:
+            print(f"[scanner_live] theater: {e}")
+        try:
+            from jarvis.ui.widgets.traffic_board import ScannerAudioPanel
+
+            if getattr(self, "scanner_audio", None) is None:
+                root = self.centralWidget() or self._root
+                self.scanner_audio = ScannerAudioPanel(root)
+                self.scanner_audio.hide()
+            panel = self.scanner_audio
+            root = panel.parentWidget() or self
+            panel.move(
+                max(12, root.width() - panel.width() - 24),
+                max(40, (root.height() - panel.height()) // 2),
+            )
+            panel.open_panel(url, title=title)
+            panel.raise_()
+            self.append_log(f"SCANNER › live player {url[:60]}")
+            self.status.setText("● LIVE SCANNER")
+        except Exception as e:
+            self.append_log(f"SCANNER › player failed: {e}")
+            try:
+                import webbrowser
+
+                webbrowser.open(url)
+            except Exception:
+                pass
+
+    def _camera_desk_lan(self) -> None:
+        """LAN button on camera dock — owner network scan."""
+        try:
+            self.append_log("LAN › camera desk scan")
+            if self.camera and hasattr(self.camera, "set_desk_sec_line"):
+                self.camera.set_desk_sec_line("LAN · scanning owner network…")
+            self._dispatch_brain("scan local network")
+        except Exception as e:
+            print(f"[camera_lan] {e}")
+
+    def _camera_desk_sec(self) -> None:
+        """SEC button on camera dock — Defender + process harden."""
+        try:
+            self.append_log("SEC › camera desk security scan")
+            if self.camera and hasattr(self.camera, "set_desk_sec_line"):
+                self.camera.set_desk_sec_line("SEC · Defender + process scan…")
+            # Status first (fast), then full scan
+            if self.brain and getattr(self.brain, "software_security", None):
+                try:
+                    st = self.brain.software_security.defender_status()
+                    if self.camera and hasattr(self.camera, "set_desk_sec_line"):
+                        self.camera.set_desk_sec_line(st[:120])
+                    self.append_log(f"SEC › {st[:100]}")
+                except Exception:
+                    pass
+            self._dispatch_brain("security scan")
+        except Exception as e:
+            print(f"[camera_sec] {e}")
+
+    def _refresh_camera_desk_sec(self) -> None:
+        """Populate camera dock SEC line with Defender + net watch snapshot."""
+        if not self.camera or not self.camera.isVisible():
+            return
+        bits = []
+        try:
+            ss = getattr(self.brain, "software_security", None) if self.brain else None
+            if ss is not None:
+                bits.append(ss.defender_status()[:70])
+        except Exception:
+            pass
+        try:
+            nw = getattr(self.brain, "net_watch", None) if self.brain else None
+            if nw is not None and hasattr(nw, "status"):
+                bits.append(nw.status())
+        except Exception:
+            pass
+        if not bits:
+            bits.append("CAMS · LISTEN · SAT · LAN · SEC on dock")
+        try:
+            self.camera.set_desk_sec_line(" · ".join(bits)[:140])
+        except Exception:
+            pass
+
+    def _traffic_play_truck(self) -> None:
+        """TRUCK button → public Broadcastify truck / DOT listen."""
+        try:
+            self.append_log("SCANNER › truck radio")
+            self._dispatch_brain("truck dispatch")
+        except Exception as e:
+            print(f"[traffic_truck] {e}")
+
+    def _traffic_play_sat(self) -> None:
+        """SAT → NOAA / satellite weather radio (not traffic-cam mics)."""
+        try:
+            self.append_log("SCANNER › NOAA / satellite weather radio (cams stay silent)")
+            self._dispatch_brain("satellite radio")
+        except Exception as e:
+            print(f"[traffic_sat] {e}")
+
+    def _traffic_find_address(self) -> None:
+        """FIND from traffic board → open tactical map for address search."""
+        try:
+            if self.brain and hasattr(self.brain, "find_address_on_map"):
+                msg = self.brain.find_address_on_map("")
+                self.append_log(f"MAP › {msg}")
+                return
+        except Exception as e:
+            print(f"[traffic_find] {e}")
+        city = "Philadelphia"
+        try:
+            city = getattr(self.brain.settings, "city", city) if self.brain else city
+        except Exception:
+            pass
+        self.request_ui.emit("map_ui", {"place": city, "markers": None, "animate": True})
+        self.append_log("MAP › find address — say locate / where is / find address …")
+
+    def _next_traffic_cams_page(self) -> None:
+        """Rotate to next page of cams on the open traffic board."""
+        for panel in (
+            getattr(self.camera, "traffic_board", None) if self.camera else None,
+            getattr(self, "traffic_board", None),
+        ):
+            if panel is not None and hasattr(panel, "_next_page") and panel.isVisible():
+                try:
+                    panel._next_page()
+                    self.append_log("TRAFFIC › next cams page")
+                    return
+                except Exception as e:
+                    print(f"[traffic_cams] next: {e}")
+        self._toggle_traffic_cams(True)
+        self.append_log("TRAFFIC › cams opened — say next traffic cams to rotate")
+
+    def _toggle_traffic_live_map(self, open_it: bool) -> None:
+        """Embedded official 511/DOT interactive map for current region."""
+        if not open_it:
+            try:
+                if getattr(self.camera, "close_traffic_live_map", None):
+                    self.camera.close_traffic_live_map()
+            except Exception:
+                pass
+            panel = getattr(self, "traffic_live_map", None)
+            if panel is not None:
+                try:
+                    panel.close_panel()
+                except Exception:
+                    pass
+            self.append_log("TRAFFIC › live map closed")
+            return
+        map_url = "https://www.511pa.com/"
+        title = "LIVE TRAFFIC MAP"
+        try:
+            tc = getattr(self.brain, "traffic_cams", None) if self.brain else None
+            if tc is not None:
+                map_url = tc.map_url() if hasattr(tc, "map_url") else getattr(
+                    tc, "board_url", map_url
+                )
+                title = f"{getattr(tc, 'city', 'TRAFFIC')} · LIVE MAP"
+        except Exception:
+            pass
+        try:
+            if self.camera.isVisible() and hasattr(self.camera, "open_traffic_live_map"):
+                self.camera.open_traffic_live_map(url=map_url, title=title)
+                self.append_log(f"TRAFFIC › live map {map_url}")
+                self.status.setText("● LIVE TRAFFIC MAP")
+                return
+        except Exception as e:
+            print(f"[traffic_live_map] theater: {e}")
+        try:
+            from jarvis.ui.widgets.traffic_board import TrafficLiveMapPanel
+
+            if getattr(self, "traffic_live_map", None) is None:
+                root = self.centralWidget() or self._root
+                self.traffic_live_map = TrafficLiveMapPanel(root)
+                self.traffic_live_map.hide()
+            panel = self.traffic_live_map
+            panel.set_map_url(map_url, title=title)
+            root = panel.parentWidget() or self
+            panel.move(max(12, (root.width() - panel.width()) // 2), 30)
+            panel.open_panel(map_url)
+            panel.raise_()
+            self.append_log(f"TRAFFIC › live map {map_url}")
+            self.status.setText("● LIVE TRAFFIC MAP")
+        except Exception as e:
+            self.append_log(f"TRAFFIC › live map failed: {e}")
+            self._open_traffic_board_ui()
+
+    def _open_traffic_board_ui(self) -> None:
+        try:
+            if self.brain and getattr(self.brain, "traffic_cams", None):
+                msg = self.brain.traffic_cams.open_traffic_board()
+                self.append_log(f"TRAFFIC › {msg}")
+                return
+        except Exception as e:
+            print(f"[traffic_board] {e}")
+        try:
+            import webbrowser
+            from jarvis.core.traffic_cams import TRAFFIC_BOARD_URL
+
+            webbrowser.open(TRAFFIC_BOARD_URL)
+            self.append_log("TRAFFIC › opened official map")
+        except Exception as e:
+            self.append_log(f"TRAFFIC › board failed: {e}")
 
     def _aerospatial_scan(self) -> None:
         ar = getattr(self.camera, "aerospatial", None)

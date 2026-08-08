@@ -300,5 +300,15 @@
   "trust the network \u2192 scan the network \u2192 scan processes \u2192 arm deadman": 1,
   "plays the music \u2192 what time is it \u2192 mute my mic": 1,
   "dddys home \u2192 daddy home \u2192 open claude": 1,
-  "dddys home \u2192 daddy home \u2192 open claude \u2192 start research": 1
+  "dddys home \u2192 daddy home \u2192 open claude \u2192 start research": 1,
+  "daddy's home \u2192 yes \u2192 shutdown. jarvis jarvis, shut down. jarvis, shut the fuck up": 1,
+  "daddy's home \u2192 yes \u2192 shutdown. jarvis jarvis, shut down. jarvis, shut the fuck up \u2192 power off": 1,
+  "yes \u2192 shutdown. jarvis jarvis, shut down. jarvis, shut the fuck up \u2192 power off \u2192 rgb off": 1,
+  "show traffic cams \u2192 listen to traffic \u2192 put on local dispatch": 1,
+  "show traffic cams \u2192 listen to traffic \u2192 listen to traffic": 2,
+  "show traffic cams \u2192 listen to traffic \u2192 listen to traffic \u2192 listen to traffic": 1,
+  "listen to traffic \u2192 listen to traffic \u2192 listen to traffic \u2192 listen to traffic": 1,
+  "listen to traffic \u2192 listen to traffic \u2192 show traffic cams": 1,
+  "listen to traffic \u2192 listen to traffic \u2192 show traffic cams \u2192 listen to traffic": 1,
+  "listen to traffic \u2192 show traffic cams \u2192 listen to traffic \u2192 listen to traffic": 1
 }
