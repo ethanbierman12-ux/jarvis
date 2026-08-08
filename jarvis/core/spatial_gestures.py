@@ -106,14 +106,20 @@ class SpatialWorkspace:
             return "Main HUD on primary."
 
         if d == "up":
-            # Pull ops + keep HUD home
+            # Throw foreground app to top command deck + dual board layout
+            try:
+                from jarvis.core.gaze_workspace import move_foreground_to_monitor
+
+                move_foreground_to_monitor("top")
+            except Exception:
+                pass
             try:
                 self._place_ops("secondary")
                 self._place_hud("primary")
             except Exception:
                 pass
-            self._note("Spatial › dual layout armed")
-            return "Dual layout — HUD primary, digests secondary."
+            self._note("Spatial › throw-up → top deck")
+            return "Thrown to the top command deck."
 
         if d == "down":
             # Bring everything home to primary

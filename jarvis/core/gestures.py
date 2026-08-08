@@ -36,11 +36,12 @@ THUMB_IP = 3
 @dataclass
 class GestureState:
     active: bool = False
-    label: str = "none"  # open | pinch | fist | point | none
+    label: str = "none"  # open | pinch | fist | point | web_shooter | none
     cursor: tuple[float, float] = (0.5, 0.5)  # normalized 0..1 (mirrored screen space)
     pinch: bool = False
     swipe: str = ""  # left | right | up | down | ""
     landmarks: list[tuple[float, float]] = field(default_factory=list)  # pixel x,y on frame
+    depth: float = 0.35  # 0..1 palm-push (MediaPipe z / fist heuristic)
     engine: str = "none"
 
 
@@ -154,7 +155,12 @@ class HandGestureTracker:
             lm = result.hand_landmarks[0]
             pts = [(p.x * w, p.y * h) for p in lm]
             norm = [(p.x, p.y) for p in lm]
-            return self._classify(pts, norm, engine="mediapipe")
+            # MediaPipe z: more negative ≈ closer to camera → map to 0..1 push depth
+            zs = [float(getattr(p, "z", 0.0) or 0.0) for p in lm]
+            z_wrist = zs[0] if zs else 0.0
+            # Typical z range roughly -0.25..0.15; invert so closer = higher depth
+            depth = max(0.0, min(1.0, (-z_wrist + 0.05) / 0.35))
+            return self._classify(pts, norm, engine="mediapipe", depth=depth)
         except Exception as e:
             # One bad frame shouldn't kill the session
             if not getattr(self, "_err_once", False):
@@ -201,6 +207,7 @@ class HandGestureTracker:
         *,
         engine: str,
         force_label: str | None = None,
+        depth: float | None = None,
     ) -> GestureState:
         if not norm:
             return GestureState(engine=engine)
@@ -217,6 +224,9 @@ class HandGestureTracker:
             # Fist first — used to lock gestures after placing a panel
             if self._is_fist(norm):
                 label = "fist"
+                pinch = False
+            elif self._is_web_shooter(norm):
+                label = "web_shooter"
                 pinch = False
             elif self._is_pinch(norm):
                 pinch = True
@@ -249,6 +259,10 @@ class HandGestureTracker:
                 swipe = "down" if dy > 0 else "up"
                 self._last_swipe = now
 
+        # Depth: MediaPipe z when provided; else fist=push / open=shallow heuristic
+        if depth is None:
+            depth = 0.72 if label == "fist" else (0.55 if pinch_stable else 0.32)
+
         return GestureState(
             active=True,
             label=label,
@@ -256,6 +270,7 @@ class HandGestureTracker:
             pinch=pinch_stable,
             swipe=swipe,
             landmarks=pts,
+            depth=float(depth),
             engine=engine,
         )
 
@@ -293,6 +308,31 @@ class HandGestureTracker:
             if norm[tip][1] > norm[pip][1]:
                 others += 1
         return index_up and others >= 2
+
+    def _is_web_shooter(self, norm: list[tuple[float, float]]) -> bool:
+        """Spider-Man flick: middle + ring folded, thumb / index / pinky extended.
+
+        Landmark tips: 4 thumb, 8 index, 12 middle, 16 ring, 20 pinky.
+        """
+        if len(norm) <= PINKY_TIP:
+            return False
+        # Extended = tip above PIP (smaller y in image space)
+        def extended(tip: int, pip: int) -> bool:
+            return norm[tip][1] < norm[pip][1] - 0.015
+
+        def folded(tip: int, pip: int) -> bool:
+            return norm[tip][1] > norm[pip][1] - 0.01
+
+        mid_fold = folded(MIDDLE_TIP, MIDDLE_PIP)
+        ring_fold = folded(RING_TIP, RING_PIP)
+        idx_ext = extended(INDEX_TIP, INDEX_PIP)
+        pinky_ext = extended(PINKY_TIP, PINKY_PIP)
+        thumb_ext = norm[THUMB_TIP][0] < norm[THUMB_IP][0] - 0.02 or norm[THUMB_TIP][0] > norm[
+            THUMB_IP
+        ][0] + 0.02
+        # Also accept classic "two fingers tucked" with open span
+        span = self._dist(norm[INDEX_TIP], norm[PINKY_TIP])
+        return mid_fold and ring_fold and idx_ext and pinky_ext and thumb_ext and span > 0.12
 
 
 def draw_gestures(

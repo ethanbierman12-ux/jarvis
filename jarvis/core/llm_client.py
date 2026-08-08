@@ -1,8 +1,9 @@
 """Shared LLM completion — one helper for every module that needs prompt → text.
 
 Backend chain (first available wins):
-  1. Local Ollama  (http://127.0.0.1:11434 — free, private, preferred)
-  2. Anthropic     (anthropic_api_key in vault)
+  0. Claude Code CLI  (prefer_claude_cli / JARVIS_CLAUDE_CLI — uses subscription)
+  1. Local Ollama  (http://127.0.0.1:11434 — free, private)
+  2. Anthropic API (anthropic_api_key in vault)
   3. OpenAI        (openai_api_key in vault)
 
 Boot-safe: urllib only, no SDKs, every path wrapped. Returns "" when no
@@ -12,17 +13,23 @@ backend is reachable — callers degrade gracefully.
 from __future__ import annotations
 
 import json
+import os
+import time
 import urllib.error
 import urllib.request
 from typing import Any
 
 _OLLAMA_HOST = "http://127.0.0.1:11434"
-_ANTHROPIC_MODEL = "claude-sonnet-4-5"
+_ANTHROPIC_MODEL = "claude-opus-4-5"
 _OPENAI_MODEL = "gpt-4.1-mini"
 
 _ollama_model_cache: str | None = None
 _ollama_cache_at: float = 0.0
 _OLLAMA_RETRY_SEC = 60.0  # re-probe a down/empty Ollama once a minute
+
+# Skip cloud providers after billing/quota failures (avoid log spam)
+_cloud_cooldown_until: dict[str, float] = {}
+_CLOUD_COOLDOWN_SEC = 3600.0
 
 
 def _post_json(url: str, payload: dict, headers: dict | None = None, timeout: float = 60.0) -> dict:
@@ -43,7 +50,6 @@ def ollama_model(host: str = _OLLAMA_HOST) -> str:
     every minute so an Ollama started mid-session is picked up.
     """
     global _ollama_model_cache, _ollama_cache_at
-    import time
 
     if _ollama_model_cache:
         return _ollama_model_cache
@@ -61,6 +67,30 @@ def ollama_model(host: str = _OLLAMA_HOST) -> str:
     except Exception:
         _ollama_model_cache = ""
     return _ollama_model_cache
+
+
+def _cloud_ok(name: str) -> bool:
+    return time.time() >= float(_cloud_cooldown_until.get(name, 0) or 0)
+
+
+def _mark_cloud_down(name: str, err: str) -> None:
+    low = (err or "").lower()
+    if any(
+        k in low
+        for k in (
+            "credit balance",
+            "too low",
+            "exceeded your current quota",
+            "insufficient_quota",
+            "billing",
+            "http 429",
+            "http 402",
+            "http 401",
+            "http 403",
+        )
+    ):
+        _cloud_cooldown_until[name] = time.time() + _CLOUD_COOLDOWN_SEC
+        print(f"[llm] {name}: billing/quota — cooling down {int(_CLOUD_COOLDOWN_SEC/60)}m")
 
 
 def _complete_ollama(
@@ -89,7 +119,7 @@ def _complete_ollama(
 def _complete_anthropic(
     prompt: str, system: str, *, key: str, temperature: float, max_tokens: int
 ) -> str:
-    if not key:
+    if not key or not _cloud_ok("anthropic"):
         return ""
     try:
         payload: dict[str, Any] = {
@@ -110,14 +140,16 @@ def _complete_anthropic(
             p.get("text", "") for p in parts if p.get("type") == "text"
         ).strip()
     except Exception as e:
-        print(f"[llm] anthropic: {_err(e)}")
+        msg = _err(e)
+        print(f"[llm] anthropic: {msg}")
+        _mark_cloud_down("anthropic", msg)
         return ""
 
 
 def _complete_openai(
     prompt: str, system: str, *, key: str, temperature: float, max_tokens: int
 ) -> str:
-    if not key:
+    if not key or not _cloud_ok("openai"):
         return ""
     try:
         messages = []
@@ -138,7 +170,9 @@ def _complete_openai(
         if choices:
             return (choices[0].get("message", {}).get("content") or "").strip()
     except Exception as e:
-        print(f"[llm] openai: {_err(e)}")
+        msg = _err(e)
+        print(f"[llm] openai: {msg}")
+        _mark_cloud_down("openai", msg)
     return ""
 
 
@@ -164,11 +198,18 @@ def _vault_key(name: str) -> str:
 
 def backend_name() -> str:
     """Which backend complete() would use right now — for status lines."""
+    try:
+        from jarvis.core.anthropic_cli import available, prefer_cli
+
+        if prefer_cli() and available():
+            return "claude-cli"
+    except Exception:
+        pass
     if ollama_model():
         return f"ollama:{ollama_model()}"
-    if _vault_key("anthropic_api_key"):
+    if _vault_key("anthropic_api_key") and _cloud_ok("anthropic"):
         return "anthropic"
-    if _vault_key("openai_api_key"):
+    if _vault_key("openai_api_key") and _cloud_ok("openai"):
         return "openai"
     return "none"
 
@@ -180,29 +221,19 @@ def diagnose_failure() -> str:
             f"Ollama ({ollama_model()}) is listed but returned nothing. "
             "Try: ollama run llama3"
         )
-    # Probe why cloud failed without burning a full completion
-    ant = _vault_key("anthropic_api_key")
-    oai = _vault_key("openai_api_key")
-    bits: list[str] = []
-    if ant:
-        probe = _complete_anthropic(
-            "ping", system="Reply with OK only.", key=ant, temperature=0, max_tokens=4
-        )
-        if not probe:
-            bits.append("Anthropic key is set but rejected (usually no credits / billing).")
-    else:
-        bits.append("No Anthropic key.")
-    if oai:
-        probe = _complete_openai(
-            "ping", system="Reply with OK only.", key=oai, temperature=0, max_tokens=4
-        )
-        if not probe:
-            bits.append("OpenAI key is set but rejected (quota / billing).")
-    else:
-        bits.append("No OpenAI key.")
-    bits.append(
-        "Free fix: install Ollama from ollama.com, then run: ollama pull llama3"
-    )
+    bits: list[str] = [
+        "Ollama is offline (start it from ollama.com, then: ollama pull llama3)."
+    ]
+    if _vault_key("anthropic_api_key"):
+        if not _cloud_ok("anthropic"):
+            bits.append("Anthropic is on cooldown (no credits / billing).")
+        else:
+            bits.append("Anthropic key is set but may be out of credits.")
+    if _vault_key("openai_api_key"):
+        if not _cloud_ok("openai"):
+            bits.append("OpenAI is on cooldown (quota / billing).")
+        else:
+            bits.append("OpenAI key is set but may be out of quota.")
     return "No LLM reply, Sir. " + " ".join(bits)
 
 
@@ -217,6 +248,22 @@ def complete(
     """Prompt → text through the first available backend. '' when all fail."""
     if not (prompt or "").strip():
         return ""
+    # 0) Claude Code CLI (subscription — no API key burn)
+    try:
+        from jarvis.core.anthropic_cli import complete_cli, prefer_cli
+
+        if prefer_cli() or (os.environ.get("JARVIS_CLAUDE_CLI") or "").strip():
+            out = complete_cli(
+                prompt,
+                system=system,
+                model=model or _ANTHROPIC_MODEL,
+                max_tokens=max_tokens,
+            )
+            if out:
+                return out
+    except Exception as e:
+        print(f"[llm] claude-cli: {e}")
+
     out = _complete_ollama(
         prompt, system, model=model, temperature=temperature, max_tokens=max_tokens
     )

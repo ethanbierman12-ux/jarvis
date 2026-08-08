@@ -67,6 +67,21 @@ _INVENTIONS = (
     ("Caption Cut", "video", "captioned image filmstrip with export frame"),
     ("Night Trailer", "video", "cinematic trailer cards with music-free beats"),
     ("Storyboard Flip", "video", "storyboard frames play as a looping video"),
+    # Advanced 3D + motion (Three.js / GSAP via CDN — zero npm)
+    ("Orbit Reliquary", "3d", "rotating artifact viewer with orbit controls and GSAP intro"),
+    ("Nebula Field", "3d", "interactive particle nebula you can fly through"),
+    ("Chrome Turntable", "3d", "product turntable with studio lights and reflections"),
+    ("Lattice Sphere", "3d", "procedural wireframe sphere morphing in 3D space"),
+    ("Void Architect", "3d", "architectural block city you orbit and explode"),
+    ("Photon Trail", "3d", "camera fly-through of glowing ribbon geometry"),
+    ("Crystal Forge", "3d", "crystal mesh with bloom-like additive materials"),
+    ("Skybox Drift", "3d", "endless skybox cruise with animated fog and stars"),
+    ("Mech Pedestal", "3d", "hard-surface mech on a rotating pedestal stage"),
+    ("Pulse Timeline", "animation", "GSAP motion graphics timeline with kinetic type"),
+    ("Vector Cascade", "animation", "canvas vector morph animation with export frame"),
+    ("Kinetic Brand", "animation", "logo reveal motion piece with staggered tweens"),
+    ("Waveform Stage", "animation", "audio-reactive style bars driven by a fake beat"),
+    ("Parallax Codex", "animation", "multi-layer parallax story scroll with GSAP scrub"),
 )
 
 
@@ -129,9 +144,10 @@ class VibeCoder:
                 tab="working",
                 plan=[
                     "Invent concept",
-                    "Research web + images",
-                    "Draft prompts",
-                    "Generate rich code",
+                    "Research web + images (image agent)",
+                    "Draft feature checklist + prompts",
+                    "Coding agent (Cursor / local coder)",
+                    "Feature + script enrich passes",
                     "Sandbox preview",
                     "Publish (HITL)",
                 ],
@@ -191,15 +207,19 @@ class VibeCoder:
         files: dict[str, str] | None = None
         engine = "template"
 
-        # 1) Cursor SDK if keyed
-        progress("Checking Cursor agent…", agent_stage="plan", tab="working")
+        # 1) Cursor SDK (best coding agent when keyed)
+        progress(
+            "Coding agent — checking Cursor composer…",
+            agent_stage="plan",
+            tab="working",
+        )
         files = self._try_cursor_sdk(prompt, out_dir, progress)
         if files:
             engine = "cursor-sdk"
         else:
-            # 2) Local Ollama
+            # 2) Local coding model (prefer coder-tuned Ollama)
             progress(
-                "Generating project files with local model…",
+                "Coding agent — generating with best local coder model…",
                 agent_stage="code",
                 tab="coding",
             )
@@ -208,12 +228,33 @@ class VibeCoder:
                 engine = "ollama"
             else:
                 progress(
-                    "Using high-quality vibe templates (expanded)…",
+                    "Feature templates — expanded multi-view app shell…",
                     agent_stage="code",
                     tab="coding",
                 )
                 files = self._template_project(concept, research=research)
                 engine = "template"
+
+        # Always enrich: settings + features + image/script specialist passes
+        # (agent proliferation — temporary specialists, then join)
+        progress(
+            "Agent proliferation — FEATURE · IMAGE · SCRIPT specialists online…",
+            agent_stage="code",
+            tab="coding",
+            terminal="crew --spawn feature,image,script",
+            plan=[
+                f"Product: {concept['name']}",
+                "Sub-agent: FEATURE (settings + IA)",
+                "Sub-agent: IMAGE (gallery + captions)",
+                "Sub-agent: SCRIPT (interactive polish)",
+                "Join → sandbox preview",
+            ],
+        )
+        files = self._ensure_rich_project(files or {}, concept, research, progress)
+        if engine == "template":
+            engine = "template+agents"
+        else:
+            engine = f"{engine}+agents"
 
         total_bytes = sum(len(c.encode("utf-8", errors="ignore")) for c in files.values())
         # Sandbox first scaffolds are autonomous (policy). Only rebuild / monster trees gate.
@@ -296,28 +337,8 @@ class VibeCoder:
                 file_total=len(files),
             )
             _time.sleep(0.12)
-            # Prefer HTML preview when present
-            if rel_n.lower().endswith((".html", ".htm")):
-                progress(
-                    f"Hot preview {rel_n}",
-                    agent_stage="browser",
-                    tab="building",
-                    html=content if rel_n == "preview.html" or "preview" in rel_n else content,
-                    images=research.get("images") or [],
-                )
-
-        # Force sandbox preview document into theater before publish gate
-        preview_doc = files.get("preview.html") or files.get("index.html") or ""
-        if preview_doc:
-            progress(
-                "Loading sandbox preview…",
-                agent_stage="browser",
-                tab="building",
-                html=preview_doc,
-                images=research.get("images") or [],
-                research=research.get("hits") or [],
-                prompts=research.get("prompts") or [],
-            )
+            # Don't setHtml mid-build — relative CSS/JS/CDN modules break.
+            # Live HTTP preview is loaded once files are fully written.
 
         # Always ensure README
         if "README.md" not in files:
@@ -364,6 +385,8 @@ class VibeCoder:
         except Exception:
             pass
 
+        preview_url = ""
+        n = len(written)
         if open_when_done:
             # Serve runnable preview in theater — do NOT open File Explorer / IDE here
             try:
@@ -380,29 +403,29 @@ class VibeCoder:
                     )
                 except Exception:
                     pass
+            # Switch PREVIEW tab once with live URL (no triple progress spam)
             progress(
-                "Sandbox app preview ready — switching to PREVIEW tab",
-                agent_stage="preview",
-                tab="building",
-                preview_url=preview_url,
-                terminal=f"serve {preview_url}" if preview_url else "preview --html",
-                images=research.get("images") or [],
-                research=research.get("hits") or [],
-                html=files.get("preview.html") or files.get("index.html") or "",
-            )
-            # Stay in Build Theater PREVIEW — no Chrome popup (smoother)
-            progress(
-                "Preview ready — say publish vibe only when you want Cursor",
+                f"Vibe complete — {concept['name']} ({n} files via {engine})",
                 agent_stage="ship",
                 tab="building",
                 preview_url=preview_url,
+                path=str(out_dir),
+                terminal=f"serve {preview_url}" if preview_url else "preview --html",
+                images=research.get("images") or [],
+                research=research.get("hits") or [],
+            )
+            return (
+                f"Vibe complete — {concept['name']} with {n} files via {engine}. "
+                f"I searched Google live for prompts and images, then built a sandbox preview. "
+                f"Say publish vibe only when you want it in Cursor — I will not dump File Explorer."
             )
 
-        n = len(written)
         progress(
             f"Vibe complete — {concept['name']} ({n} files via {engine})",
             agent_stage="ship",
             tab="building",
+            preview_url=preview_url,
+            path=str(out_dir),
             images=research.get("images") or [],
         )
         return (
@@ -417,11 +440,7 @@ class VibeCoder:
         # Prefer live preview URL if server still up
         port = getattr(self, "_preview_port", None)
         if port:
-            entry = (
-                "preview.html"
-                if (self.last_project / "preview.html").exists()
-                else "index.html"
-            )
+            entry = self._preview_entry(self.last_project)
             url = f"http://127.0.0.1:{port}/{entry}"
             self._open_chrome(url)
             return f"Opening live preview for {self.last_meta.get('name') or self.last_project.name}."
@@ -433,6 +452,58 @@ class VibeCoder:
             if self.open_in_ide(self.last_project):
                 return f"Opening {self.last_meta.get('name') or self.last_project.name} in editor."
             return f"Project is at {self.last_project} — say publish vibe to open Cursor."
+
+    @staticmethod
+    def _preview_entry(out_dir: Path) -> str:
+        """Always prefer the real app (index.html) so PREVIEW shows the product."""
+        out_dir = Path(out_dir)
+        if (out_dir / "index.html").exists():
+            return "index.html"
+        if (out_dir / "preview.html").exists():
+            return "preview.html"
+        if (out_dir / "main.py").exists():
+            return "README.md"
+        return "index.html"
+
+    def ensure_preview_url(self, project: Path | None = None) -> str:
+        """Guarantee a live http:// preview URL for HUD Build Theater."""
+        root = Path(project) if project else self.last_project
+        if root is None:
+            return ""
+        root = Path(root)
+        if root.is_file():
+            root = root.parent
+        if not root.exists():
+            return ""
+        # Reuse existing server if still pointing at this folder
+        port = getattr(self, "_preview_port", None)
+        server = getattr(self, "_preview_server", None)
+        meta_url = str((self.last_meta or {}).get("preview_url") or "").strip()
+        if port and server is not None and meta_url.startswith("http"):
+            # Quick probe — if server died, re-serve
+            try:
+                import urllib.request
+
+                urllib.request.urlopen(meta_url, timeout=0.6).read(16)
+                return meta_url
+            except Exception:
+                pass
+        try:
+            url = self._serve_preview(root)
+        except Exception as e:
+            print(f"[vibe] ensure_preview: {e}")
+            return str((self.last_meta or {}).get("preview_url") or "")
+        if url:
+            self.last_meta = dict(self.last_meta or {})
+            self.last_meta["preview_url"] = url
+            self.last_meta["app_url"] = url
+            try:
+                (root / "vibe.json").write_text(
+                    json.dumps(self.last_meta, indent=2), encoding="utf-8"
+                )
+            except Exception:
+                pass
+        return url
 
     def list_projects(self) -> str:
         try:
@@ -591,7 +662,7 @@ class VibeCoder:
         t.start()
         self._preview_server = httpd
         self._preview_port = port
-        entry = "preview.html" if (out_dir / "preview.html").exists() else "index.html"
+        entry = self._preview_entry(out_dir)
         return f"http://127.0.0.1:{port}/{entry}"
 
     # ── invent / classify ───────────────────────────────────────
@@ -600,11 +671,11 @@ class VibeCoder:
         pool = [x for x in _INVENTIONS if x[0] not in used]
         if len(pool) < 5:
             pool = list(_INVENTIONS)
-        # Bias toward games/videos so invent feels cinematic
+        # Bias toward cinematic / 3D / motion so invent feels advanced
         weighted: list[tuple[str, str, str]] = []
         for item in pool:
             stack = item[1]
-            copies = 3 if stack in ("game", "video") else 1
+            copies = 3 if stack in ("game", "video", "3d", "animation") else 1
             weighted.extend([item] * copies)
         random.shuffle(weighted)
         name, stack, pitch = (weighted or pool)[0]
@@ -687,6 +758,42 @@ class VibeCoder:
 
     def _guess_stack(self, brief: str) -> str:
         b = brief.lower()
+        # 3D / WebGL first (beats "game" so "3d game" → 3d)
+        if any(
+            w in b
+            for w in (
+                "3d",
+                "three.js",
+                "threejs",
+                "webgl",
+                "orbit control",
+                "orbitcontrols",
+                "particle field",
+                "turntable",
+                "mesh",
+                "gltf",
+                "scene graph",
+                "hologram viewer",
+                "product viewer",
+            )
+        ):
+            return "3d"
+        if any(
+            w in b
+            for w in (
+                "gsap",
+                "motion graphics",
+                "lottie",
+                "kinetic",
+                "timeline animation",
+                "animation app",
+                "animate a",
+                "animated",
+                "parallax scroll",
+                "logo reveal",
+            )
+        ):
+            return "animation"
         if any(
             w in b
             for w in (
@@ -735,12 +842,31 @@ class VibeCoder:
         ]
         hits: list[dict[str, str]] = []
         images: list[dict[str, str]] = []
-        prompts: list[str] = [
-            f"Design a polished {stack} app called {name} — {pitch}.",
-            f"Hero section with bold typography, cyan accent, dark void background.",
-            f"Interactive UI with localStorage, keyboard shortcuts, empty states.",
-            f"Mobile-first layout, one primary CTA, gallery of mood images.",
-        ]
+        if stack in ("3d", "animation"):
+            queries = [
+                f"{name} three.js webgl scene design inspiration",
+                f"{pitch} 3d motion graphics lighting camera composition",
+                f"three.js orbit controls particles product turntable UI settings panel",
+            ]
+            prompts: list[str] = [
+                f"Build a zero-npm {stack} experience called {name} — {pitch}.",
+                "Full-bleed WebGL/canvas stage, dark void, cyan/teal accents.",
+                "Orbit/drag controls, resize handler, pause on visibilitychange.",
+                "HUD with Pause / Reset / Quality / FX / Auto-orbit + keyboard shortcuts.",
+                "Settings: pixel ratio, fog density, auto-rotate speed, reduced motion.",
+                "CDN only: three.js UMD + OrbitControls, optional gsap — no npm install.",
+                "Ship features.md listing every interactive control and preset.",
+            ]
+        else:
+            prompts = [
+                f"Design a polished {stack} app called {name} — {pitch}.",
+                "Hero + App + Gallery + Features + Settings views (multi-page IA).",
+                "Interactive core with localStorage, keyboard shortcuts, empty states.",
+                "Settings: theme, density, sound, reduced motion, export/import/reset.",
+                "Feature cards for at least 6 distinct capabilities beyond the core loop.",
+                "Mobile-first layout, primary CTA, rich research image gallery with captions.",
+                "Include features.md and settings.js — zero stubs, production-feel polish.",
+            ]
 
         # Research stays in Build Theater — click search bar, type slowly, then submit
         self._chrome_started = False
@@ -1006,27 +1132,311 @@ class VibeCoder:
         research: dict[str, Any] | None = None,
     ) -> str:
         research = research or {}
-        prompts = "\n".join(f"- {p}" for p in (research.get("prompts") or [])[:6])
+        prompts = "\n".join(f"- {p}" for p in (research.get("prompts") or [])[:8])
         imgs = "\n".join(
-            f"- {im.get('url')}" for im in (research.get("images") or [])[:5]
+            f"- {im.get('url')}" for im in (research.get("images") or [])[:8]
         )
         refs = "\n".join(
             f"- {h.get('title')}: {h.get('snippet')}"
-            for h in (research.get("hits") or [])[:5]
+            for h in (research.get("hits") or [])[:6]
         )
+        feats = "\n".join(f"- {f}" for f in self._feature_checklist(concept, research))
+        stack = (concept.get("stack") or "web").lower()
+        if stack in ("3d", "animation"):
+            deliver = (
+                "ZERO-NPM advanced visual app. Prefer classic CDN script tags (UMD), not ES modules.\n"
+                "Allowed: three@0.128 UMD (script tags), THREE.OrbitControls, gsap UMD, canvas API.\n"
+                "Forbidden: npm install, vite scaffolding, create-react-app, node_modules, webpack.\n"
+                "Deliver AT LEAST: index.html, styles.css, scene.js (or anim.js), ui.js, settings.js, "
+                "preview.html, features.md, research.md, README.md.\n"
+                "Must run under http://127.0.0.1 with requestAnimationFrame.\n"
+                "Include: PerspectiveCamera or orthographic stage, lights, resize handler, "
+                "pause on visibilitychange, HUD (Pause/Reset/Quality/FX), settings panel, "
+                "keyboard shortcuts, substantial JS (450+ lines total). Zero stubs."
+            )
+        elif stack == "game":
+            deliver = (
+                "Ship a COMPLETE Canvas 2D browser game with DEPTH:\n"
+                "index.html, game.js, settings.js, features.md, preview.html, README.md.\n"
+                "Playable loop, score, lives, pause, restart, mute, difficulty Easy/Normal/Hard, "
+                "best-score localStorage, settings panel (volume, shake, reduced motion). "
+                "400+ lines JS total. Zero stubs."
+            )
+        elif stack == "video":
+            deliver = (
+                "Ship a COMPLETE browser video/reel studio:\n"
+                "index.html, video.js, settings.js, features.md, preview.html, research.md, README.md.\n"
+                "Slideshow from research images, captions, speed, export frame, theme settings, "
+                "keyboard shortcuts. 350+ lines JS. Zero stubs."
+            )
+        elif stack == "python":
+            deliver = (
+                "Ship a COMPLETE Python stdlib CLI: main.py, README.md, requirements.txt (empty ok), "
+                "features.md. Include argparse subcommands, config file, --help, sample data. "
+                "No third-party installs required."
+            )
+        else:
+            deliver = (
+                "Ship a COMPLETE runnable multi-file project with AT LEAST 10 files:\n"
+                "index.html, styles.css, theme.css, app.js, ui.js, storage.js, settings.js, "
+                "preview.html, features.md, research.md, README.md.\n"
+                "REQUIRED VIEWS: Home, App (interactive board), Gallery, Features, Settings.\n"
+                "Settings must persist theme/density/sound/reduced-motion + export/import/reset.\n"
+                "Features page lists every capability as cards.\n"
+                "Hero image + captioned gallery from research URLs, substantial JS (400+ lines), "
+                "polished CSS, keyboard shortcuts, empty states. Zero stubs."
+            )
         return (
-            f"You are Jarvis, an autonomous vibe-coding agent.\n"
+            f"You are Jarvis — elite multi-agent vibe coder (feature + image + script specialists).\n"
             f"Product: {concept['name']}\n"
             f"Stack hint: {concept['stack']}\n"
             f"Brief: {brief}\n\n"
+            f"MUST IMPLEMENT these features:\n{feats}\n\n"
             f"Design prompts from research:\n{prompts or '- (none)'}\n\n"
-            f"Image URLs to embed in the UI (use as <img src>):\n{imgs or '- picsum fallback'}\n\n"
+            f"Image URLs to embed (hero + gallery + captions):\n{imgs or '- picsum fallback'}\n\n"
             f"Web references:\n{refs or '- (none)'}\n\n"
-            f"Ship a COMPLETE runnable multi-file project with AT LEAST 6 files "
-            f"(index.html, styles.css, theme.css, app.js, ui.js, storage.js, research.md, README.md). "
-            f"Include a hero image, image gallery, substantial JS (200+ lines total), "
-            f"polished CSS, keyboard shortcuts, and empty states. Zero stubs."
+            f"{deliver}"
         )
+
+    def _feature_checklist(
+        self,
+        concept: dict[str, Any],
+        research: dict[str, Any] | None = None,
+    ) -> list[str]:
+        """Concrete features every build should ship — drives prompts + features.md."""
+        research = research or {}
+        stack = str(concept.get("stack") or "web").lower()
+        name = str(concept.get("name") or "App")
+        kind = self._app_kind(name, str(concept.get("pitch") or ""))
+        n_img = len(research.get("images") or [])
+        shared = [
+            f"Branded product shell for {name}",
+            "Persistent settings (localStorage) with export / import / reset",
+            "Theme switcher (at least 2 themes) + density / reduced-motion",
+            "Keyboard shortcuts + on-screen hint strip",
+            "Empty states and success feedback (no dead clicks)",
+            f"Research gallery using {max(n_img, 4)} mood images with captions",
+            "features.md documenting every interactive capability",
+        ]
+        by_stack: dict[str, list[str]] = {
+            "web": [
+                f"Core {kind} board with create / edit / complete / delete",
+                "Home hero with CTA into the live app",
+                "Features page with 6+ capability cards",
+                "Settings page: theme, density, sound, motion, data tools",
+                "Stats chips (totals, progress, XP or equivalent)",
+            ],
+            "game": [
+                "Score + best score persistence",
+                "Lives / fail state + restart",
+                "Pause / mute / difficulty presets",
+                "Particle or juice feedback on score events",
+                "Settings: volume, screen shake, reduced motion",
+            ],
+            "3d": [
+                "Orbit controls with damping + auto-rotate toggle",
+                "Quality / FX density presets",
+                "FPS counter + pause on tab hide",
+                "Distinct mesh world (not an empty canvas)",
+                "Settings: pixel ratio, fog, rotate speed",
+            ],
+            "animation": [
+                "Play / pause / restart timeline",
+                "Speed control + export frame PNG",
+                "Kinetic typography or vector cascade",
+                "Settings: speed default, motion reduction",
+            ],
+            "video": [
+                "Image reel from research URLs",
+                "Captions + playhead / speed",
+                "Export current frame",
+                "Settings: autoplay, loop, caption size",
+            ],
+            "dashboard": [
+                "Live-looking status tiles",
+                "Filters / refresh / alert strip",
+                "Settings for refresh interval + compact mode",
+            ],
+            "python": [
+                "argparse CLI with subcommands",
+                "JSON/config persistence",
+                "Sample data + --help examples",
+            ],
+        }
+        extra = by_stack.get(stack) or by_stack["web"]
+        # Pull 2 research prompts as feature ideas
+        for p in (research.get("prompts") or [])[:2]:
+            extra.append(f"Inspired detail: {str(p)[:90]}")
+        return shared + extra
+
+    def _features_md(
+        self,
+        concept: dict[str, Any],
+        research: dict[str, Any] | None = None,
+    ) -> str:
+        feats = self._feature_checklist(concept, research)
+        return (
+            f"# Features — {concept.get('name')}\n\n"
+            f"**Stack:** {concept.get('stack')}  \n"
+            f"**Pitch:** {concept.get('pitch') or ''}\n\n"
+            f"## Shipped capabilities\n\n"
+            + "\n".join(f"- [x] {f}" for f in feats)
+            + "\n\n## Settings\n\n"
+            "- Theme / accent\n- Density / compact UI\n- Sound on/off\n"
+            "- Reduced motion\n- Export / import / reset local data\n"
+        )
+
+    def _ensure_rich_project(
+        self,
+        files: dict[str, str],
+        concept: dict[str, Any],
+        research: dict[str, Any],
+        progress: Callable[..., None],
+    ) -> dict[str, str]:
+        """Feature + image + script agents — always deepen the scaffold."""
+        progress(
+            "Feature agent — settings, multi-view IA, capability cards…",
+            agent_stage="code",
+            tab="coding",
+            terminal="agent --feature enrich",
+        )
+        base = self._template_project(concept, research=research)
+        merged: dict[str, str] = dict(base)
+        for rel, content in (files or {}).items():
+            key = str(rel).replace("\\", "/").lstrip("./")
+            if not isinstance(content, str) or len(content) < 8:
+                continue
+            prev = merged.get(key, "")
+            # Keep generated when it's real code; keep template when generated is a stub
+            if not prev or len(content) >= max(80, int(len(prev) * 0.45)):
+                merged[key] = content
+
+        stack = str(concept.get("stack") or "web").lower()
+        idx = merged.get("index.html", "")
+        # If LLM index lacks Settings/Features, prefer rich template shell
+        if stack in ("web", "dashboard") or stack not in (
+            "python",
+            "game",
+            "3d",
+            "animation",
+            "video",
+        ):
+            if 'data-go="settings"' not in idx or 'id="features"' not in idx:
+                if "index.html" in base:
+                    merged["index.html"] = base["index.html"]
+                for keep in ("settings.js", "ui.js", "styles.css", "theme.css", "storage.js"):
+                    if keep in base:
+                        merged[keep] = base[keep]
+                # Preserve a rich generated app.js if longer
+                gen_app = (files or {}).get("app.js") or (files or {}).get("App.js")
+                if gen_app and len(gen_app) > len(merged.get("app.js", "")):
+                    merged["app.js"] = gen_app
+
+        if stack == "game" and "settings.js" in base:
+            merged.setdefault("settings.js", base["settings.js"])
+            if "index.html" in base and "btnSettings" in base["index.html"]:
+                if "btnSettings" not in merged.get("index.html", ""):
+                    merged["index.html"] = base["index.html"]
+                    if (files or {}).get("game.js"):
+                        merged["game.js"] = files["game.js"]
+
+        merged["features.md"] = self._features_md(concept, research)
+
+        progress(
+            "Image agent — hero, gallery captions, mood art…",
+            agent_stage="code",
+            tab="coding",
+            terminal="agent --image pack",
+            images=research.get("images") or [],
+        )
+        merged = self._image_agent_inject(merged, concept, research)
+
+        progress(
+            "Script agent — polishing interactive logic…",
+            agent_stage="code",
+            tab="coding",
+            terminal="agent --script polish",
+        )
+        merged = self._script_agent_polish(merged, concept, research)
+        return merged
+
+    def _image_agent_inject(
+        self,
+        files: dict[str, str],
+        concept: dict[str, Any],
+        research: dict[str, Any],
+    ) -> dict[str, str]:
+        """Ensure gallery/research docs carry captioned image URLs."""
+        images = list(research.get("images") or [])
+        prompts = [str(p)[:80] for p in (research.get("prompts") or [])[:6]]
+        lines = ["# Image pack\n"]
+        for i, im in enumerate(images[:12]):
+            url = str(im.get("url") or "")
+            alt = str(im.get("alt") or prompts[i % max(1, len(prompts))] if prompts else f"mood {i+1}")
+            if url:
+                lines.append(f"- ![{alt}]({url})")
+        files["images.md"] = "\n".join(lines) + "\n"
+        # Enrich research.md captions if present
+        research_md = files.get("research.md", "")
+        if "## Images" in research_md or images:
+            cap = "\n".join(
+                f"- {im.get('url')} — {im.get('alt') or 'mood'}"
+                for im in images[:10]
+                if im.get("url")
+            )
+            if "## Captioned images" not in research_md:
+                files["research.md"] = (
+                    research_md.rstrip()
+                    + "\n\n## Captioned images\n"
+                    + (cap or "- (none)")
+                    + "\n"
+                )
+        return files
+
+    def _script_agent_polish(
+        self,
+        files: dict[str, str],
+        concept: dict[str, Any],
+        research: dict[str, Any],
+    ) -> dict[str, str]:
+        """Best available local coder expands the main interactive script when thin."""
+        stack = str(concept.get("stack") or "web").lower()
+        targets = {
+            "web": "app.js",
+            "dashboard": "app.js",
+            "game": "game.js",
+            "3d": "scene.js",
+            "animation": "anim.js",
+            "video": "video.js",
+            "python": "main.py",
+        }
+        target = targets.get(stack, "app.js")
+        current = files.get(target, "")
+        # Already substantial — leave it
+        if len(current) >= 3500:
+            return files
+        model = self._ollama_model()
+        if not model:
+            return files
+        system = (
+            "You are an elite script agent. Return ONLY the full file contents for the "
+            "single script requested — no markdown fences, no JSON wrapper, no explanation."
+        )
+        feat_bits = ", ".join(self._feature_checklist(concept, research)[:8])
+        user = (
+            f"Rewrite and EXPAND `{target}` for product {concept.get('name')} "
+            f"({stack}): {concept.get('pitch')}.\n"
+            f"Must implement: {feat_bits}.\n"
+            f"Keep vanilla JS (or Python stdlib). Persist settings. No npm.\n"
+            f"Current draft (improve it):\n\n{current[:4500]}"
+        )
+        polished = self._ollama_text(system, user, num_predict=7000)
+        if polished and len(polished) > max(400, int(len(current) * 0.8)):
+            # Strip accidental fences
+            polished = re.sub(r"^```(?:javascript|js|python)?\s*", "", polished.strip())
+            polished = re.sub(r"\s*```$", "", polished)
+            files[target] = polished
+        return files
 
     def _pick_entry(self, out_dir: Path, files: list[str]) -> Path | None:
         for cand in ("index.html", "app.py", "main.py", "README.md"):
@@ -1049,16 +1459,23 @@ class VibeCoder:
         try:
             from cursor_sdk import Agent, LocalAgentOptions  # type: ignore
 
-            progress("Cursor agent vibing on your machine…")
+            progress("Cursor composer agent vibing on your machine…")
+            model = (
+                os.environ.get("JARVIS_VIBE_CURSOR_MODEL")
+                or os.environ.get("CURSOR_VIBE_MODEL")
+                or "composer-2.5"
+            )
             with Agent.create(
-                model="composer-2.5",
+                model=model,
                 api_key=api_key,
                 local=LocalAgentOptions(cwd=str(out_dir)),
             ) as agent:
                 run = agent.send(
                     prompt
                     + "\n\nWrite all files into the current working directory. "
-                    "Create a complete runnable project with README.md."
+                    "Create a complete runnable project with README.md, features.md, "
+                    "settings.js (or equivalent), and a rich Settings + Features UX. "
+                    "Prefer depth: multiple views, settings persistence, captioned images."
                 )
                 run.wait()
             files: dict[str, str] = {}
@@ -1088,15 +1505,38 @@ class VibeCoder:
     ) -> dict[str, str] | None:
         system = (
             "Return ONLY valid JSON object mapping relative file paths to file contents. "
-            "Example: {\"index.html\":\"...\",\"styles.css\":\"...\",\"app.js\":\"...\"}. "
-            "No markdown fences. Include at least 6 files with substantial code. Make it runnable."
+            "Example: {\"index.html\":\"...\",\"styles.css\":\"...\",\"app.js\":\"...\","
+            "\"settings.js\":\"...\",\"features.md\":\"...\"}. "
+            "No markdown fences. Include at least 10 files with substantial code. "
+            "Must include Settings + Features views (or HUD settings for games/3d). Make it runnable."
         )
+        stack = (concept.get("stack") or "web").lower()
+        if stack in ("3d", "animation"):
+            bias = (
+                "Prefer zero-npm CDN UMD scripts (not ES modules): three.js r128 + OrbitControls + optional gsap. "
+                "Deliver index.html (classic script tags), scene.js or anim.js, ui.js, settings.js, styles.css, "
+                "features.md, preview.html."
+            )
+            budget = 12000
+        elif stack == "python":
+            bias = "Prefer Python stdlib CLI only with argparse + features.md."
+            budget = 6000
+        elif stack == "game":
+            bias = "Canvas 2D game with settings.js, difficulty, mute, best score, features.md."
+            budget = 10000
+        else:
+            bias = (
+                "Vanilla HTML/CSS/JS multi-view app: Home, App, Gallery, Features, Settings. "
+                "Include settings.js + features.md + captioned research images."
+            )
+            budget = 10000
         user = (
             f"{prompt}\n\nStack: {concept['stack']}. "
-            f"Name: {concept['name']}. Prefer vanilla HTML/CSS/JS unless python CLI. "
-            f"Embed researched image URLs in HTML."
+            f"Name: {concept['name']}. {bias} "
+            f"Embed researched image URLs in HTML when relevant. "
+            f"Implement EVERY item in the feature checklist."
         )
-        raw = self._ollama_text(system, user, num_predict=6500)
+        raw = self._ollama_text(system, user, num_predict=budget)
         if not raw:
             return None
         data = self._parse_files_json(raw)
@@ -1159,15 +1599,44 @@ class VibeCoder:
             return None
 
     def _ollama_model(self) -> str | None:
+        """Prefer coder-tuned models — best local script/coding agent available."""
         try:
             with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=1.5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
             names = [m.get("name", "") for m in data.get("models") or []]
-            for pref in ("qwen", "llama", "mistral", "phi", "gemma", "codellama", "deepseek"):
+            if not names:
+                return None
+            forced = (os.environ.get("JARVIS_VIBE_OLLAMA_MODEL") or "").strip()
+            if forced:
                 for n in names:
-                    if pref in n.lower():
+                    if forced.lower() in n.lower():
                         return n
-            return names[0] if names else None
+            prefs = (
+                "qwen2.5-coder",
+                "qwen3-coder",
+                "deepseek-coder",
+                "deepseek-coder-v2",
+                "codellama",
+                "codestral",
+                "starcoder",
+                "wizardcoder",
+                "qwen2.5",
+                "qwen",
+                "deepseek",
+                "llama3.3",
+                "llama3.1",
+                "llama3",
+                "llama",
+                "mistral",
+                "phi",
+                "gemma",
+            )
+            lower_map = {n.lower(): n for n in names}
+            for pref in prefs:
+                for low, orig in lower_map.items():
+                    if pref in low:
+                        return orig
+            return names[0]
         except Exception:
             return None
 
@@ -1184,6 +1653,10 @@ class VibeCoder:
         research = research or concept.get("research") or {}
         if stack == "python":
             return self._tpl_python(name, pitch)
+        if stack == "3d":
+            return self._tpl_3d(name, pitch, research=research)
+        if stack == "animation":
+            return self._tpl_animation(name, pitch, research=research)
         if stack == "game":
             return self._tpl_game(name, pitch)
         if stack == "video":
@@ -1556,7 +2029,7 @@ addEventListener("keydown", (e) => {{
             for im in images[1:5]
             if (im.get("url") or "").startswith("http")
         ]
-        while len(gallery) < 3:
+        while len(gallery) < 6:
             gallery.append(
                 f"https://picsum.photos/seed/{self._slug(name)}-g{len(gallery)}/800/500"
             )
@@ -1567,14 +2040,26 @@ addEventListener("keydown", (e) => {{
             f"- [{_esc(h.get('title'))}]({h.get('url')}) — {_esc(h.get('snippet'))}"
             for h in (research.get("hits") or [])[:8]
         ) or "- (offline research fallback)"
-        gal_html = "\n".join(
-            f'      <figure><img src="{_esc(u)}" alt="mood {i+1}" loading="lazy"/>'
-            f"<figcaption>Mood {i+1}</figcaption></figure>"
-            for i, u in enumerate(gallery[:4])
-        )
+        gal_parts = []
+        for i, u in enumerate(gallery[:6]):
+            alt = f"Mood {i + 1}"
+            if images and i + 1 < len(images):
+                alt = str(images[i + 1].get("alt") or alt)
+            gal_parts.append(
+                f'      <figure><img src="{_esc(u)}" alt="{_esc(alt)}" loading="lazy"/>'
+                f"<figcaption>{_esc(alt)}</figcaption></figure>"
+            )
+        gal_html = "\n".join(gal_parts)
         key = self._slug(name)
         kind = self._app_kind(name, pitch)
         board_html, app_js = self._functional_board(kind, name, key, research)
+        feat_cards = "\n".join(
+            f'        <article class="feat"><h3>{_esc(f.split(":",1)[0][:48])}</h3>'
+            f"<p>{_esc(f[:140])}</p></article>"
+            for f in self._feature_checklist(
+                {"name": name, "stack": "web", "pitch": pitch}, research
+            )[:8]
+        )
         return {
             "index.html": f"""<!DOCTYPE html>
 <html lang="en">
@@ -1593,6 +2078,8 @@ addEventListener("keydown", (e) => {{
       <button type="button" data-go="home" class="nav on">Home</button>
       <button type="button" data-go="board" class="nav">App</button>
       <button type="button" data-go="gallery" class="nav">Gallery</button>
+      <button type="button" data-go="features" class="nav">Features</button>
+      <button type="button" data-go="settings" class="nav">Settings</button>
       <button type="button" id="themeBtn" class="nav ghost">Theme</button>
     </nav>
   </header>
@@ -1604,10 +2091,16 @@ addEventListener("keydown", (e) => {{
           <p class="lead">{_esc(pitch)}</p>
           <div class="cta-row">
             <button type="button" id="startBtn" class="primary">Open app</button>
+            <button type="button" data-go="features" class="ghost">See features</button>
             <button type="button" data-go="gallery" class="ghost">Research images</button>
           </div>
-          <p class="meta">Kind: {kind} · researched live · functional local app</p>
+          <p class="meta">Kind: {kind} · settings + features · researched live</p>
         </div>
+      </div>
+      <div class="home-strip">
+        <div><b>Local-first</b><span>Data stays in your browser</span></div>
+        <div><b>Settings</b><span>Theme · density · sound · motion</span></div>
+        <div><b>Gallery</b><span>Live research mood art</span></div>
       </div>
     </section>
     <section id="board" class="view">
@@ -1615,26 +2108,77 @@ addEventListener("keydown", (e) => {{
     </section>
     <section id="gallery" class="view">
       <h2 class="section-title">Research gallery</h2>
-      <p class="dim">Images Jarvis clicked and kept while searching.</p>
+      <p class="dim">Images the image agent kept while searching — click to enlarge.</p>
       <div class="gallery">
 {gal_html}
       </div>
     </section>
+    <section id="features" class="view">
+      <h2 class="section-title">Features</h2>
+      <p class="dim">Everything this build ships beyond a blank page.</p>
+      <div class="feat-grid">
+{feat_cards}
+      </div>
+    </section>
+    <section id="settings" class="view">
+      <section class="panel">
+        <div class="panel-head"><h2>Settings</h2>
+          <div class="stats"><span>persisted locally</span></div>
+        </div>
+        <div class="settings-grid">
+          <label>Theme
+            <select id="setTheme">
+              <option value="">Void cyan</option>
+              <option value="warm">Warm ember</option>
+              <option value="neon">Neon mint</option>
+            </select>
+          </label>
+          <label>Density
+            <select id="setDensity">
+              <option value="comfy">Comfy</option>
+              <option value="compact">Compact</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="setSound" checked/> Sound feedback</label>
+          <label class="check"><input type="checkbox" id="setMotion"/> Reduce motion</label>
+          <label>Accent
+            <input id="setAccent" type="color" value="#00e8ff"/>
+          </label>
+        </div>
+        <div class="cta-row">
+          <button type="button" class="primary" id="setExport">Export data</button>
+          <button type="button" id="setImport">Import data</button>
+          <button type="button" id="setReset">Reset all</button>
+        </div>
+        <p class="hint">Shortcuts: <kbd>1</kbd>–<kbd>5</kbd> views · <kbd>T</kbd> theme · settings auto-save</p>
+        <input id="setImportFile" type="file" accept="application/json" hidden/>
+      </section>
+    </section>
   </main>
+  <footer class="key-hint">Jarvis vibe · feature + image + script agents</footer>
   <script src="storage.js"></script>
+  <script src="settings.js"></script>
   <script src="ui.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
 """,
             "theme.css": """:root {
-  --cyan:#00e8ff; --amber:#ffc14a; --ok:#3dff9a; --void:#05070c;
-  --panel:rgba(8,16,24,.9); --text:#e8f4ff; --dim:#7a93a8; --line:rgba(0,232,255,.28);
+  --cyan:#00E5FF; --cyan-hot:#00F0FF; --amber:#FF9500; --warn:#FF3B30; --ok:#39FF14;
+  --void:#020813; --panel:rgba(10,15,29,.82); --text:#e8f4ff; --dim:#708090;
+  --line:rgba(0,229,255,.28); --pad:22px; --radius:8px;
+  --ease:cubic-bezier(0.25, 1, 0.5, 1);
 }
 [data-theme="warm"] {
-  --cyan:#ff9f43; --amber:#ffe08a; --void:#120a06; --panel:rgba(28,14,8,.92);
-  --line:rgba(255,159,67,.35);
+  --cyan:#FF9500; --cyan-hot:#ffb347; --void:#120a06; --panel:rgba(28,14,8,.92);
+  --line:rgba(255,149,0,.35);
 }
+[data-theme="neon"] {
+  --cyan:#39FF14; --cyan-hot:#00E5FF; --void:#030a08; --panel:rgba(4,22,16,.92);
+  --line:rgba(57,255,20,.35);
+}
+[data-density="compact"] { --pad:14px; }
+[data-reduce-motion="1"] * { animation:none !important; transition:none !important; }
 """,
             "styles.css": """* { box-sizing: border-box; }
 body {
@@ -1654,25 +2198,39 @@ body {
 }
 .eyebrow { letter-spacing:.28em; font-size:10px; color:var(--cyan); margin:0; }
 nav { display:flex; gap:8px; flex-wrap:wrap; }
-.nav, .chip, .primary, .ghost, button[type="submit"], select {
+.nav, .chip, .primary, .ghost, button[type="submit"], select, .settings-grid button {
   background:transparent; border:1px solid var(--line); color:var(--cyan);
   padding:8px 12px; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; font:inherit;
+  transition: background .2s var(--ease, cubic-bezier(0.25, 1, 0.5, 1)),
+    border-color .2s ease, color .2s ease, padding .2s ease, transform .2s ease;
 }
 .nav.on, .chip.on, .primary { background:color-mix(in srgb, var(--cyan) 16%, transparent); }
 .primary { border-color:var(--cyan); }
 .ghost { color:var(--dim); }
+.nav:hover, .primary:hover, .ghost:hover, button:hover {
+  transform: scale(1.04); filter: brightness(1.15);
+}
 main { max-width:980px; margin:0 auto; padding:28px 24px 80px; }
-.view { display:none; animation:rise .35s ease; }
+.view { display:none; animation:rise .45s var(--ease, cubic-bezier(0.25, 1, 0.5, 1)); }
 .view.on { display:block; }
-@keyframes rise { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:none;} }
+@keyframes rise { from { opacity:0; transform:translateY(10px);} to { opacity:1; transform:none;} }
 .hero {
-  min-height:360px; border:1px solid var(--line); border-radius:14px; overflow:hidden;
+  min-height:360px; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden;
   background:
     linear-gradient(90deg, rgba(2,8,14,.88), rgba(2,8,14,.35)),
     var(--hero) center/cover no-repeat;
   display:flex; align-items:flex-end;
 }
 .hero-copy { padding:36px; max-width:560px; }
+.home-strip {
+  margin-top:14px; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px;
+}
+.home-strip div {
+  border:1px solid var(--line); padding:14px; background:var(--panel);
+  display:grid; gap:4px;
+}
+.home-strip b { color:var(--cyan); letter-spacing:.14em; font-size:11px; text-transform:uppercase; }
+.home-strip span { color:var(--dim); font-size:12px; }
 h1 {
   margin:0; font-size:clamp(2.2rem, 5vw, 3.4rem); letter-spacing:.04em;
   text-transform:uppercase; line-height:1.05;
@@ -1682,7 +2240,8 @@ h1 {
 .meta { color:var(--dim); font-size:12px; letter-spacing:.06em; margin-top:18px; }
 .panel {
   background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--cyan);
-  padding:22px; backdrop-filter:blur(10px);
+  padding:var(--pad); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  box-shadow:0 0 24px rgba(0,229,255,.08), inset 0 0 20px rgba(0,229,255,.03);
 }
 .panel-head { display:flex; justify-content:space-between; gap:12px; align-items:end; margin-bottom:14px; }
 .panel h2, .section-title { margin:0; font-size:13px; letter-spacing:.2em; color:var(--cyan); }
@@ -1697,6 +2256,19 @@ input, select {
   flex:1; background:#02080e; border:1px solid var(--line); color:var(--text);
   padding:12px 14px; font:inherit; min-width:140px;
 }
+.settings-grid {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin-bottom:16px;
+}
+.settings-grid label { display:grid; gap:8px; color:var(--dim); font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
+.settings-grid label.check { grid-template-columns:auto 1fr; align-items:center; text-transform:none; letter-spacing:0; color:var(--text); }
+.feat-grid {
+  margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;
+}
+.feat {
+  border:1px solid var(--line); background:var(--panel); padding:16px; border-top:2px solid var(--cyan);
+}
+.feat h3 { margin:0 0 8px; font-size:12px; letter-spacing:.16em; color:var(--cyan); text-transform:uppercase; }
+.feat p { margin:0; color:#c8dceb; font-size:13px; line-height:1.45; }
 .filters { display:flex; gap:8px; margin-bottom:10px; }
 .chip { padding:6px 10px; font-size:11px; }
 ul { list-style:none; margin:0; padding:0; }
@@ -1716,11 +2288,16 @@ kbd {
   margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px;
 }
 .gallery figure {
-  margin:0; border:1px solid var(--line); background:rgba(0,0,0,.25); overflow:hidden;
+  margin:0; border:1px solid var(--line); background:rgba(0,0,0,.25); overflow:hidden; cursor:zoom-in;
 }
 .gallery img { display:block; width:100%; height:150px; object-fit:cover; }
 .gallery figcaption {
   padding:8px 10px; font-size:11px; letter-spacing:.12em; color:var(--dim); text-transform:uppercase;
+}
+.key-hint {
+  position:fixed; left:0; right:0; bottom:0; padding:8px 16px; text-align:center;
+  color:var(--dim); font-size:11px; letter-spacing:.14em; border-top:1px solid var(--line);
+  background:rgba(2,8,14,.85);
 }
 """,
             "storage.js": f"""window.VibeStore = {{
@@ -1738,6 +2315,102 @@ kbd {
     }}));
     this.save(seeded);
     return seeded;
+  }},
+  dumpAll() {{
+    const out = {{}};
+    for (let i = 0; i < localStorage.length; i++) {{
+      const k = localStorage.key(i);
+      if (k && k.indexOf("vibe:{key}") === 0) out[k] = localStorage.getItem(k);
+    }}
+    return out;
+  }},
+  loadAll(data) {{
+    Object.entries(data || {{}}).forEach(([k, v]) => localStorage.setItem(k, v));
+  }},
+  resetAll() {{
+    Object.keys(this.dumpAll()).forEach((k) => localStorage.removeItem(k));
+  }}
+}};
+""",
+            "settings.js": f"""window.VibeSettings = {{
+  KEY: "vibe:{key}:settings",
+  defaults: {{ theme: "", density: "comfy", sound: true, reduceMotion: false, accent: "#00e8ff" }},
+  load() {{
+    try {{ return Object.assign({{}}, this.defaults, JSON.parse(localStorage.getItem(this.KEY) || "{{}}")); }}
+    catch {{ return Object.assign({{}}, this.defaults); }}
+  }},
+  save(s) {{ localStorage.setItem(this.KEY, JSON.stringify(s)); this.apply(s); }},
+  apply(s) {{
+    s = s || this.load();
+    document.documentElement.setAttribute("data-theme", s.theme || "");
+    document.documentElement.setAttribute("data-density", s.density || "comfy");
+    document.documentElement.setAttribute("data-reduce-motion", s.reduceMotion ? "1" : "0");
+    if (s.accent) document.documentElement.style.setProperty("--cyan", s.accent);
+    const st = document.getElementById("setTheme");
+    const sd = document.getElementById("setDensity");
+    const ss = document.getElementById("setSound");
+    const sm = document.getElementById("setMotion");
+    const sa = document.getElementById("setAccent");
+    if (st) st.value = s.theme || "";
+    if (sd) sd.value = s.density || "comfy";
+    if (ss) ss.checked = !!s.sound;
+    if (sm) sm.checked = !!s.reduceMotion;
+    if (sa) sa.value = s.accent || "#00e8ff";
+  }},
+  beep() {{
+    const s = this.load();
+    if (!s.sound) return;
+    try {{
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.frequency.value = 880; g.gain.value = 0.03; o.connect(g); g.connect(ctx.destination);
+      o.start(); setTimeout(() => {{ o.stop(); ctx.close(); }}, 80);
+    }} catch (e) {{}}
+  }},
+  bind() {{
+    this.apply();
+    const sync = () => {{
+      const s = {{
+        theme: (document.getElementById("setTheme") || {{}}).value || "",
+        density: (document.getElementById("setDensity") || {{}}).value || "comfy",
+        sound: !!(document.getElementById("setSound") || {{}}).checked,
+        reduceMotion: !!(document.getElementById("setMotion") || {{}}).checked,
+        accent: (document.getElementById("setAccent") || {{}}).value || "#00e8ff",
+      }};
+      this.save(s);
+      this.beep();
+    }};
+    ["setTheme","setDensity","setSound","setMotion","setAccent"].forEach((id) => {{
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("change", sync);
+    }});
+    const exp = document.getElementById("setExport");
+    if (exp) exp.onclick = () => {{
+      const blob = new Blob([JSON.stringify(window.VibeStore.dumpAll(), null, 2)], {{type:"application/json"}});
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+      a.download = "{key}-data.json"; a.click();
+    }};
+    const imp = document.getElementById("setImport");
+    const file = document.getElementById("setImportFile");
+    if (imp && file) {{
+      imp.onclick = () => file.click();
+      file.onchange = async () => {{
+        const f = file.files && file.files[0]; if (!f) return;
+        try {{
+          const data = JSON.parse(await f.text());
+          window.VibeStore.loadAll(data);
+          location.reload();
+        }} catch (e) {{ alert("Import failed"); }}
+      }};
+    }}
+    const rst = document.getElementById("setReset");
+    if (rst) rst.onclick = () => {{
+      if (confirm("Reset all local data for this app?")) {{
+        window.VibeStore.resetAll();
+        localStorage.removeItem(this.KEY);
+        location.reload();
+      }}
+    }};
   }}
 }};
 """,
@@ -1748,6 +2421,7 @@ kbd {
     document.querySelectorAll("[data-go]").forEach((b) =>
       b.classList.toggle("on", b.getAttribute("data-go") === name)
     );
+    try { window.VibeSettings && window.VibeSettings.beep(); } catch (e) {}
   },
   bindNav() {
     document.querySelectorAll("[data-go]").forEach((btn) => {
@@ -1756,10 +2430,28 @@ kbd {
     const themeBtn = document.getElementById("themeBtn");
     if (themeBtn) {
       themeBtn.onclick = () => {
-        const warm = document.documentElement.getAttribute("data-theme") === "warm";
-        document.documentElement.setAttribute("data-theme", warm ? "" : "warm");
+        const order = ["", "warm", "neon"];
+        const cur = document.documentElement.getAttribute("data-theme") || "";
+        const next = order[(order.indexOf(cur) + 1) % order.length];
+        const s = (window.VibeSettings && window.VibeSettings.load()) || {};
+        s.theme = next;
+        if (window.VibeSettings) window.VibeSettings.save(s);
+        else document.documentElement.setAttribute("data-theme", next);
       };
     }
+    document.querySelectorAll(".gallery figure").forEach((fig) => {
+      fig.addEventListener("click", () => {
+        const img = fig.querySelector("img");
+        if (img) window.open(img.src, "_blank");
+      });
+    });
+    addEventListener("keydown", (e) => {
+      if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+      const map = { "1": "home", "2": "board", "3": "gallery", "4": "features", "5": "settings" };
+      if (map[e.key]) this.setView(map[e.key]);
+      if (e.key === "t" || e.key === "T") document.getElementById("themeBtn")?.click();
+    });
+    if (window.VibeSettings) window.VibeSettings.bind();
   },
   bindFilters(onChange) {
     document.querySelectorAll("[data-filter]").forEach((chip) => {
@@ -1776,6 +2468,9 @@ kbd {
 const ui = window.VibeUI;
 """,
             "app.js": app_js,
+            "features.md": self._features_md(
+                {"name": name, "stack": f"web/{kind}", "pitch": pitch}, research
+            ),
             "research.md": (
                 f"# Research — {name}\n\n"
                 f"**App kind:** {kind}\n\n"
@@ -1801,7 +2496,7 @@ const ui = window.VibeUI;
   a.btn{{display:inline-block;margin:12px;padding:10px 14px;border:1px solid #00e8ff;color:#00e8ff;text-decoration:none;letter-spacing:.12em}}
 </style></head>
 <body>
-  <div class="tag">SANDBOX PREVIEW · {kind.upper()} · NOT PUBLISHED</div>
+  <div class="tag">SANDBOX PREVIEW · {kind.upper()} · FEATURES + SETTINGS</div>
   <div class="hero"><div><h1>{safe}</h1><p class="lead">{_esc(pitch)}</p>
   <a class="btn" href="index.html">OPEN FULL APP</a></div></div>
   <div class="grid">
@@ -1811,20 +2506,578 @@ const ui = window.VibeUI;
 """,
             "README.md": self._readme(
                 {"name": name, "stack": f"web/{kind}", "pitch": pitch},
-                "template+research",
+                "template+research+agents",
                 [
                     "index.html",
                     "theme.css",
                     "styles.css",
                     "storage.js",
+                    "settings.js",
                     "ui.js",
                     "app.js",
+                    "features.md",
                     "research.md",
                     "preview.html",
                     "README.md",
                 ],
             ),
         }
+
+    def _3d_kind(self, name: str, pitch: str) -> str:
+        blob = f"{name} {pitch}".lower()
+        if any(w in blob for w in ("particle", "nebula", "field", "star", "constellation")):
+            return "particles"
+        if any(w in blob for w in ("product", "turntable", "artifact", "reliquary", "viewer", "pedestal", "mech")):
+            return "product"
+        if any(w in blob for w in ("city", "architect", "building", "block")):
+            return "city"
+        return "cinematic"
+
+    def _tpl_3d(
+        self,
+        name: str,
+        pitch: str,
+        *,
+        research: dict[str, Any] | None = None,
+    ) -> dict[str, str]:
+        """Advanced Three.js CDN app — zero npm, full WebGL stage."""
+        safe = _esc(name)
+        kind = self._3d_kind(name, pitch)
+        prompts = [str(p)[:120] for p in ((research or {}).get("prompts") or [])[:4]]
+        research_md = "# Research\n\n" + "\n".join(f"- {p}" for p in prompts) + "\n"
+        scene_js = self._scene_js_3d(kind, name, pitch)
+        return {
+            "index.html": f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>{safe} — 3D</title>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+<div id="stage">
+  <canvas id="c"></canvas>
+  <header class="hud">
+    <div>
+      <p class="brand">{safe}</p>
+      <p class="pitch">{_esc(pitch)}</p>
+    </div>
+    <div class="stats">
+      <span id="fps">60 FPS</span>
+      <span id="mode">{kind.upper()}</span>
+    </div>
+  </header>
+  <aside class="panel">
+    <button type="button" id="btnPause" data-key="P">Pause</button>
+    <button type="button" id="btnReset" data-key="R">Reset</button>
+    <button type="button" id="btnAuto" class="active" data-key="A">Auto orbit</button>
+    <button type="button" id="btnFx" data-key="F">FX denser</button>
+    <p class="hint">DRAG orbit · SCROLL zoom · SPACE pause</p>
+  </aside>
+  <div id="boot">Loading WebGL scene…</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="scene.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>
+""",
+            "styles.css": """
+html,body{margin:0;height:100%;background:#02060c;color:#e8f7ff;font-family:Bahnschrift,Segoe UI,sans-serif;overflow:hidden}
+#stage{position:relative;width:100%;height:100%}
+canvas{display:block;width:100%;height:100%}
+.hud{position:absolute;inset:0 0 auto 0;display:flex;justify-content:space-between;gap:16px;
+  padding:18px 22px;pointer-events:none;background:linear-gradient(180deg,rgba(2,6,12,.75),transparent)}
+.brand{margin:0;letter-spacing:.28em;font-size:13px;color:#00f0ff;text-transform:uppercase}
+.pitch{margin:6px 0 0;max-width:46ch;color:#9eb6c8;font-size:12px;letter-spacing:.04em}
+.stats{display:flex;gap:10px;align-items:flex-start}
+.stats span{border:1px solid rgba(0,240,255,.35);padding:6px 10px;font-size:11px;letter-spacing:.16em;color:#00f0ff}
+.panel{position:absolute;left:18px;bottom:18px;display:flex;flex-wrap:wrap;gap:8px;max-width:420px}
+.panel button{background:rgba(0,20,30,.72);border:1px solid rgba(0,240,255,.4);color:#00f0ff;
+  padding:9px 12px;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;font:inherit;font-size:11px}
+.panel button:hover,.panel button.active{background:rgba(0,240,255,.16)}
+.hint{width:100%;margin:4px 0 0;color:#6f879a;font-size:11px;letter-spacing:.08em}
+#boot{position:absolute;inset:0;display:grid;place-items:center;background:#02060c;color:#00f0ff;
+  letter-spacing:.22em;text-transform:uppercase;font-size:12px;transition:opacity .4s}
+#boot.hide{opacity:0;pointer-events:none}
+""",
+            "scene.js": scene_js,
+            "ui.js": r"""
+(() => {
+  const api = () => window.__VIBE3D || {};
+  const bind = (id, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("click", () => fn(el));
+  };
+  bind("btnPause", (el) => {
+    const on = api().togglePause?.();
+    el.classList.toggle("active", !!on);
+    el.textContent = on ? "Resume" : "Pause";
+  });
+  bind("btnReset", () => api().reset?.());
+  bind("btnAuto", (el) => {
+    const on = api().toggleAuto?.();
+    el.classList.toggle("active", !!on);
+  });
+  bind("btnFx", (el) => {
+    const on = api().toggleFx?.();
+    el.classList.toggle("active", !!on);
+    el.textContent = on ? "FX denser" : "FX lighter";
+  });
+  addEventListener("keydown", (e) => {
+    if (e.code === "Space") { e.preventDefault(); document.getElementById("btnPause")?.click(); }
+    if (e.key === "r" || e.key === "R") document.getElementById("btnReset")?.click();
+    if (e.key === "a" || e.key === "A") document.getElementById("btnAuto")?.click();
+    if (e.key === "f" || e.key === "F") document.getElementById("btnFx")?.click();
+  });
+})();
+""",
+            "preview.html": f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><meta http-equiv="refresh" content="0;url=index.html"/>
+<title>{safe}</title>
+<style>body{{margin:0;background:#02060c;color:#00f0ff;font-family:Bahnschrift,sans-serif;display:grid;place-items:center;height:100vh}}
+a{{color:#00f0ff;letter-spacing:.2em}}</style></head>
+<body><a href="index.html">OPEN 3D STAGE →</a></body></html>
+""",
+            "research.md": research_md,
+            "features.md": self._features_md(
+                {"name": name, "stack": f"3d/{kind}", "pitch": pitch}, research
+            ),
+            "README.md": self._readme(
+                {"name": name, "stack": f"3d/{kind}", "pitch": pitch},
+                "template-three-cdn+agents",
+                ["index.html", "styles.css", "scene.js", "ui.js", "preview.html", "features.md", "research.md", "README.md"],
+            ),
+        }
+
+    def _scene_js_3d(self, kind: str, name: str, pitch: str) -> str:
+        # Kind-specific mesh builder injected into shared Three.js shell
+        builders = {
+            "particles": r"""
+function buildWorld(THREE, root) {
+  const group = new THREE.Group();
+  root.add(group);
+  const count = 1800;
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const r = 4 + Math.random() * 10;
+    const t = Math.random() * Math.PI * 2;
+    const p = (Math.random() - 0.5) * Math.PI;
+    pos[i*3] = r * Math.cos(t) * Math.cos(p);
+    pos[i*3+1] = r * Math.sin(p);
+    pos[i*3+2] = r * Math.sin(t) * Math.cos(p);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({ color: 0x00f0ff, size: 0.05, transparent: true, opacity: 0.85, depthAttenuation: true });
+  const points = new THREE.Points(geo, mat);
+  group.add(points);
+  const core = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(1.2, 1),
+    new THREE.MeshStandardMaterial({ color: 0x88e7ff, emissive: 0x004466, metalness: 0.2, roughness: 0.35, wireframe: true })
+  );
+  group.add(core);
+  return { group, points, core, tick(t, dens) {
+    points.rotation.y = t * 0.05;
+    core.rotation.x = t * 0.2;
+    core.rotation.y = t * 0.31;
+    mat.size = dens ? 0.08 : 0.045;
+  }};
+}
+""",
+            "product": r"""
+function buildWorld(THREE, root) {
+  const group = new THREE.Group();
+  root.add(group);
+  const pedestal = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.6, 1.8, 0.35, 48),
+    new THREE.MeshStandardMaterial({ color: 0x0b1520, metalness: 0.8, roughness: 0.25 })
+  );
+  pedestal.position.y = -1.35;
+  group.add(pedestal);
+  const artifact = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(1.05, 0),
+    new THREE.MeshStandardMaterial({ color: 0x00d8ff, metalness: 0.9, roughness: 0.18, transparent: true, opacity: 0.92, emissive: 0x003344 })
+  );
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(1.55, 0.05, 16, 80),
+    new THREE.MeshStandardMaterial({ color: 0xffc857, emissive: 0x442200, metalness: 1, roughness: 0.2 })
+  );
+  ring.rotation.x = Math.PI / 2.4;
+  artifact.add(body, ring);
+  group.add(artifact);
+  return { group, artifact, tick(t, dens) {
+    artifact.rotation.y = t * 0.45;
+    ring.rotation.z = t * 0.8;
+    body.scale.setScalar(1 + Math.sin(t * 2) * (dens ? 0.06 : 0.03));
+  }};
+}
+""",
+            "city": r"""
+function buildWorld(THREE, root) {
+  const group = new THREE.Group();
+  root.add(group);
+  const blocks = [];
+  const mat = new THREE.MeshStandardMaterial({ color: 0x0d2233, emissive: 0x003344, metalness: 0.4, roughness: 0.55 });
+  for (let x = -5; x <= 5; x++) {
+    for (let z = -5; z <= 5; z++) {
+      if (Math.hypot(x, z) < 1.2) continue;
+      const h = 0.4 + Math.random() * 3.2;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.7, h, 0.7), mat.clone());
+      m.position.set(x * 1.1, h / 2 - 1.2, z * 1.1);
+      m.userData.base = h;
+      group.add(m);
+      blocks.push(m);
+    }
+  }
+  const beacon = new THREE.Mesh(
+    new THREE.ConeGeometry(0.35, 1.4, 5),
+    new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x00aacc, metalness: 0.6, roughness: 0.3 })
+  );
+  beacon.position.y = 0.4;
+  group.add(beacon);
+  return { group, blocks, beacon, tick(t, dens) {
+    beacon.rotation.y = t;
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      const pulse = dens ? 0.35 : 0.15;
+      b.scale.y = 1 + Math.sin(t * 1.5 + i) * pulse * 0.2;
+    }
+  }};
+}
+""",
+            "cinematic": r"""
+function buildWorld(THREE, root) {
+  const group = new THREE.Group();
+  root.add(group);
+  const shapes = [];
+  const geos = [
+    new THREE.TorusKnotGeometry(0.9, 0.28, 120, 16),
+    new THREE.OctahedronGeometry(0.7, 0),
+    new THREE.BoxGeometry(0.9, 0.9, 0.9),
+  ];
+  geos.forEach((geo, i) => {
+    const m = new THREE.Mesh(
+      geo,
+      new THREE.MeshStandardMaterial({
+        color: i === 0 ? 0x00f0ff : i === 1 ? 0x3dff9a : 0x7ab8ff,
+        emissive: 0x002233,
+        metalness: 0.55,
+        roughness: 0.28,
+        wireframe: i === 2,
+      })
+    );
+    m.position.set((i - 1) * 2.2, Math.sin(i) * 0.4, 0);
+    group.add(m);
+    shapes.push(m);
+  });
+  const floor = new THREE.Mesh(
+    new THREE.CircleGeometry(8, 64),
+    new THREE.MeshStandardMaterial({ color: 0x061018, metalness: 0.7, roughness: 0.4 })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -1.6;
+  group.add(floor);
+  return { group, shapes, tick(t, dens) {
+    shapes.forEach((m, i) => {
+      m.rotation.x = t * (0.3 + i * 0.1);
+      m.rotation.y = t * (0.45 - i * 0.05);
+      m.position.y = Math.sin(t * 1.2 + i) * (dens ? 0.55 : 0.28);
+    });
+  }};
+}
+""",
+        }
+        builder = builders.get(kind) or builders["cinematic"]
+        title = json.dumps(name)
+        pitch_js = json.dumps(pitch)
+        # Classic UMD Three r128 — Qt WebEngine often fails on ES modules / import maps
+        return f"""(function () {{
+if (typeof THREE === "undefined") {{
+  var bootEl = document.getElementById("boot");
+  if (bootEl) bootEl.textContent = "Three.js failed to load — use OPEN IN BROWSER";
+  return;
+}}
+
+const TITLE = {title};
+const PITCH = {pitch_js};
+const canvas = document.getElementById("c");
+const boot = document.getElementById("boot");
+const fpsEl = document.getElementById("fps");
+
+{builder}
+
+const renderer = new THREE.WebGLRenderer({{ canvas: canvas, antialias: true, alpha: false }});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+if (THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
+if (THREE.ACESFilmicToneMapping !== undefined) renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x02060c);
+scene.fog = new THREE.FogExp2(0x02060c, 0.045);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 120);
+camera.position.set(0, 1.6, 7.2);
+
+const Orbit = THREE.OrbitControls || window.OrbitControls;
+const controls = Orbit
+  ? new Orbit(camera, canvas)
+  : {{ enableDamping: false, autoRotate: true, autoRotateSpeed: 0.55, update: function () {{}}, reset: function () {{}} }};
+controls.enableDamping = true;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.55;
+controls.maxDistance = 22;
+controls.minDistance = 2.5;
+
+scene.add(new THREE.AmbientLight(0x668899, 0.55));
+const key = new THREE.DirectionalLight(0xffffff, 1.15);
+key.position.set(4, 8, 5);
+scene.add(key);
+const rim = new THREE.PointLight(0x00f0ff, 2.2, 40);
+rim.position.set(-4, 2, -3);
+scene.add(rim);
+const fill = new THREE.PointLight(0xffaa66, 0.8, 30);
+fill.position.set(3, -1, 4);
+scene.add(fill);
+
+const root = new THREE.Group();
+scene.add(root);
+const world = buildWorld(THREE, root);
+
+let paused = false;
+let dens = true;
+let t0 = performance.now();
+let frames = 0;
+let lastFps = performance.now();
+
+function resize() {{
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}}
+window.addEventListener("resize", resize);
+document.addEventListener("visibilitychange", function () {{
+  if (document.hidden) paused = true;
+}});
+
+function loop(now) {{
+  requestAnimationFrame(loop);
+  frames++;
+  if (now - lastFps > 500) {{
+    if (fpsEl) fpsEl.textContent = Math.round((frames * 1000) / (now - lastFps)) + " FPS";
+    frames = 0;
+    lastFps = now;
+  }}
+  if (paused) return;
+  const t = (now - t0) / 1000;
+  if (world.tick) world.tick(t, dens);
+  rim.intensity = 1.6 + Math.sin(t * 2.2) * 0.6;
+  if (controls.update) controls.update();
+  renderer.render(scene, camera);
+}}
+
+window.__VIBE3D = {{
+  togglePause: function () {{ paused = !paused; return paused; }},
+  reset: function () {{
+    t0 = performance.now();
+    if (controls.reset) controls.reset();
+    camera.position.set(0, 1.6, 7.2);
+  }},
+  toggleAuto: function () {{ controls.autoRotate = !controls.autoRotate; return controls.autoRotate; }},
+  toggleFx: function () {{ dens = !dens; return dens; }},
+}};
+
+if (boot) boot.classList.add("hide");
+console.info("[vibe3d]", TITLE, PITCH);
+requestAnimationFrame(loop);
+}})();
+"""
+
+    def _tpl_animation(
+        self,
+        name: str,
+        pitch: str,
+        *,
+        research: dict[str, Any] | None = None,
+    ) -> dict[str, str]:
+        """GSAP + Canvas motion graphics app — zero npm."""
+        safe = _esc(name)
+        prompts = [str(p)[:120] for p in ((research or {}).get("prompts") or [])[:4]]
+        research_md = "# Research\n\n" + "\n".join(f"- {p}" for p in prompts) + "\n"
+        return {
+            "index.html": f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>{safe} — Motion</title>
+<link rel="stylesheet" href="styles.css"/>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+</head>
+<body>
+<div id="app">
+  <header>
+    <p class="brand">{safe}</p>
+    <p class="pitch">{_esc(pitch)}</p>
+  </header>
+  <canvas id="c" width="960" height="540"></canvas>
+  <div class="type" id="title">{safe}</div>
+  <div class="controls">
+    <button type="button" id="play">Play</button>
+    <button type="button" id="pause">Pause</button>
+    <button type="button" id="restart">Restart</button>
+    <button type="button" id="export">Export frame</button>
+    <label>Speed <input id="speed" type="range" min="0.25" max="2" step="0.25" value="1"/></label>
+  </div>
+  <p class="hint">SPACE play/pause · R restart · kinetic type + vector cascade</p>
+</div>
+<script src="anim.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>
+""",
+            "styles.css": """
+html,body{margin:0;min-height:100%;background:#02060c;color:#e8f7ff;font-family:Bahnschrift,Segoe UI,sans-serif}
+#app{max-width:1000px;margin:0 auto;padding:24px 16px 40px;display:grid;gap:14px;justify-items:center}
+.brand{margin:0;letter-spacing:.28em;color:#00f0ff;text-transform:uppercase;font-size:13px;text-align:center}
+.pitch{margin:8px 0 0;color:#8aa0b3;text-align:center;max-width:52ch;font-size:13px}
+canvas{width:min(960px,100%);height:auto;border:1px solid rgba(0,240,255,.35);background:#030a12;
+  box-shadow:0 0 50px rgba(0,240,255,.08)}
+.type{position:relative;margin-top:-72px;font-size:clamp(22px,4vw,42px);letter-spacing:.18em;text-transform:uppercase;
+  color:#e8f7ff;text-shadow:0 0 24px rgba(0,240,255,.45);pointer-events:none}
+.controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}
+button,label{background:rgba(0,20,30,.75);border:1px solid rgba(0,240,255,.4);color:#00f0ff;
+  padding:8px 12px;letter-spacing:.12em;text-transform:uppercase;font:inherit;font-size:11px;cursor:pointer}
+button:hover{background:rgba(0,240,255,.14)}
+input[type=range]{vertical-align:middle;width:90px}
+.hint{color:#6f879a;font-size:11px;letter-spacing:.08em;text-align:center}
+""",
+            "anim.js": self._anim_js_motion(name),
+            "ui.js": r"""
+(() => {
+  const A = () => window.__VIBEANIM || {};
+  document.getElementById("play")?.addEventListener("click", () => A().play?.());
+  document.getElementById("pause")?.addEventListener("click", () => A().pause?.());
+  document.getElementById("restart")?.addEventListener("click", () => A().restart?.());
+  document.getElementById("export")?.addEventListener("click", () => A().exportFrame?.());
+  document.getElementById("speed")?.addEventListener("input", (e) => A().setSpeed?.(Number(e.target.value)));
+  addEventListener("keydown", (e) => {
+    if (e.code === "Space") { e.preventDefault(); A().toggle?.(); }
+    if (e.key === "r" || e.key === "R") A().restart?.();
+  });
+})();
+""",
+            "preview.html": f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><meta http-equiv="refresh" content="0;url=index.html"/>
+<title>{safe}</title></head>
+<body style="background:#02060c;color:#00f0ff;font-family:Bahnschrift,sans-serif;display:grid;place-items:center;height:100vh">
+<a style="color:#00f0ff;letter-spacing:.2em" href="index.html">OPEN MOTION STAGE →</a>
+</body></html>
+""",
+            "research.md": research_md,
+            "README.md": self._readme(
+                {"name": name, "stack": "animation/gsap", "pitch": pitch},
+                "template-gsap-cdn",
+                ["index.html", "styles.css", "anim.js", "ui.js", "preview.html", "research.md", "README.md"],
+            ),
+        }
+
+    def _anim_js_motion(self, name: str) -> str:
+        title = json.dumps(name)
+        return f"""
+const TITLE = {title};
+const c = document.getElementById("c");
+const ctx = c.getContext("2d");
+const titleEl = document.getElementById("title");
+const W = c.width, H = c.height;
+const state = {{ t: 0, running: true, speed: 1, ribbons: [], bursts: [] }};
+
+function seed() {{
+  state.ribbons = Array.from({{ length: 7 }}, (_, i) => ({{
+    y: 80 + i * 55,
+    amp: 18 + i * 4,
+    hue: 180 + i * 12,
+    phase: i * 0.7,
+  }}));
+  state.bursts = Array.from({{ length: 40 }}, () => ({{
+    x: Math.random() * W,
+    y: Math.random() * H,
+    r: 1 + Math.random() * 3,
+    v: 0.2 + Math.random() * 1.2,
+  }}));
+}}
+
+function draw(t) {{
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, "#02060c");
+  g.addColorStop(1, "#041824");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  // grid
+  ctx.strokeStyle = "rgba(0,240,255,0.06)";
+  for (let x = 0; x < W; x += 40) {{ ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }}
+  for (let y = 0; y < H; y += 40) {{ ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }}
+  // ribbons
+  for (const r of state.ribbons) {{
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += 8) {{
+      const y = r.y + Math.sin(x * 0.012 + t * 1.4 + r.phase) * r.amp;
+      if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }}
+    ctx.strokeStyle = `hsla(${{r.hue}},100%,65%,0.75)`;
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+  }}
+  // particles
+  ctx.fillStyle = "rgba(0,240,255,0.7)";
+  for (const b of state.bursts) {{
+    b.y -= b.v * state.speed;
+    if (b.y < -4) {{ b.y = H + 4; b.x = Math.random() * W; }}
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.fill();
+  }}
+  // kinetic frame
+  const pulse = 0.5 + 0.5 * Math.sin(t * 2);
+  ctx.strokeStyle = `rgba(0,240,255,${{0.25 + pulse * 0.35}})`;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(24 + pulse * 6, 24 + pulse * 6, W - 48 - pulse * 12, H - 48 - pulse * 12);
+}}
+
+function loop() {{
+  requestAnimationFrame(loop);
+  if (!state.running) return;
+  state.t += 0.016 * state.speed;
+  draw(state.t);
+}}
+
+seed();
+if (window.gsap && titleEl) {{
+  gsap.fromTo(titleEl, {{ opacity: 0, y: 28, letterSpacing: "0.4em" }}, {{
+    opacity: 1, y: 0, letterSpacing: "0.18em", duration: 1.2, ease: "power3.out"
+  }});
+  gsap.to(titleEl, {{ textShadow: "0 0 34px rgba(0,240,255,.8)", duration: 1.4, yoyo: true, repeat: -1, ease: "sine.inOut" }});
+}}
+window.__VIBEANIM = {{
+  play() {{ state.running = true; }},
+  pause() {{ state.running = false; }},
+  toggle() {{ state.running = !state.running; return state.running; }},
+  restart() {{ seed(); state.t = 0; state.running = true; if (window.gsap && titleEl) gsap.fromTo(titleEl, {{ opacity: 0 }}, {{ opacity: 1, duration: 0.6 }}); }},
+  setSpeed(v) {{ state.speed = v || 1; }},
+  exportFrame() {{
+    const a = document.createElement("a");
+    a.download = (TITLE || "frame").replace(/\\s+/g, "_").toLowerCase() + ".png";
+    a.href = c.toDataURL("image/png");
+    a.click();
+  }},
+}};
+requestAnimationFrame(loop);
+"""
+
     def _tpl_game(self, name: str, pitch: str) -> dict[str, str]:
         safe = _esc(name)
         blob = f"{name} {pitch}".lower()
@@ -1840,10 +3093,30 @@ const ui = window.VibeUI;
             "shooter": self._game_js_shooter(),
         }[kind]
         help_txt = {
-            "snake": "ARROWS STEER · P PAUSE · R RESTART",
-            "runner": "SPACE / UP JUMP · P PAUSE · R RESTART",
-            "shooter": "ARROWS MOVE · SPACE SHOOT · P PAUSE · R RESTART",
+            "snake": "ARROWS STEER · P PAUSE · R RESTART · S SETTINGS",
+            "runner": "SPACE / UP JUMP · P PAUSE · R RESTART · S SETTINGS",
+            "shooter": "ARROWS MOVE · SPACE SHOOT · P PAUSE · R RESTART · S SETTINGS",
         }[kind]
+        settings_js = f"""
+window.GameSettings = {{
+  KEY: "vibe:{self._slug(name)}:game-settings",
+  load() {{
+    try {{ return Object.assign({{ volume: 0.4, shake: true, reduceMotion: false, difficulty: "normal" }},
+      JSON.parse(localStorage.getItem(this.KEY) || "{{}}")); }}
+    catch {{ return {{ volume: 0.4, shake: true, reduceMotion: false, difficulty: "normal" }}; }}
+  }},
+  save(s) {{ localStorage.setItem(this.KEY, JSON.stringify(s)); }},
+}};
+document.getElementById("btnSettings")?.addEventListener("click", () => {{
+  const s = window.GameSettings.load();
+  const vol = prompt("SFX volume 0-1", String(s.volume));
+  if (vol != null) s.volume = Math.max(0, Math.min(1, Number(vol) || 0));
+  s.shake = confirm("Screen shake on hits?");
+  s.reduceMotion = confirm("Reduce motion?");
+  window.GameSettings.save(s);
+  alert("Settings saved");
+}});
+"""
         return {
             "index.html": f"""<!DOCTYPE html>
 <html lang="en">
@@ -1875,14 +3148,20 @@ const ui = window.VibeUI;
     <button type="button" id="btnMute">Mute SFX</button>
     <button type="button" id="btnEasy">Easy</button>
     <button type="button" id="btnHard">Hard</button>
+    <button type="button" id="btnSettings">Settings</button>
   </div>
   <p class="dim">{help_txt} · {_esc(pitch).upper()}</p>
 </div>
+<script src="settings.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
 """,
+            "settings.js": settings_js,
             "game.js": js,
+            "features.md": self._features_md(
+                {"name": name, "stack": "game", "pitch": pitch}, {}
+            ),
             "preview.html": f"""<!DOCTYPE html><html><head><meta charset="utf-8"/>
 <title>{safe} preview</title>
 <style>body{{margin:0;background:#02080e;color:#9adfff;font-family:Bahnschrift,sans-serif;display:grid;place-items:center;height:100vh}}
@@ -1891,8 +3170,8 @@ a{{color:#00e8ff;letter-spacing:.2em;text-decoration:none;border:1px solid #00e8
 """,
             "README.md": self._readme(
                 {"name": name, "stack": "game", "pitch": pitch},
-                "template",
-                ["index.html", "game.js", "preview.html", "README.md"],
+                "template+agents",
+                ["index.html", "settings.js", "game.js", "features.md", "preview.html", "README.md"],
             ),
         }
 

@@ -376,30 +376,102 @@ class GuestMode:
 
 
 class AmbientDucker:
-    """Lower Spotify/media while Jarvis speaks; restore after."""
+    """Lower Spotify/media session volume while Jarvis speaks; restore after.
+
+    Uses per-app Windows mixer (pycaw) so TTS stays loud — never ducks master
+    volume (that would bury Jarvis under the same cut).
+    """
+
+    TARGET_FRAC = 0.18  # Spotify level while speaking (~18%)
+    MATCH = (
+        "spotify",
+        "chrome",
+        "msedge",
+        "firefox",
+        "brave",
+        "music.ui",
+        "youtube music",
+        "tidal",
+        "amazon music",
+    )
 
     def __init__(self, music: Any = None, steps: int = 6) -> None:
         self.music = music
         self.steps = max(2, min(12, int(steps)))
         self._ducked = False
+        self._saved: list[tuple[Any, float]] = []
+        self._used_keys = False
 
     def duck(self) -> None:
-        if self._ducked or not self.music:
+        if self._ducked:
+            return
+        if self._duck_sessions():
+            self._ducked = True
+            self._used_keys = False
+            return
+        # Fallback: media keys (less precise)
+        if not self.music:
             return
         try:
             self.music.volume_down(self.steps)
             self._ducked = True
+            self._used_keys = True
         except Exception:
             pass
 
     def restore(self) -> None:
-        if not self._ducked or not self.music:
+        if not self._ducked:
             return
         try:
-            self.music.volume_up(self.steps)
+            if self._used_keys and self.music:
+                self.music.volume_up(self.steps)
+            else:
+                self._restore_sessions()
         except Exception:
             pass
         self._ducked = False
+        self._used_keys = False
+        self._saved = []
+
+    def _duck_sessions(self) -> bool:
+        try:
+            from pycaw.pycaw import AudioUtilities, ISimpleAudioVolume
+        except Exception:
+            return False
+        saved: list[tuple[Any, float]] = []
+        try:
+            sessions = AudioUtilities.GetAllSessions()
+        except Exception:
+            return False
+        for session in sessions:
+            try:
+                proc = session.Process
+                if proc is None:
+                    continue
+                name = (proc.name() or "").lower()
+                if not any(m in name for m in self.MATCH):
+                    if "spotify" not in name and "music" not in name:
+                        continue
+                vol = session._ctl.QueryInterface(ISimpleAudioVolume)
+                try:
+                    cur = float(vol.GetMasterVolume())
+                except Exception:
+                    continue
+                saved.append((vol, cur))
+                vol.SetMasterVolume(min(cur, self.TARGET_FRAC), None)
+            except Exception:
+                continue
+        if not saved:
+            return False
+        self._saved = saved
+        return True
+
+    def _restore_sessions(self) -> None:
+        for vol, level in self._saved:
+            try:
+                vol.SetMasterVolume(float(level), None)
+            except Exception:
+                pass
 
 
 class TabCommentator:

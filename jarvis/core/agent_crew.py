@@ -2,7 +2,7 @@
 
   1. VECTOR    (Supervisor/Router)  — analyzes requests, routes to specialists,
                                       synthesizes the final answer
-  2. SCHOLAR   (Research)           — live web search: Tavily → Serper → DuckDuckGo
+  2. SCHOLAR   (Research)           — multi-source: Tavily/Serper + Wikipedia/HN/RSS/DDG
   3. ARCHIVE   (Memory/Context)     — ChromaDB long-term memory: recall + persist
   4. FORGE     (Operator/Tools)     — file reading, allowlisted terminal, file
                                       organization, browser handoff (computer-use)
@@ -29,6 +29,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable
@@ -50,7 +51,7 @@ _MAX_FILE_BYTES = 40_000
 
 
 class ResearchAgent:
-    """SCHOLAR — live web data: Tavily → Serper → DuckDuckGo fallback."""
+    """SCHOLAR — multi-source research: Tavily, Serper, Wikipedia, HN, RSS, DDG."""
 
     name = "SCHOLAR"
 
@@ -80,21 +81,21 @@ class ResearchAgent:
                     {
                         "api_key": key,
                         "query": query,
-                        "max_results": 5,
+                        "max_results": 6,
                         "include_answer": True,
                     }
                 ).encode("utf-8"),
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with urllib.request.urlopen(req, timeout=16) as resp:
                 data = json.loads(resp.read().decode("utf-8", errors="replace"))
-            lines = []
+            lines = ["[Tavily]"]
             if data.get("answer"):
                 lines.append(f"Answer: {data['answer']}")
-            for r in (data.get("results") or [])[:5]:
+            for r in (data.get("results") or [])[:6]:
                 lines.append(f"- {r.get('title', '')}: {r.get('content', '')[:220]}")
-            return "\n".join(lines)
+            return "\n".join(lines) if len(lines) > 1 else ""
         except Exception as e:
             print(f"[crew:{self.name}] tavily: {e}")
             return ""
@@ -106,22 +107,107 @@ class ResearchAgent:
         try:
             req = urllib.request.Request(
                 "https://google.serper.dev/search",
-                data=json.dumps({"q": query, "num": 5}).encode("utf-8"),
+                data=json.dumps({"q": query, "num": 6}).encode("utf-8"),
                 headers={"Content-Type": "application/json", "X-API-KEY": key},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with urllib.request.urlopen(req, timeout=16) as resp:
                 data = json.loads(resp.read().decode("utf-8", errors="replace"))
-            lines = []
+            lines = ["[Serper]"]
             box = data.get("answerBox") or {}
             if box.get("answer") or box.get("snippet"):
                 lines.append(f"Answer: {box.get('answer') or box.get('snippet')}")
-            for r in (data.get("organic") or [])[:5]:
+            for r in (data.get("organic") or [])[:6]:
                 lines.append(f"- {r.get('title', '')}: {r.get('snippet', '')[:220]}")
-            return "\n".join(lines)
+            return "\n".join(lines) if len(lines) > 1 else ""
         except Exception as e:
             print(f"[crew:{self.name}] serper: {e}")
             return ""
+
+    def _wikipedia(self, query: str) -> str:
+        try:
+            if self._internet is None:
+                from jarvis.core.internet import InternetAgent
+
+                self._internet = InternetAgent()
+            wiki = self._internet._wikipedia(query)
+            if not wiki:
+                return ""
+            extract = (wiki.get("extract") or "").strip()
+            title = wiki.get("title") or "Wikipedia"
+            url = wiki.get("url") or ""
+            if not extract:
+                return ""
+            return f"[Wikipedia] {title}\n{extract[:900]}\n{url}".strip()
+        except Exception as e:
+            print(f"[crew:{self.name}] wiki: {e}")
+            return ""
+
+    def _hackernews(self, query: str) -> str:
+        q = " ".join((query or "").split())
+        if not q:
+            return ""
+        try:
+            url = (
+                "https://hn.algolia.com/api/v1/search?"
+                + urllib.parse.urlencode({"query": q, "hitsPerPage": 5, "tags": "story"})
+            )
+            req = urllib.request.Request(url, headers={"User-Agent": "JarvisCrew/1.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            lines = ["[Hacker News]"]
+            for h in (data.get("hits") or [])[:5]:
+                title = h.get("title") or ""
+                pts = h.get("points")
+                link = h.get("url") or f"https://news.ycombinator.com/item?id={h.get('objectID')}"
+                if title:
+                    lines.append(f"- {title} ({pts or 0} pts) {link}")
+            return "\n".join(lines) if len(lines) > 1 else ""
+        except Exception as e:
+            print(f"[crew:{self.name}] hn: {e}")
+            return ""
+
+    def _rss_pulse(self, query: str) -> str:
+        """Lightweight free feeds — BBC + Reddit search-ish via Google News RSS."""
+        q = " ".join((query or "").split())
+        if not q:
+            return ""
+        feeds = [
+            (
+                "Google News",
+                "https://news.google.com/rss/search?"
+                + urllib.parse.urlencode({"q": q, "hl": "en-US", "gl": "US", "ceid": "US:en"}),
+            ),
+            ("BBC", "https://feeds.bbci.co.uk/news/technology/rss.xml"),
+        ]
+        lines: list[str] = ["[RSS]"]
+        try:
+            import xml.etree.ElementTree as ET
+        except Exception:
+            return ""
+        for label, feed_url in feeds:
+            try:
+                req = urllib.request.Request(
+                    feed_url, headers={"User-Agent": "JarvisCrew/1.0"}
+                )
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    raw = resp.read()
+                root = ET.fromstring(raw)
+                items = root.findall(".//item")[:4]
+                for it in items:
+                    title = (it.findtext("title") or "").strip()
+                    link = (it.findtext("link") or "").strip()
+                    if not title:
+                        continue
+                    # For BBC tech, only keep loosely related titles
+                    if label == "BBC":
+                        tokens = [t for t in re.split(r"\W+", q.lower()) if len(t) > 3][:4]
+                        if tokens and not any(t in title.lower() for t in tokens):
+                            continue
+                    lines.append(f"- ({label}) {title}" + (f" {link}" if link else ""))
+            except Exception as e:
+                print(f"[crew:{self.name}] rss/{label}: {e}")
+        return "\n".join(lines) if len(lines) > 1 else ""
 
     def _duckduckgo(self, query: str) -> str:
         try:
@@ -129,17 +215,47 @@ class ResearchAgent:
                 from jarvis.core.internet import InternetAgent
 
                 self._internet = InternetAgent()
-            return self._internet.search(query, open_page=False) or ""
+            out = self._internet.search(query, open_page=False) or ""
+            return f"[DuckDuckGo]\n{out}" if out.strip() else ""
         except Exception as e:
             print(f"[crew:{self.name}] ddg: {e}")
             return ""
 
     def run(self, query: str) -> str:
-        for fn in (self._tavily, self._serper, self._duckduckgo):
-            out = fn(query)
-            if out.strip():
-                return out.strip()
-        return "No search backend reachable."
+        """Fan-out across free + keyed sources; merge the best evidence."""
+        q = " ".join((query or "").split())
+        if not q:
+            return "No research query."
+        chunks: list[str] = []
+        # Prefer keyed APIs first, then free enrichers in parallel-ish sequence
+        for fn in (
+            self._tavily,
+            self._serper,
+            self._wikipedia,
+            self._hackernews,
+            self._rss_pulse,
+            self._duckduckgo,
+        ):
+            try:
+                out = fn(q)
+            except Exception:
+                out = ""
+            if out and out.strip():
+                chunks.append(out.strip())
+            # Enough signal — stop early for latency
+            if len(chunks) >= 3 and sum(len(c) for c in chunks) > 1800:
+                break
+        if not chunks:
+            return "No search backend reachable."
+        merged = "\n\n".join(chunks)
+        if len(merged) > 5500:
+            merged = merged[:5500] + "\n…"
+        return merged
+
+    def refresh(self) -> str:
+        """Clear cached internet helper so next run hits live sources."""
+        self._internet = None
+        return "SCHOLAR sources refreshed."
 
 
 class MemoryAgent:
@@ -615,13 +731,13 @@ class AgentCrew:
 
     def status(self) -> str:
         mem = "online" if self.memory._store() is not None else "offline"
-        research_backend = (
-            "tavily"
-            if self.research._key("tavily_api_key")
-            else "serper"
-            if self.research._key("serper_api_key")
-            else "duckduckgo"
-        )
+        sources = []
+        if self.research._key("tavily_api_key"):
+            sources.append("tavily")
+        if self.research._key("serper_api_key"):
+            sources.append("serper")
+        sources.extend(["wikipedia", "hackernews", "rss", "duckduckgo"])
+        research_backend = "+".join(sources[:4]) + ("…" if len(sources) > 4 else "")
         return (
             f"Crew online — 8 agents. Brain: {backend_name()}. "
             f"VECTOR routing, SCHOLAR via {research_backend}, ARCHIVE memory {mem}, "
@@ -629,6 +745,24 @@ class AgentCrew:
             f"{'linked' if self.comms._phone else 'unlinked'}, SENTINEL QC armed, "
             f"CODESMITH sandbox ready, WARDEN watching telemetry."
         )
+
+    def refresh(self) -> str:
+        """Hot-refresh research helpers + clear last_run so next dispatch is live."""
+        notes = []
+        try:
+            notes.append(self.research.refresh())
+        except Exception as e:
+            notes.append(f"SCHOLAR: {e}")
+        self.last_run = {}
+        try:
+            import importlib
+            from jarvis.core import llm_client
+
+            importlib.reload(llm_client)
+            notes.append(f"LLM backend: {llm_client.backend_name()}")
+        except Exception as e:
+            notes.append(f"LLM reload: {e}")
+        return "Agents refreshed — " + "; ".join(notes)
 
     def debate(self, question: str) -> str:
         """Multi-agent debate: advocate vs devil's advocate, VECTOR verdict."""

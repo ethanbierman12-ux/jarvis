@@ -75,6 +75,11 @@ class InternetAgent:
                         },
                     )
 
+        # 3b) Hacker News + Google News RSS for fresh angles
+        for extra in self._hackernews_hits(q) + self._news_rss_hits(q):
+            if not any(self._same_url(extra.get("url"), h.get("url")) for h in hits):
+                hits.append(extra)
+
         # 4) Fetch top page snippet to enrich answer
         if hits and (not answer or len(answer) < 80):
             fetched = self._fetch_snippet(hits[0].get("url") or "")
@@ -249,6 +254,62 @@ class InternetAgent:
             return results
         except Exception as e:
             print(f"[net] ddg html failed: {e}")
+            return []
+
+    def _hackernews_hits(self, q: str) -> list[dict[str, Any]]:
+        try:
+            url = (
+                "https://hn.algolia.com/api/v1/search?"
+                + urllib.parse.urlencode({"query": q, "hitsPerPage": 4, "tags": "story"})
+            )
+            data = self._get_json(url, timeout=8)
+            out: list[dict[str, Any]] = []
+            for h in (data.get("hits") or [])[:4]:
+                title = (h.get("title") or "").strip()
+                if not title:
+                    continue
+                link = h.get("url") or f"https://news.ycombinator.com/item?id={h.get('objectID')}"
+                out.append(
+                    {
+                        "title": title,
+                        "url": link,
+                        "snippet": f"HN · {h.get('points') or 0} pts",
+                        "source": "hackernews",
+                    }
+                )
+            return out
+        except Exception as e:
+            print(f"[net] hn: {e}")
+            return []
+
+    def _news_rss_hits(self, q: str) -> list[dict[str, Any]]:
+        try:
+            import xml.etree.ElementTree as ET
+
+            feed = (
+                "https://news.google.com/rss/search?"
+                + urllib.parse.urlencode({"q": q, "hl": "en-US", "gl": "US", "ceid": "US:en"})
+            )
+            req = urllib.request.Request(feed, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                raw = resp.read()
+            root = ET.fromstring(raw)
+            out: list[dict[str, Any]] = []
+            for it in root.findall(".//item")[:4]:
+                title = (it.findtext("title") or "").strip()
+                link = (it.findtext("link") or "").strip()
+                if title:
+                    out.append(
+                        {
+                            "title": title,
+                            "url": link,
+                            "snippet": "Google News",
+                            "source": "rss",
+                        }
+                    )
+            return out
+        except Exception as e:
+            print(f"[net] rss: {e}")
             return []
 
     def _wikipedia(self, q: str) -> dict[str, Any] | None:

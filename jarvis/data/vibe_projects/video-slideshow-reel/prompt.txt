@@ -1,0 +1,26 @@
+You are Jarvis, an autonomous vibe-coding agent.
+Product: Video Slideshow Reel
+Stack hint: game
+Brief: video slideshow reel with captions play pause and export
+
+Design prompts from research:
+- Design a polished game app called Video Slideshow Reel — video slideshow reel with captions play pause and export.
+- Hero section with bold typography, cyan accent, dark void background.
+- Interactive UI with localStorage, keyboard shortcuts, empty states.
+- Mobile-first layout, one primary CTA, gallery of mood images.
+- Jarvis, I've analyzed the UI design inspiration for a video slideshow reel game app and found that Instagram's feed layout and navigation can serve as a great starting point. The app's design should incorporate similar f
+- To build a game app featuring a video slideshow reel, consider incorporating Instagram-like features such as filters and hashtags to make the experience engaging and interactive. The app could also include social sharing
+
+Image URLs to embed in the UI (use as <img src>):
+- https://picsum.photos/seed/video-slideshow-reel-hero-0/960/540
+- https://loremflickr.com/960/540/game%2CVideo%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/video-slideshow-reel-gallery-1-1/960/540
+- https://loremflickr.com/960/540/game%2CVideo%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/video-slideshow-reel-gallery-2-2/960/540
+
+Web references:
+- Instagram: Instagram is an American photo and short-form video sharing social networking service owned by Meta Platforms. It allows users to upload media that can be edited with filters, be o
+- 15 examples of what Gemini 3 can do - blog.google: Google News
+- ️ 40 AI Social Media Prompts To 10x Your Content Creation - Metricool: Google News
+
+Ship a COMPLETE runnable multi-file project with AT LEAST 6 files (index.html, styles.css, theme.css, app.js, ui.js, storage.js, research.md, README.md). Include a hero image, image gallery, substantial JS (200+ lines total), polished CSS, keyboard shortcuts, and empty states. Zero stubs.

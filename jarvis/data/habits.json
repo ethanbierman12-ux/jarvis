@@ -1238,6 +1238,251 @@
       "weekday": "Monday",
       "kind": "open_app",
       "detail": "vibing code"
+    },
+    {
+      "ts": "2026-07-28T08:29:29",
+      "hour": 8,
+      "weekday": "Tuesday",
+      "kind": "studio",
+      "detail": "images"
+    },
+    {
+      "ts": "2026-07-28T08:30:17",
+      "hour": 8,
+      "weekday": "Tuesday",
+      "kind": "studio",
+      "detail": "automation"
+    },
+    {
+      "ts": "2026-07-28T08:50:39",
+      "hour": 8,
+      "weekday": "Tuesday",
+      "kind": "studio",
+      "detail": "figma"
+    },
+    {
+      "ts": "2026-07-28T21:40:56",
+      "hour": 21,
+      "weekday": "Tuesday",
+      "kind": "vibe_code",
+      "detail": "app"
+    },
+    {
+      "ts": "2026-07-28T21:50:09",
+      "hour": 21,
+      "weekday": "Tuesday",
+      "kind": "vibe_code",
+      "detail": "app"
+    },
+    {
+      "ts": "2026-07-28T22:00:48",
+      "hour": 22,
+      "weekday": "Tuesday",
+      "kind": "vibe_code",
+      "detail": "app"
+    },
+    {
+      "ts": "2026-07-28T22:14:24",
+      "hour": 22,
+      "weekday": "Tuesday",
+      "kind": "vibe_code",
+      "detail": "app"
+    },
+    {
+      "ts": "2026-07-28T22:28:24",
+      "hour": 22,
+      "weekday": "Tuesday",
+      "kind": "vibe_code",
+      "detail": "app"
+    },
+    {
+      "ts": "2026-07-29T08:21:51",
+      "hour": 8,
+      "weekday": "Wednesday",
+      "kind": "studio",
+      "detail": "rainmeter"
+    },
+    {
+      "ts": "2026-07-31T08:32:27",
+      "hour": 8,
+      "weekday": "Friday",
+      "kind": "open_app",
+      "detail": "frabicature"
+    },
+    {
+      "ts": "2026-08-02T23:24:17",
+      "hour": 23,
+      "weekday": "Sunday",
+      "kind": "upgrade",
+      "detail": ""
+    },
+    {
+      "ts": "2026-08-02T23:24:44",
+      "hour": 23,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-08-02T23:30:42",
+      "hour": 23,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-08-02T23:35:05",
+      "hour": 23,
+      "weekday": "Sunday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-08-03T01:28:03",
+      "hour": 1,
+      "weekday": "Monday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-08-03T01:32:06",
+      "hour": 1,
+      "weekday": "Monday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-08-03T01:35:33",
+      "hour": 1,
+      "weekday": "Monday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-08-03T21:03:30",
+      "hour": 21,
+      "weekday": "Monday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-08-03T21:04:20",
+      "hour": 21,
+      "weekday": "Monday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-08-03T21:04:35",
+      "hour": 21,
+      "weekday": "Monday",
+      "kind": "map_zoom",
+      "detail": "in"
+    },
+    {
+      "ts": "2026-08-03T21:39:07",
+      "hour": 21,
+      "weekday": "Monday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-08-03T21:39:44",
+      "hour": 21,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "frabricature"
+    },
+    {
+      "ts": "2026-08-03T21:40:00",
+      "hour": 21,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "fabricater"
+    },
+    {
+      "ts": "2026-08-03T21:42:03",
+      "hour": 21,
+      "weekday": "Monday",
+      "kind": "open_app",
+      "detail": "chrome"
+    },
+    {
+      "ts": "2026-08-03T21:45:13",
+      "hour": 21,
+      "weekday": "Monday",
+      "kind": "studio",
+      "detail": "dearpygui"
+    },
+    {
+      "ts": "2026-08-03T21:49:34",
+      "hour": 21,
+      "weekday": "Monday",
+      "kind": "music",
+      "detail": "iron man workshop"
+    },
+    {
+      "ts": "2026-08-03T22:41:42",
+      "hour": 22,
+      "weekday": "Monday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-08-03T22:41:57",
+      "hour": 22,
+      "weekday": "Monday",
+      "kind": "map_zoom",
+      "detail": "in"
+    },
+    {
+      "ts": "2026-08-03T22:51:07",
+      "hour": 22,
+      "weekday": "Monday",
+      "kind": "scanner",
+      "detail": "aviation"
+    },
+    {
+      "ts": "2026-08-07T02:18:58",
+      "hour": 2,
+      "weekday": "Friday",
+      "kind": "music",
+      "detail": ""
+    },
+    {
+      "ts": "2026-08-07T03:43:36",
+      "hour": 3,
+      "weekday": "Friday",
+      "kind": "open_app",
+      "detail": "chrome"
+    },
+    {
+      "ts": "2026-08-07T03:45:11",
+      "hour": 3,
+      "weekday": "Friday",
+      "kind": "map_view",
+      "detail": "home"
+    },
+    {
+      "ts": "2026-08-07T03:45:27",
+      "hour": 3,
+      "weekday": "Friday",
+      "kind": "map_zoom",
+      "detail": "out"
+    },
+    {
+      "ts": "2026-08-07T23:26:23",
+      "hour": 23,
+      "weekday": "Friday",
+      "kind": "scan",
+      "detail": ""
+    },
+    {
+      "ts": "2026-08-08T01:27:11",
+      "hour": 1,
+      "weekday": "Saturday",
+      "kind": "studio",
+      "detail": "claude"
     }
   ],
   "priorities": []

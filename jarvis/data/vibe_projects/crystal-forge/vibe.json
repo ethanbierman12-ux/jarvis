@@ -1,0 +1,20 @@
+{
+  "name": "Crystal Forge",
+  "stack": "3d",
+  "pitch": "crystal mesh with bloom-like additive materials",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "styles.css",
+    "scene.js",
+    "ui.js",
+    "preview.html",
+    "research.md",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\crystal-forge",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\crystal-forge\\index.html",
+  "zero_setup": true,
+  "preview_url": "http://127.0.0.1:53615/index.html",
+  "app_url": "http://127.0.0.1:53615/index.html"
+}

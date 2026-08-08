@@ -135,11 +135,18 @@ class ArtifactPanel(QFrame):
         self.setGeometry(start)
         self.show()
         self.raise_()
+        # Stop prior slide so rapid artifacts don't leave geometry mid-tween
+        if self._anim is not None:
+            try:
+                self._anim.stop()
+            except Exception:
+                pass
         anim = QPropertyAnimation(self, b"geometry", self)
         anim.setDuration(320)
         anim.setStartValue(start)
         anim.setEndValue(end)
         anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.finished.connect(lambda: self.setGeometry(end))
         anim.start()
         self._anim = anim
 

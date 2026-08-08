@@ -1,0 +1,22 @@
+{
+  "name": "Checklist Arena",
+  "stack": "web",
+  "pitch": "shared-style checklists with progress bars",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "theme.css",
+    "styles.css",
+    "storage.js",
+    "ui.js",
+    "app.js",
+    "research.md",
+    "preview.html",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\checklist-arena",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\checklist-arena\\index.html",
+  "zero_setup": true,
+  "preview_url": "http://127.0.0.1:53195/index.html",
+  "app_url": "http://127.0.0.1:53195/index.html"
+}

@@ -17,13 +17,13 @@ from PyQt6.QtWidgets import (
 from jarvis.ui.widgets.cmd_button import CmdButton
 
 
-_PANEL = "#071018"
+_PANEL = "#030a12"
 _SCROLL_CSS = f"""
 QScrollArea {{ background: {_PANEL}; border: none; }}
 QScrollArea > QWidget > QWidget {{ background: {_PANEL}; }}
 QScrollBar:vertical {{ width: 4px; background: transparent; margin: 0; }}
 QScrollBar::handle:vertical {{
-    background: rgba(0,232,255,55); min-height: 24px; border-radius: 2px;
+    background: rgba(0,240,255,70); min-height: 24px; border-radius: 2px;
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
@@ -75,19 +75,75 @@ class ControlStrip(QFrame):
                     ("Mail", "check email", "ghost"),
                     ("Map", "open map view", "ghost"),
                     ("News", "pull up the news", "ghost"),
+                    ("Dispatch", "put on local dispatch", "ghost"),
+                    ("Edit site", "change the layout of my website", "ghost"),
                     ("Stats", "show stats", "ghost"),
                     ("Away", "away mode", "ghost"),
                 ),
             ),
             (
-                "BUILD",
+                "STUDIO",
                 (
-                    ("Site", "build a site", "ghost"),
-                    ("Vibe", "start vibe coding", "ghost"),
-                    ("Game", "make a game", "ghost"),
+                    ("Written", "start written", "ghost"),
+                    ("Claude", "open claude", "ghost"),
+                    ("Obsidian", "open obsidian", "ghost"),
                     ("Video", "make a video", "ghost"),
-                    ("Biz", "find biz", "ghost"),
-                    ("Search", "search the web for latest AI news", "ghost"),
+                    ("Cling", "open cling", "ghost"),
+                    ("Research", "start research", "ghost"),
+                    ("Perplexity", "open perplexity", "ghost"),
+                    ("Design", "start design", "ghost"),
+                    ("Figma", "open figma", "ghost"),
+                    ("Audio", "make audio", "ghost"),
+                    ("11 Labs", "open 11 labs", "ghost"),
+                    ("Images", "make images", "ghost"),
+                    ("Mid-Journey", "open mid journey", "ghost"),
+                    ("Automation", "start automation", "ghost"),
+                    ("N8N", "open n8n", "ghost"),
+                ),
+            ),
+            (
+                "FRAMEWORKS",
+                (
+                    ("Arwes", "open arwes", "ghost"),
+                    ("Electron", "open electron", "ghost"),
+                    ("Dear PyGui", "open dear pygui", "ghost"),
+                    ("Godot", "open godot", "ghost"),
+                    ("Unreal", "open unreal", "ghost"),
+                    ("Rainmeter", "open rainmeter", "ghost"),
+                    ("Envato", "open envato", "ghost"),
+                    ("Motion", "open motion array", "ghost"),
+                ),
+            ),
+            (
+                "WORK",
+                (
+                    ("Manager", "ask manager invent today's outcome stream", "ghost"),
+                    ("Research", "ask research agent generate new outcome ideas", "ghost"),
+                    ("Market", "ask market agent trending niches", "ghost"),
+                    ("Etsy", "ask stitch design etsy tee", "ghost"),
+                    ("TikTok", "ask reel write tiktok for etsy", "ghost"),
+                    ("eBay", "ask flip find ebay flips", "ghost"),
+                    ("Stocks", "ask ledger research market thesis", "ghost"),
+                    ("Music", "ask muse make a track brief", "ghost"),
+                    ("Ops", "open agent ops", "ghost"),
+                    ("Run", "work crew run invent profitable outcome stream", "start"),
+                    ("Loop", "start loop build a login page with a self-test that prints OK", "start"),
+                    ("Loops", "loop status", "ghost"),
+                    ("Refresh", "refresh agents", "ghost"),
+                    ("Reload", "soft reload", "ghost"),
+                ),
+            ),
+            (
+                "RGB",
+                (
+                    ("Jarvis", "rgb jarvis", "ghost"),
+                    ("Cyan", "rgb cyan", "ghost"),
+                    ("Magenta", "rgb magenta", "ghost"),
+                    ("Red", "rgb red", "ghost"),
+                    ("Blue", "rgb blue", "ghost"),
+                    ("Green", "rgb green", "ghost"),
+                    ("Gold", "rgb gold", "ghost"),
+                    ("Off", "rgb off", "danger"),
                 ),
             ),
             (

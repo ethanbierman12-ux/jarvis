@@ -28,6 +28,7 @@ from jarvis.ui.widgets.night_vision import NightVisionBadge
 from jarvis.ui.widgets.artifact_panel import ArtifactPanel
 from jarvis.ui.widgets.camera_theater import CameraTheater
 from jarvis.ui.widgets.control_strip import ControlStrip
+from jarvis.ui.widgets.memory_map import MemoryMap
 from jarvis.ui.widgets.media_panel import MediaPanel
 from jarvis.ui.widgets.quick_action import QuickActionChip, AlertBanner
 from jarvis.ui.widgets.weather_fx import WeatherAtmosphere
@@ -56,7 +57,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = settings
         self.brain = brain
-        self.ops = None  # secondary-monitor ops board
+        self.ops = None  # secondary-monitor ops board (PDTester)
+        self.tools = None  # Screen 2 tools panel
+        self.deck_win = None  # Screen 3 command deck
         self._tts_active = False
         self._cam_open_retries = 0
         self.setWindowTitle("JARVIS")
@@ -88,21 +91,21 @@ class MainWindow(QMainWindow):
         header.setSpacing(10)
 
         brand_col = QVBoxLayout()
-        brand_col.setSpacing(0)
+        brand_col.setSpacing(4)
         brand = QLabel("JARVIS")
         brand.setObjectName("Brand")
-        brand_sub = QLabel("COMMAND CENTER")
+        brand_sub = QLabel("JS-9082 · SECURE ACCESS · VOID LAB")
         brand_sub.setObjectName("BrandSub")
         brand_col.addWidget(brand)
         brand_col.addWidget(brand_sub)
         header.addLayout(brand_col)
-        header.addSpacing(6)
+        header.addSpacing(10)
 
         self.start_btn = CmdButton("START", "start", kind="start")
         self.start_btn.setMinimumWidth(108)
         self.start_btn.setToolTip(
             "Engage systems (voice: start) — double-tap F3 to launch/reload "
-            "(single F3 only focuses when open)"
+            "(single F3 arms only; second tap within 2.5s starts)"
         )
         self.start_btn.fired.connect(lambda _: self._on_start_clicked())
         header.addWidget(self.start_btn)
@@ -119,8 +122,11 @@ class MainWindow(QMainWindow):
 
         self.listen = QLabel("MIC STANDBY")
         self.listen.setObjectName("MicPill")
+        self.listen.setMaximumWidth(160)
         self.status = QLabel("● OPTIMAL")
         self.status.setObjectName("StatusPill")
+        self.status.setMaximumWidth(220)
+        self.status.setWordWrap(False)
         header.addWidget(self.listen)
         header.addWidget(self.status)
         outer.addWidget(header_frame)
@@ -139,6 +145,7 @@ class MainWindow(QMainWindow):
             timezone=getattr(settings, "timezone", "America/New_York")
             or "America/New_York"
         )
+        self.memory_map = MemoryMap()
         self.toggles = QuickToggleGrid()
         self.toggles.toggled.connect(self._on_quick_toggle)
         self.controls = ControlStrip()
@@ -149,6 +156,7 @@ class MainWindow(QMainWindow):
         )
         self.media.action.connect(self._media_action)
         left.addWidget(self.clock, 0)
+        left.addWidget(self.memory_map, 0)
         left.addWidget(self.toggles, 0)
         left.addWidget(self.controls, 0)
         left.addWidget(self.media, 0)
@@ -169,7 +177,7 @@ class MainWindow(QMainWindow):
         self._left_inner = left_inner
 
         center = QVBoxLayout()
-        center.setSpacing(8)
+        center.setSpacing(12)
 
         self._center_stack = QStackedWidget()
         self.reactor = ArcReactor()
@@ -348,6 +356,10 @@ class MainWindow(QMainWindow):
         self._wx.timeout.connect(self._weather)
         self._wx.start(90_000)
 
+        self._orb = QTimer(self)
+        self._orb.timeout.connect(self._orbital)
+        self._orb.start(30_000)
+
         QTimer.singleShot(30, self.startup.start)
 
         # F3 = reload core (exit 0). Must NOT trigger START (that caused spam).
@@ -367,9 +379,9 @@ class MainWindow(QMainWindow):
         self._kill.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._kill.activated.connect(self._emergency_kill)
 
-        # Wake-agent / external F3 writes reload.request — poll lightly
+        # Wake-agent / external F3 writes reload.request — poll quickly
         self._reload_poll = QTimer(self)
-        self._reload_poll.setInterval(1000)  # was 400ms — F3 still instant via shortcut
+        self._reload_poll.setInterval(250)
         self._reload_poll.timeout.connect(self._poll_reload_request)
         self._reload_poll.start()
 
@@ -403,17 +415,30 @@ class MainWindow(QMainWindow):
         fx = QGraphicsOpacityEffect(self._hud)
         self._hud.setGraphicsEffect(fx)
         anim = QPropertyAnimation(fx, b"opacity", self)
-        anim.setDuration(560)
+        anim.setDuration(280)
         anim.setStartValue(0.0)
         anim.setEndValue(1.0)
         anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        anim.finished.connect(lambda: self._hud.setGraphicsEffect(None))
+
+        def _clear_boot_fx() -> None:
+            try:
+                self._hud.setGraphicsEffect(None)
+            except Exception:
+                pass
+
+        anim.finished.connect(_clear_boot_fx)
+        # Backup clear — finished can miss if the effect is replaced mid-fade
+        QTimer.singleShot(380, _clear_boot_fx)
         anim.start()
         self._boot_anim = anim
         self.status.setText("● OPTIMAL")
-        self.append_log("JARVIS › Welcome, Sir.")
+        # Brain/stark arrival owns the "Daddy's home" line — avoid triple log spam
+        self.append_log("HUD › arc reactor online")
         self.input.setFocus()
-        QTimer.singleShot(200, self._weather)
+        QTimer.singleShot(80, self._weather)
+        QTimer.singleShot(200, self._orbital)
+        QTimer.singleShot(350, self._boot_optics_auto)
+        QTimer.singleShot(300, self._stack_overlays)
         # Tell app.py to start the brain (speaks Welcome)
         self.boot_ready.emit()
 
@@ -440,12 +465,20 @@ class MainWindow(QMainWindow):
         now = _time.monotonic()
         armed_until = float(getattr(self, "_f3_arm_until", 0.0) or 0.0)
         if now > armed_until:
-            self._f3_arm_until = now + 1.2
-            self.append_log("CORE › F3 armed — tap again to reload")
+            self._f3_arm_until = now + 2.5
+            self.append_log("CORE › F3 armed — tap again within 2.5s to reload")
+            try:
+                self.status.setText("● F3 ARMED — TAP AGAIN")
+            except Exception:
+                pass
             return
         self._f3_arm_until = 0.0
         self._reload_armed = True
-        self.append_log("CORE › F3 reload")
+        self.append_log("CORE › F3 soft-reload")
+        try:
+            self.status.setText("● RELOADING…")
+        except Exception:
+            pass
         self._request_app_exit(0)
 
     def _poll_reload_request(self) -> None:
@@ -509,6 +542,21 @@ class MainWindow(QMainWindow):
                 "registry_ui": lambda payload: self.request_ui.emit("registry_ui", payload),
                 "monitor_ui": lambda payload: self.request_ui.emit("monitor_ui", payload),
                 "camera_ui": lambda a: self.request_camera.emit(bool(a)),
+                "fabricator_ui": lambda a: self.request_ui.emit("fabricator_ui", a),
+                "fabricator_build": lambda _: self.request_ui.emit("fabricator_build", True),
+                "aerospatial_ui": lambda a: self.request_ui.emit("aerospatial_ui", a),
+                "aerospatial_scan": lambda _: self.request_ui.emit("aerospatial_scan", True),
+                "aerospatial_deploy": lambda m: self.request_ui.emit("aerospatial_deploy", m),
+                "aerospatial_cinematic": lambda a: self.request_ui.emit(
+                    "aerospatial_cinematic", a
+                ),
+                "aerospatial_biometric": lambda _: self.request_ui.emit(
+                    "aerospatial_biometric", True
+                ),
+                "aerospatial_gauges": lambda _: self.request_ui.emit(
+                    "aerospatial_gauges", True
+                ),
+                "aerospatial_web": lambda _: self.request_ui.emit("aerospatial_web", True),
                 # Thread-safe: voice/worker threads must use signals, not QTimer alone
                 "map_ui": lambda payload: self.request_ui.emit("map_ui", payload),
                 "news_ui": lambda payload: self.request_ui.emit("news_ui", payload),
@@ -516,13 +564,12 @@ class MainWindow(QMainWindow):
                 "site_progress": lambda msg: self.request_ui.emit("site_progress", msg),
                 "code_ui": lambda payload: self.request_ui.emit("code_ui", payload),
                 "code_progress": lambda msg: self.request_ui.emit("code_progress", msg),
+                "theater_tab": lambda payload: self.request_ui.emit("theater_tab", payload),
                 "away_ui": lambda payload: self.request_ui.emit("away_ui", payload),
                 "away_progress": lambda msg: self.request_ui.emit("away_progress", msg),
                 "bond": lambda h: QTimer.singleShot(0, lambda: self._bond(h)),
                 "bedtime": lambda d: QTimer.singleShot(0, lambda: self._bedtime(d)),
-                "state": lambda s: QTimer.singleShot(
-                    0, lambda: self.append_log(f"STATE › {s.get('from')} → {s.get('to')}")
-                ),
+                "state": lambda s: QTimer.singleShot(0, lambda: self._on_state_ui(s)),
                 "weather_ui": lambda _: QTimer.singleShot(0, self._weather),
                 "parallax": lambda d: QTimer.singleShot(0, lambda: self._parallax(d)),
                 "telemetry": lambda s: QTimer.singleShot(0, lambda: self._apply_tel(s)),
@@ -557,7 +604,22 @@ class MainWindow(QMainWindow):
                 "place_ops": lambda pref: QTimer.singleShot(
                     0, lambda: self._place_on_monitor(str(pref), which="ops")
                 ),
+                "place_tools": lambda pref: QTimer.singleShot(
+                    0, lambda: self._place_on_monitor(str(pref), which="tools")
+                ),
+                "place_deck": lambda pref: QTimer.singleShot(
+                    0, lambda: self._place_on_monitor(str(pref), which="deck")
+                ),
                 "show_ops": lambda _: QTimer.singleShot(0, self._show_ops),
+                "show_tools": lambda _: QTimer.singleShot(0, self._show_tools),
+                "show_deck": lambda _: QTimer.singleShot(0, self._show_deck),
+                "triple_layout": lambda _: QTimer.singleShot(0, self._engage_triple_layout),
+                "gaze_look_up": lambda _: self.request_ui.emit("gaze_look_up", True),
+                "gaze_scroll_tools": lambda _: self.request_ui.emit("gaze_scroll_tools", True),
+                "gaze_look_center": lambda _: self.request_ui.emit("gaze_look_center", True),
+                "gaze_zone": lambda p: self.request_ui.emit("gaze_zone", p),
+                "iss_deck": lambda _: self.request_ui.emit("iss_deck", True),
+                "voice_clone_ui": lambda p: self.request_ui.emit("voice_clone_ui", p),
                 "app_exit": lambda code: QTimer.singleShot(
                     2200, lambda c=int(code): self._request_app_exit(c)
                 ),
@@ -588,6 +650,18 @@ class MainWindow(QMainWindow):
                 msg = displays.place_widget(self.ops, prefer, maximize=True)
                 self.append_log(f"DISPLAY › ops {msg}")
             return
+        if which == "tools":
+            self._show_tools()
+            if self.tools:
+                msg = displays.place_widget(self.tools, prefer, maximize=True)
+                self.append_log(f"DISPLAY › tools {msg}")
+            return
+        if which == "deck":
+            self._show_deck()
+            if self.deck_win:
+                msg = displays.place_widget(self.deck_win, prefer, maximize=True)
+                self.append_log(f"DISPLAY › deck {msg}")
+            return
         msg = displays.place_widget(self, prefer, maximize=False)
         self.append_log(f"DISPLAY › hud {msg}")
 
@@ -607,6 +681,132 @@ class MainWindow(QMainWindow):
         self.ops.show()
         self._refresh_ops_feed()
         self.append_log("DISPLAY › live ops board on other monitor")
+
+    def _show_tools(self) -> None:
+        from jarvis.core.displays import displays
+
+        if self.tools is None:
+            try:
+                from jarvis.ui.widgets.tools_monitor import ToolsMonitorWindow
+
+                self.tools = ToolsMonitorWindow(self.settings)
+            except Exception as e:
+                self.append_log(f"DISPLAY › tools panel failed: {e}")
+                return
+        pref = getattr(self.settings, "tools_monitor", "left") or "left"
+        displays.place_widget(self.tools, pref, maximize=True)
+        self.tools.show()
+        try:
+            if self.brain and getattr(self.brain, "net_watch", None):
+                self.tools.set_net_status(self.brain.net_watch.status())
+        except Exception:
+            pass
+        self.append_log("DISPLAY › tools stream on Screen 2")
+
+    def _show_deck(self) -> None:
+        from jarvis.core.displays import displays
+
+        if self.deck_win is None:
+            try:
+                from jarvis.ui.widgets.deck_monitor import DeckMonitorWindow
+
+                self.deck_win = DeckMonitorWindow(self.settings)
+            except Exception as e:
+                self.append_log(f"DISPLAY › command deck failed: {e}")
+                return
+        pref = getattr(self.settings, "deck_monitor", "top") or "top"
+        displays.place_widget(self.deck_win, pref, maximize=True)
+        self.deck_win.show()
+        try:
+            if self.brain and getattr(self.brain, "feed", None):
+                self.deck_win.set_feed(self.brain.feed.lines_for_ui(18))
+        except Exception:
+            pass
+        self.append_log("DISPLAY › command deck on Screen 3")
+
+    def _engage_triple_layout(self) -> None:
+        """Screen 1 control HUD · Screen 2 tools · Screen 3 command deck."""
+        from jarvis.core.displays import displays
+
+        displays.refresh()
+        self._place_on_monitor(
+            getattr(self.settings, "hud_monitor", "primary") or "primary", which="hud"
+        )
+        self._show_tools()
+        self._show_deck()
+        try:
+            self.settings.triple_layout_enabled = True
+            self.settings.tools_monitor = "left"
+            self.settings.deck_monitor = "top"
+            self.settings.hud_monitor = "primary"
+            self.settings.save()
+        except Exception:
+            pass
+        self.append_log("DISPLAY › triple layout engaged (control · tools · deck)")
+        try:
+            if self.brain:
+                self.brain.say(
+                    "Triple monitors online. Control hub, tools stream, and command deck."
+                )
+        except Exception:
+            pass
+
+    def _on_gaze_look_up(self) -> None:
+        """Look at top screen ≥3s → open deck + detail submenu."""
+        self._show_deck()
+        if self.deck_win is not None:
+            self.deck_win.set_detail_mode(True)
+            self.deck_win.set_vision("Gaze · looking UP (deck detail)")
+        self.append_log("GAZE › look-up dwell → command deck detail")
+
+    def _on_gaze_scroll_tools(self) -> None:
+        """Look left ≥2s → scroll tools console."""
+        if self.tools is None or not self.tools.isVisible():
+            self._show_tools()
+        if self.tools is not None:
+            self.tools.scroll_console(4)
+            self.tools.append_log("GAZE › look-left scroll")
+        self.append_log("GAZE › look-left → tools scroll")
+
+    def _on_gaze_look_center(self) -> None:
+        if self.deck_win is not None and getattr(self.deck_win, "_detail", False):
+            self.deck_win.set_detail_mode(False)
+            self.deck_win.set_vision("Gaze · center")
+        self.append_log("GAZE › center — deck detail released")
+
+    def _on_gaze_zone(self, payload) -> None:
+        if not isinstance(payload, dict):
+            return
+        zone = str(payload.get("zone") or "")
+        if self.deck_win is not None and self.deck_win.isVisible() and zone:
+            dwell = payload.get("dwell", 0)
+            self.deck_win.set_vision(f"Gaze · {zone} ({dwell}s)")
+
+    def _on_iss_deck(self) -> None:
+        """ISS overhead → force command deck + detail alert."""
+        self._show_deck()
+        msg = "ISS overhead — tracking map on command deck."
+        try:
+            from jarvis.core.space_weather import SpaceWeather
+
+            msg = SpaceWeather().iss_overhead() or msg
+        except Exception:
+            pass
+        if self.deck_win is not None:
+            self.deck_win.set_iss_alert(msg)
+        self.append_log(f"SPACE › {msg}")
+
+    def _on_voice_clone_ui(self, payload) -> None:
+        """Left tools monitor — which clone is active + waveform cue."""
+        if self.tools is None or not self.tools.isVisible():
+            self._show_tools()
+        if self.tools is not None:
+            self.tools.set_clone_status(payload if isinstance(payload, dict) else {})
+            if isinstance(payload, dict) and payload.get("message"):
+                self.tools.append_log(f"CLONE › {payload.get('message')}")
+        self.append_log(
+            f"CLONE › {payload.get('active') if isinstance(payload, dict) else payload}"
+        )
 
     def _refresh_ops_feed(self) -> None:
         if not self.brain or not getattr(self.brain, "feed", None):
@@ -632,11 +832,32 @@ class MainWindow(QMainWindow):
                 )
             # Keep HUD deck in sync (string lines)
             if self.brain:
-                self.deck.set_feed(self.brain.feed.lines_for_ui(14))
+                lines = self.brain.feed.lines_for_ui(14)
+                self.deck.set_feed(lines)
+                if self.deck_win is not None and self.deck_win.isVisible():
+                    self.deck_win.set_feed(lines)
         except Exception:
             pass
 
     def _apply_feed(self, lines) -> None:
+        def _mirror_str_lines(str_lines: list[str]) -> None:
+            self.deck.set_feed(str_lines)
+            try:
+                if self.deck_win is not None and self.deck_win.isVisible():
+                    self.deck_win.set_feed(str_lines)
+            except Exception:
+                pass
+            try:
+                if self.tools is not None and self.tools.isVisible():
+                    self.tools.set_lines(str_lines)
+            except Exception:
+                pass
+            if self.ops:
+                try:
+                    self.ops.set_feed(str_lines)
+                except Exception:
+                    pass
+
         if isinstance(lines, list) and lines:
             # Prefer rich items when available
             if lines and all(isinstance(x, dict) for x in lines):
@@ -645,21 +866,27 @@ class MainWindow(QMainWindow):
                         self.ops.set_items(lines)
                     except Exception:
                         pass
-                self.deck.set_feed(
-                    [
-                        f"{(x.get('ts') or '')[11:16]}  {(x.get('kind') or '').upper()}  {x.get('text', '')}"
-                        for x in lines
-                    ]
-                )
+                str_lines = [
+                    f"{(x.get('ts') or '')[11:16]}  {(x.get('kind') or '').upper()}  {x.get('text', '')}"
+                    for x in lines
+                ]
+                _mirror_str_lines(str_lines)
                 return
-            self.deck.set_feed([str(x) for x in lines])
-            if self.ops:
-                try:
-                    self.ops.set_feed([str(x) for x in lines])
-                except Exception:
-                    pass
+            _mirror_str_lines([str(x) for x in lines])
         elif isinstance(lines, str) and lines.strip():
             self.deck.prepend_feed(lines.strip())
+            try:
+                if self.deck_win is not None and self.deck_win.isVisible():
+                    # Refresh from brain when possible; else prepend as single line
+                    if self.brain and getattr(self.brain, "feed", None):
+                        self.deck_win.set_feed(self.brain.feed.lines_for_ui(18))
+            except Exception:
+                pass
+            try:
+                if self.tools is not None and self.tools.isVisible():
+                    self.tools.append_log(lines.strip())
+            except Exception:
+                pass
             if self.ops:
                 try:
                     self.ops.set_status(lines.strip()[:160])
@@ -715,6 +942,7 @@ class MainWindow(QMainWindow):
         self.hitl_gate.show()
         self.hitl_gate.raise_()
         self.hitl_gate.activateWindow()
+        self._stack_overlays()
         title = payload.get("title") or "permission"
         self.append_log(f"HITL › {title}")
         for i, opt in enumerate(payload.get("options") or [], start=1):
@@ -736,10 +964,16 @@ class MainWindow(QMainWindow):
             self.append_log(f"CLARIFY › {msg or 'cancelled'}")
             return
         msg = self.brain.resolve_hitl(request_id, approve=approve, answer=answer)
-        self.append_log(f"HITL › {msg}")
-        if not answer:
+        if msg:
+            self.append_log(f"HITL › {msg}")
+            if not answer:
+                try:
+                    self.brain.say(msg)
+                except Exception:
+                    pass
+        else:
             try:
-                self.brain.say(msg)
+                self.hitl_gate.hide_gate()
             except Exception:
                 pass
 
@@ -820,6 +1054,41 @@ class MainWindow(QMainWindow):
         else:
             self.append_log("START › brain not ready")
 
+    def _stack_overlays(self) -> None:
+        """Atmosphere film under interactive overlays (HITL / artifact / theaters)."""
+        try:
+            cam_up = bool(getattr(self, "camera", None) and self.camera.isVisible())
+            upg_up = bool(getattr(self, "upgrade", None) and self.upgrade.isVisible())
+            if (
+                getattr(self, "atmosphere", None)
+                and self.atmosphere.isVisible()
+                and not cam_up
+                and not upg_up
+            ):
+                self.atmosphere.raise_()
+            for w in (
+                getattr(self, "typing", None),
+                getattr(self, "upgrade", None),
+                getattr(self, "alert", None),
+                getattr(self, "quick", None),
+                getattr(self, "hitl_gate", None),
+                getattr(self, "camera", None),
+                getattr(self, "news", None),
+                getattr(self, "site_preview", None),
+                getattr(self, "code_preview", None),
+                getattr(self, "build_theater", None),
+                getattr(self, "away_theater", None),
+                getattr(self, "countdown", None),
+                getattr(self, "artifact", None),
+                getattr(self, "nv_badge", None),
+            ):
+                if w is not None and w.isVisible():
+                    w.raise_()
+            if getattr(self, "startup", None) and self.startup.isVisible():
+                self.startup.raise_()
+        except Exception:
+            pass
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         try:
@@ -827,33 +1096,8 @@ class MainWindow(QMainWindow):
             if hasattr(self, "upgrade") and self.centralWidget() is not None:
                 r = self.centralWidget().rect()
                 self.upgrade.setGeometry(0, 0, r.width(), r.height())
-                if self.upgrade.isVisible():
-                    self.upgrade.raise_()
             if hasattr(self, "atmosphere"):
                 self.atmosphere.setGeometry(self.centralWidget().rect())
-                if not (hasattr(self, "camera") and self.camera.isVisible()):
-                    if self.atmosphere.isVisible() and not (
-                        hasattr(self, "upgrade") and self.upgrade.isVisible()
-                    ):
-                        self.atmosphere.raise_()
-            # Keep interactive overlays above rain FX
-            for w in (
-                self.typing,
-                getattr(self, "upgrade", None),
-                self.alert,
-                self.quick,
-                self.hitl_gate,
-                self.camera,
-                self.news,
-                self.site_preview,
-                self.code_preview,
-                self.build_theater,
-                self.away_theater,
-                self.countdown,
-                self.artifact,
-            ):
-                if w is not None and w.isVisible():
-                    w.raise_()
             try:
                 self.artifact.reposition()
             except Exception:
@@ -867,7 +1111,7 @@ class MainWindow(QMainWindow):
                     max(20, (self.width() - self.hitl_gate.width()) // 2),
                     max(40, self.height() // 5),
                 )
-                self.hitl_gate.raise_()
+            self._stack_overlays()
         except Exception:
             pass
 
@@ -878,9 +1122,16 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         self.status.setText("● STARTED")
-        self.status.setStyleSheet("color:#00f0ff; font-size:11px;")
+        # Don't wipe StatusPill QSS with an inline stylesheet
+        try:
+            self.status.setStyleSheet("")
+            self.status.style().unpolish(self.status)
+            self.status.style().polish(self.status)
+        except Exception:
+            pass
         self.append_log("START › ready")
         self.input.setFocus()
+        QTimer.singleShot(1600, lambda: self.status.setText("● OPTIMAL"))
 
     def _on_track(self, name: str) -> None:
         self.media.set_track(name)
@@ -889,8 +1140,10 @@ class MainWindow(QMainWindow):
     def _media_action(self, action: str) -> None:
         if not self.brain:
             return
+        # Play always starts music (presses Play) — not a toggle
         mapping = {
-            "playpause": "playpause",
+            "playpause": "play music",
+            "play": "play music",
             "previous": "previous track",
             "next": "next track",
             "mute": "mute",
@@ -978,13 +1231,38 @@ class MainWindow(QMainWindow):
         try:
             self.artifact.show_artifact(
                 title=str(payload.get("title") or "ARTIFACT"),
-                text=str(payload.get("text") or ""),
+                text=str(payload.get("text") or payload.get("body") or ""),
                 image_path=str(payload.get("image_path") or ""),
                 image_bgr=payload.get("frame"),
                 meta=str(payload.get("meta") or ""),
             )
+            self._stack_overlays()
         except Exception as e:
             self.append_log(f"ARTIFACT › {e}")
+
+    def _on_state_ui(self, s) -> None:
+        """Log state transitions without flooding the mission log."""
+        if not isinstance(s, dict):
+            return
+        fr = str(s.get("from") or "")
+        to = str(s.get("to") or "")
+        if not to or fr == to:
+            return
+        # Skip noisy micro-transitions
+        noisy = {"idle", "listen", "listening", "ready"}
+        if fr.lower() in noisy and to.lower() in noisy:
+            return
+        key = f"{fr}->{to}"
+        import time as _t
+
+        now = _t.monotonic()
+        if key == getattr(self, "_last_state_ui", "") and (
+            now - float(getattr(self, "_last_state_ui_at", 0) or 0)
+        ) < 4.0:
+            return
+        self._last_state_ui = key
+        self._last_state_ui_at = now
+        self.append_log(f"STATE › {fr} → {to}")
 
     def _on_mic_level(self, level: float) -> None:
         try:
@@ -994,6 +1272,11 @@ class MainWindow(QMainWindow):
         try:
             if getattr(self, "wave", None):
                 self.wave.set_amplitude(level)
+        except Exception:
+            pass
+        try:
+            if self.tools is not None and self.tools.isVisible():
+                self.tools.set_amplitude(level)
         except Exception:
             pass
         # Soft glow on mic pill — throttle setStyleSheet (expensive on main thread)
@@ -1016,7 +1299,7 @@ class MainWindow(QMainWindow):
     def _apply_performance_mode(self, on: bool) -> None:
         """Smooth / eco HUD — lower paint rates so voice stays snappy."""
         try:
-            self.reactor.set_target_fps(10 if on else 15)
+            self.reactor.set_target_fps(8 if on else 15)
         except Exception:
             pass
         try:
@@ -1026,7 +1309,24 @@ class MainWindow(QMainWindow):
             pass
         try:
             if hasattr(self.camera, "set_paint_interval"):
-                self.camera.set_paint_interval(90 if on else 66)
+                self.camera.set_paint_interval(110 if on else 66)
+        except Exception:
+            pass
+        try:
+            # Slow background HUD timers in smooth mode
+            if getattr(self, "_wx", None):
+                self._wx.setInterval(180_000 if on else 90_000)
+            if getattr(self, "_orb", None):
+                self._orb.setInterval(60_000 if on else 30_000)
+            if getattr(self, "_tel", None) and on:
+                self._tel.setInterval(
+                    max(
+                        1500,
+                        int(
+                            getattr(self.settings, "telemetry_interval_ms", 2000) or 2000
+                        ),
+                    )
+                )
         except Exception:
             pass
         try:
@@ -1052,11 +1352,32 @@ class MainWindow(QMainWindow):
         )
 
     def append_log(self, text: str) -> None:
+        text = str(text or "").rstrip()
+        if not text:
+            return
+        # Dedupe identical consecutive lines (speak + speak_ui, stark arrival, etc.)
+        try:
+            import time as _t
+
+            now = _t.monotonic()
+            if text == getattr(self, "_last_log_line", None) and (
+                now - float(getattr(self, "_last_log_at", 0) or 0)
+            ) < 2.0:
+                return
+            self._last_log_line = text
+            self._last_log_at = now
+        except Exception:
+            pass
         self.log.append(text)
         self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
+        try:
+            if self.tools is not None and self.tools.isVisible():
+                self.tools.append_log(text)
+        except Exception:
+            pass
 
     def _reactor_activity(self, mode: str) -> None:
-        """Drive amber core intensity from HUD/brain events."""
+        """Drive cyan core intensity + memory-map carve from HUD/brain events."""
         try:
             if mode in ("speak",):
                 self.reactor.pulse_speak()
@@ -1066,25 +1387,66 @@ class MainWindow(QMainWindow):
                     self.reactor.flare(0.9)
         except Exception:
             pass
+        try:
+            carving = mode in (
+                "build",
+                "site",
+                "vibe",
+                "fetch",
+                "thinking",
+                "compiling",
+                "code",
+            )
+            self.memory_map.set_carving(carving, label=str(mode or ""))
+        except Exception:
+            pass
+        try:
+            if mode in ("panic",):
+                self.atmosphere.trigger_glitch(0.18)
+        except Exception:
+            pass
 
     def _on_speak(self, text: str) -> None:
-        self.append_log(f"JARVIS › {text}")
+        # Mission log (deduped vs speak_ui when both fire for the same line)
+        if text:
+            self.append_log(f"JARVIS › {text}")
         self._reactor_activity("speak")
+        # Speak cue fires from _on_jarvis_speaking when TTS actually starts
 
     def _on_jarvis_speaking(self, active: bool) -> None:
-        """Keep the amber core alive for the full TTS playback window."""
+        """Keep the core alive for the full TTS playback window."""
         try:
             self._tts_active = bool(active)
-            try:
+        except Exception:
+            pass
+        try:
+            if getattr(self, "wave", None):
                 self.wave.set_speaking(bool(active))
-            except Exception:
-                pass
+        except Exception:
+            pass
+        try:
+            if self.tools is not None and self.tools.isVisible():
+                self.tools.set_speaking(bool(active))
+        except Exception:
+            pass
+        try:
             if active:
                 self.reactor.set_speaking(True)
                 self._reactor_activity("speak")
+                try:
+                    from jarvis.ui.hud_sfx import play_speak_cue
+
+                    play_speak_cue()
+                except Exception:
+                    pass
             else:
                 self.reactor.set_speaking(False)
-                # Only idle if we aren't mid-listen UI
+                try:
+                    from jarvis.ui.hud_sfx import play_confirm
+
+                    play_confirm()
+                except Exception:
+                    pass
                 mode = getattr(self.reactor, "_activity", "idle")
                 if mode in ("speak", "idle"):
                     self._reactor_activity("idle")
@@ -1195,6 +1557,16 @@ class MainWindow(QMainWindow):
 
     def _set_night_vision(self, on: bool) -> None:
         try:
+            from jarvis.core.boot_biometrics import is_night_hours
+
+            if on and not is_night_hours():
+                self.append_log(
+                    "OPTICS › night vision only arms at night (8pm-6am)"
+                )
+                on = False
+        except Exception:
+            pass
+        try:
             self.nv_badge.set_active(on)
             self.nv_badge.move(24, 72)
             self.nv_badge.raise_()
@@ -1212,10 +1584,23 @@ class MainWindow(QMainWindow):
             if not self.camera.isVisible():
                 self._toggle_camera(True)
         else:
-            self.append_log("OPTICS › night vision offline")
+            self.append_log("OPTICS › day feed / night vision offline")
             if not self.countdown.isVisible():
                 self.status.setText("● OPTIMAL")
                 self.status.setStyleSheet("color:#00f0ff; font-size:11px;")
+
+    def _boot_optics_auto(self) -> None:
+        """After HUD boot: arm night vision automatically only at night."""
+        try:
+            from jarvis.core.boot_biometrics import is_night_hours
+
+            if is_night_hours():
+                self._set_night_vision(True)
+                self.append_log("OPTICS › night window — NV armed")
+            else:
+                self.append_log("OPTICS › day feed standing by")
+        except Exception as e:
+            self.append_log(f"OPTICS › {e}")
 
     def _set_spatial(self, on: bool) -> None:
         try:
@@ -1295,6 +1680,24 @@ class MainWindow(QMainWindow):
         """Generic queued UI dispatch from worker threads."""
         if key == "camera_ui":
             self._toggle_camera(bool(payload))
+        elif key == "fabricator_ui":
+            self._toggle_fabricator(bool(payload))
+        elif key == "fabricator_build":
+            self._fabricator_build()
+        elif key == "aerospatial_ui":
+            self._toggle_aerospatial(bool(payload))
+        elif key == "aerospatial_scan":
+            self._aerospatial_scan()
+        elif key == "aerospatial_deploy":
+            self._aerospatial_deploy(str(payload or "desktop"))
+        elif key == "aerospatial_cinematic":
+            self._aerospatial_cinematic(bool(payload))
+        elif key == "aerospatial_biometric":
+            self._aerospatial_biometric()
+        elif key == "aerospatial_gauges":
+            self._aerospatial_flag("pc_gauges", True)
+        elif key == "aerospatial_web":
+            self._aerospatial_flag("web_shooter", True)
         elif key == "upgrade_ui":
             self._upgrade_ui(payload)
         elif key == "command_ui":
@@ -1325,6 +1728,8 @@ class MainWindow(QMainWindow):
             self._toggle_code(payload)
         elif key == "code_progress":
             self._code_progress(payload)
+        elif key == "theater_tab":
+            self._theater_tab(payload)
         elif key == "away_ui":
             self._toggle_away(payload)
         elif key == "away_progress":
@@ -1336,6 +1741,18 @@ class MainWindow(QMainWindow):
                 self.hitl_gate.hide_gate()
             except Exception:
                 pass
+        elif key == "gaze_look_up":
+            self._on_gaze_look_up()
+        elif key == "gaze_scroll_tools":
+            self._on_gaze_scroll_tools()
+        elif key == "gaze_look_center":
+            self._on_gaze_look_center()
+        elif key == "gaze_zone":
+            self._on_gaze_zone(payload)
+        elif key == "iss_deck":
+            self._on_iss_deck()
+        elif key == "voice_clone_ui":
+            self._on_voice_clone_ui(payload)
 
     def _command_ui(self, payload) -> None:
         try:
@@ -1484,6 +1901,158 @@ class MainWindow(QMainWindow):
             self.brain.pause_presence_lock(False)
             QTimer.singleShot(900, self.brain.vision.start)
 
+    def _toggle_fabricator(self, open_it: bool) -> None:
+        """Stark Jet hologram lab — hand-tracked suit fabricator over camera."""
+        if not open_it:
+            try:
+                self.camera.close_fabricator()
+            except Exception:
+                pass
+            self.append_log("FABRICATOR › lab closed")
+            self.status.setText("● OPTIMAL")
+            return
+        # Open camera theater first, then lab overlay
+        if not self.camera.isVisible():
+            self._toggle_camera(True)
+        try:
+            self.camera.open_fabricator()
+            fab = getattr(self.camera, "fabricator", None)
+            if fab is not None and not getattr(self, "_fab_built_hooked", False):
+                fab.suit_built.connect(self._on_suit_built)
+                self._fab_built_hooked = True
+        except Exception as e:
+            self.append_log(f"FABRICATOR › failed: {e}")
+            return
+        self.append_log("FABRICATOR › Stark lab OS v4.6.2 online")
+        self.status.setText("● STARK FABRICATOR")
+
+    def _toggle_aerospatial(self, open_it: bool) -> None:
+        """AR aerospatial mapping — room mesh + fabricator hologram on camera."""
+        if not open_it:
+            try:
+                self.camera.close_aerospatial()
+            except Exception:
+                pass
+            self.append_log("AEROSPATIAL › AR offline")
+            self.status.setText("● OPTIMAL")
+            return
+        if not self.camera.isVisible():
+            self._toggle_camera(True)
+        try:
+            self.camera.open_aerospatial()
+            ar = getattr(self.camera, "aerospatial", None)
+            if ar is not None and not getattr(self, "_ar_bio_hooked", False):
+                ar.biometric_done.connect(self._on_ar_biometric)
+                self._ar_bio_hooked = True
+        except Exception as e:
+            self.append_log(f"AEROSPATIAL › failed: {e}")
+            return
+        self.append_log("AEROSPATIAL › cinematic room mesh online")
+        self.status.setText("● AR AEROSPATIAL")
+
+    def _aerospatial_scan(self) -> None:
+        ar = getattr(self.camera, "aerospatial", None)
+        if ar is None or not getattr(ar, "is_ar_open", lambda: False)():
+            self._toggle_aerospatial(True)
+            ar = getattr(self.camera, "aerospatial", None)
+        try:
+            if ar is not None:
+                ar.start_laser()
+            self.append_log("AEROSPATIAL › laser scan mapping room")
+        except Exception as e:
+            self.append_log(f"AEROSPATIAL › scan failed: {e}")
+
+    def _aerospatial_deploy(self, mode: str) -> None:
+        ar = getattr(self.camera, "aerospatial", None)
+        if ar is None or not getattr(ar, "is_ar_open", lambda: False)():
+            self._toggle_aerospatial(True)
+            ar = getattr(self.camera, "aerospatial", None)
+        try:
+            if ar is not None:
+                msg = ar.set_deploy(mode)
+                self.append_log(f"AEROSPATIAL › {msg}")
+        except Exception as e:
+            self.append_log(f"AEROSPATIAL › deploy failed: {e}")
+
+    def _aerospatial_cinematic(self, on: bool = True) -> None:
+        ar = getattr(self.camera, "aerospatial", None)
+        if ar is None or not getattr(ar, "is_ar_open", lambda: False)():
+            self._toggle_aerospatial(True)
+            ar = getattr(self.camera, "aerospatial", None)
+        try:
+            if ar is not None:
+                msg = ar.set_cinematic(bool(on))
+                self.append_log(f"AEROSPATIAL › {msg}")
+                self._hud_alert("Cinematic AR" if on else "Raw AR")
+        except Exception as e:
+            self.append_log(f"AEROSPATIAL › cinematic failed: {e}")
+
+    def _aerospatial_biometric(self) -> None:
+        ar = getattr(self.camera, "aerospatial", None)
+        if ar is None or not getattr(ar, "is_ar_open", lambda: False)():
+            self._toggle_aerospatial(True)
+            ar = getattr(self.camera, "aerospatial", None)
+        try:
+            if ar is not None:
+                ar.mapper.state.biometric_scan = True
+                ar.trigger_biometric()
+            self.append_log("AEROSPATIAL › biometric scan")
+        except Exception as e:
+            self.append_log(f"AEROSPATIAL › biometric failed: {e}")
+
+    def _aerospatial_flag(self, name: str, on: bool = True) -> None:
+        ar = getattr(self.camera, "aerospatial", None)
+        if ar is None or not getattr(ar, "is_ar_open", lambda: False)():
+            self._toggle_aerospatial(True)
+            ar = getattr(self.camera, "aerospatial", None)
+        try:
+            if ar is not None:
+                setattr(ar.mapper.state, name, bool(on))
+                ar.mapper.save()
+            self.append_log(f"AEROSPATIAL › {name}={'on' if on else 'off'}")
+        except Exception as e:
+            self.append_log(f"AEROSPATIAL › flag failed: {e}")
+
+    def _on_ar_biometric(self, _payload: object = None) -> None:
+        self.append_log("AEROSPATIAL › welcome back, boss")
+        self._hud_alert("Welcome back, boss")
+        try:
+            self.brain.say(
+                f"Welcome back, {getattr(self.brain.settings, 'user_name', 'sir')}. "
+                "Aerospatial unlocked."
+            )
+        except Exception:
+            pass
+        try:
+            self.status.setText("● AR UNLOCKED")
+        except Exception:
+            pass
+
+    def _fabricator_build(self) -> None:
+        if not self.camera.isVisible() or not getattr(
+            getattr(self.camera, "fabricator", None), "is_lab_open", lambda: False
+        )():
+            self._toggle_fabricator(True)
+        try:
+            self.camera.fabricator.start_build()
+            self.append_log("FABRICATOR › print cycle engaged")
+        except Exception as e:
+            self.append_log(f"FABRICATOR › build failed: {e}")
+
+    def _on_suit_built(self, payload: object) -> None:
+        meta = payload if isinstance(payload, dict) else {}
+        tint = str(meta.get("tint") or "upgraded")
+        self.append_log(f"FABRICATOR › suit complete · {tint}")
+        self.status.setText("● SUIT READY")
+        self._hud_alert(f"Suit fabricated — {tint.replace('_', ' ')}")
+        if self.brain:
+            try:
+                self.brain.say(
+                    f"Fabrication complete. {tint.replace('_', ' ')} suit is ready for deployment."
+                )
+            except Exception:
+                pass
+
     def _toggle_news(self, payload, _retries: int = 0) -> None:
         """Open theater with ABC live news (or standalone overlay)."""
         if payload is False or payload == 0 or payload == "close":
@@ -1561,13 +2130,20 @@ class MainWindow(QMainWindow):
             self.status.setText("● AGENTIC CODING")
             self._reactor_activity("build")
             return
-        url = str(payload.get("url") or "").strip()
+        url = str(payload.get("url") or payload.get("preview_url") or "").strip()
         brand = str(payload.get("brand") or "")
         if url:
             try:
                 if not self.build_theater.isVisible():
                     self._open_build_theater(mode="site", hint=brand or "scaffold")
-                self.build_theater.show_done(path=url, name=brand or "scaffold")
+                else:
+                    self.build_theater.ensure_open()
+                self.build_theater.show_done(
+                    path=url,
+                    name=brand or "scaffold",
+                    preview_url=url if url.startswith("http") else "",
+                )
+                self.build_theater._set_tab("building", force=True)
             except Exception as e:
                 self.append_log(f"SITE › theater preview failed: {e}")
             self.append_log(f"SITE › preview tab — {url}")
@@ -1581,13 +2157,23 @@ class MainWindow(QMainWindow):
         from pathlib import Path
 
         p = Path(path)
+        preview_url = str(payload.get("preview_url") or "").strip()
         try:
             if not self.build_theater.isVisible():
                 self._open_build_theater(mode="site", hint=brand or p.parent.name)
-            self.build_theater.show_done(path=str(p), name=brand or p.parent.name)
+            else:
+                self.build_theater.ensure_open()
+            self.build_theater.show_done(
+                path=str(p),
+                name=brand or p.parent.name,
+                preview_url=preview_url,
+            )
+            self.build_theater._set_tab("building", force=True)
         except Exception as e:
             self.append_log(f"SITE › theater finish failed: {e}")
         self.append_log(f"SITE › live preview — {brand or p.parent.name}")
+        if preview_url:
+            self.append_log(f"SITE › preview {preview_url}")
         self.status.setText("● SITE READY")
         self._reactor_activity("idle")
 
@@ -1615,8 +2201,69 @@ class MainWindow(QMainWindow):
                     theater.show()
                     theater.raise_()
                 theater.apply_progress(msg)
+                # Mirror vibe: force WORKING / CODING / PREVIEW so tabs always paint
+                if isinstance(msg, dict):
+                    tab = str(msg.get("tab") or "").lower()
+                    stage = str(
+                        msg.get("agent_stage") or msg.get("stage") or ""
+                    ).lower()
+                    if msg.get("preview_url") or stage in (
+                        "preview",
+                        "ship",
+                        "live",
+                        "browser",
+                    ):
+                        theater._set_tab("building", force=True)
+                    elif (
+                        msg.get("file_path")
+                        or msg.get("file")
+                        or msg.get("code")
+                        or tab == "coding"
+                        or stage in ("code", "coding", "file", "terminal", "render", "copy")
+                    ):
+                        theater._set_tab("coding", force=True)
+                    elif (
+                        tab == "working"
+                        or stage in ("research", "plan", "invent", "prompt")
+                        or msg.get("keyboard") is not None
+                    ):
+                        theater._set_tab("working", force=True)
+                    elif tab in ("working", "coding", "building"):
+                        theater._set_tab(tab, force=True)
         except Exception:
             pass
+
+    def _theater_tab(self, payload) -> None:
+        """Voice/HUD: switch Build Theater tab and optionally load preview_url."""
+        try:
+            theater = getattr(self, "build_theater", None)
+            if theater is None:
+                return
+            tab = "building"
+            preview_url = ""
+            if isinstance(payload, dict):
+                tab = str(payload.get("tab") or "building").lower()
+                preview_url = str(
+                    payload.get("preview_url") or payload.get("app_url") or ""
+                ).strip()
+            elif isinstance(payload, str):
+                tab = payload.lower().strip()
+            if tab in ("preview", "app preview", "building tab"):
+                tab = "building"
+            if tab not in ("working", "coding", "building"):
+                tab = "building"
+            if not theater.isVisible():
+                self._open_build_theater(mode="vibe", hint="preview")
+            else:
+                theater.ensure_open()
+            if preview_url.startswith("http"):
+                theater._load_preview(preview_url)
+                theater.show_done(preview_url=preview_url, name="preview")
+            theater._set_tab(tab, force=True)
+            theater.raise_()
+            self.append_log(f"THEATER › tab {tab}" + (f" · {preview_url}" if preview_url else ""))
+        except Exception as e:
+            self.append_log(f"THEATER › tab failed: {e}")
 
     def _toggle_code(self, payload) -> None:
         if payload is False or payload == 0 or payload == "close":
@@ -1666,22 +2313,29 @@ class MainWindow(QMainWindow):
                 )
             else:
                 theater.ensure_open()
-            if preview_url.startswith("http"):
-                theater.apply_progress(
-                    {
-                        "msg": f"App live at {preview_url}",
-                        "tab": "building",
-                        "agent_stage": "preview",
-                        "preview_url": preview_url,
-                        "path": str(p),
-                    }
+            # Hard switch to PREVIEW once — parks Google WebEngine so it can't cover the app
+            if not (
+                getattr(theater, "_preview_locked", False)
+                and preview_url
+                and preview_url == getattr(theater, "_preview_url", "")
+            ):
+                theater.force_preview(
+                    preview_url,
+                    path=str(p),
+                    name=str(payload.get("name") or p.name),
                 )
-            theater.show_done(
-                path=str(p),
-                name=str(payload.get("name") or p.name),
-                preview_url=preview_url,
-            )
-            theater._set_tab("building", force=True)
+            if not preview_url.startswith("http"):
+                try:
+                    if self.brain and getattr(self.brain, "vibe", None):
+                        preview_url = self.brain.vibe.ensure_preview_url(p) or ""
+                except Exception:
+                    pass
+                if preview_url.startswith("http"):
+                    theater.force_preview(
+                        preview_url,
+                        path=str(p),
+                        name=str(payload.get("name") or p.name),
+                    )
             theater.raise_()
             self.show()
             self.raise_()
@@ -1716,7 +2370,22 @@ class MainWindow(QMainWindow):
             if isinstance(msg, dict):
                 tab = str(msg.get("tab") or "").lower()
                 stage = str(msg.get("agent_stage") or "").lower()
-                if msg.get("preview_url") or stage in ("preview", "ship", "live"):
+                preview_url = str(msg.get("preview_url") or "").strip()
+                already = (
+                    getattr(theater, "_preview_locked", False)
+                    and preview_url
+                    and preview_url == getattr(theater, "_preview_url", "")
+                )
+                if preview_url.startswith("http") or stage in ("preview", "ship", "live"):
+                    if already:
+                        theater._set_tab("building", force=True)
+                    else:
+                        theater.force_preview(
+                            preview_url,
+                            path=str(msg.get("path") or ""),
+                            name=str(msg.get("msg") or "preview")[:40],
+                        )
+                elif getattr(theater, "_preview_locked", False):
                     theater._set_tab("building", force=True)
                 elif (
                     msg.get("file_path")
@@ -1899,7 +2568,14 @@ class MainWindow(QMainWindow):
 
         # Relative zoom in / out — open with intro first if closed
         if zoom_delta is not None and not scanning and options is None:
-            if not already_open:
+            engine_ok = False
+            try:
+                engine_ok = bool(self.map_view.engine_ready())
+            except Exception:
+                engine_ok = getattr(self.map_view, "_web", None) is not None
+
+            # Map panel visible but engine dead (soft-reload) → reopen then zoom
+            if not already_open or not engine_ok:
                 try:
                     msg = self.map_view.open_map(
                         city=city,
@@ -1910,11 +2586,12 @@ class MainWindow(QMainWindow):
                     )
                 except Exception as e:
                     msg = f"Map open failed: {e}"
-                delay_ms = 1600
+                delay_ms = 1800 if not already_open else 900
 
                 def _zoom_after_open(d=zoom_delta):
                     try:
-                        self.map_view.zoom_by(d)
+                        zmsg = self.map_view.zoom_by(d)
+                        self.append_log(f"MAP › {zmsg}")
                     except Exception:
                         pass
 
@@ -1925,6 +2602,23 @@ class MainWindow(QMainWindow):
                     msg = self.map_view.zoom_by(zoom_delta)
                 except Exception as e:
                     msg = f"Zoom failed: {e}"
+                # If zoom still reports offline, force reopen + retry once
+                if "offline" in (msg or "").lower():
+                    try:
+                        self.map_view.open_map(
+                            city=city, place=city, scanning=False, animate=False
+                        )
+                    except Exception:
+                        pass
+
+                    def _retry_zoom(d=zoom_delta):
+                        try:
+                            self.append_log(f"MAP › {self.map_view.zoom_by(d)}")
+                        except Exception:
+                            pass
+
+                    QTimer.singleShot(1200, _retry_zoom)
+                    msg = "Rebooting map engine, then zooming…"
                 self.append_log(f"MAP › {msg}")
             self.status.setText(
                 "● 3D MAP · ZOOM IN" if zoom_delta >= 0 else "● 3D MAP · ZOOM OUT"
@@ -2135,17 +2829,49 @@ class MainWindow(QMainWindow):
         if data and data.get("active"):
             self.status.setText("● GUARDIAN / SLEEP")
             self.status.setStyleSheet("color:#1a6080; font-size:11px;")
-            self.reactor.set_target_fps(10)
+            self.reactor.set_target_fps(12)
             self.append_log("GUARDIAN › bedtime mode")
         else:
             self.status.setText("● OPTIMAL")
-            self.reactor.set_target_fps(36)
+            self.reactor.set_target_fps(16)
 
     def _apply_tel(self, snap) -> None:
         total_g, free_g = (0.0, 0.0)
         if self.brain:
             total_g, free_g = self.brain.system.disk_capacity()
         self.clock.set_vitals(snap.cpu, snap.memory, snap.battery, total_g, free_g)
+        try:
+            import psutil
+
+            vm = psutil.virtual_memory()
+            used_gb = (vm.total - vm.available) / (1024**3)
+            total_ram = vm.total / (1024**3)
+            self.memory_map.set_ram(
+                float(snap.memory), used_gb=used_gb, total_gb=total_ram
+            )
+        except Exception:
+            try:
+                self.memory_map.set_ram(float(snap.memory))
+            except Exception:
+                pass
+        # Hardware → hologram film + core spin
+        try:
+            cpu = float(getattr(snap, "cpu", 0) or 0)
+            self.reactor.set_cpu_load(cpu)
+            self.atmosphere.set_cpu_load(cpu)
+        except Exception:
+            pass
+        # Keep Screen-2 tools net KPI fresh while open
+        try:
+            if (
+                self.tools is not None
+                and self.tools.isVisible()
+                and self.brain
+                and getattr(self.brain, "net_watch", None)
+            ):
+                self.tools.set_net_status(self.brain.net_watch.status())
+        except Exception:
+            pass
         if snap.eco:
             if getattr(self.settings, "performance_mode", False):
                 self.status.setText("● SMOOTH MODE")
@@ -2159,20 +2885,64 @@ class MainWindow(QMainWindow):
     def _weather(self) -> None:
         if not self.brain:
             return
-        try:
-            ctx = self.brain.weather.context_block()
-            self.weather.set_context(ctx)
-            if ctx.get("city"):
-                self.loc.setText(f"◎ {ctx['city']}")
-            self._apply_weather_mood(ctx.get("condition") or "")
-        except Exception as e:
-            self.append_log(f"WEATHER › {e}")
+
+        def _work() -> None:
+            ctx = None
+            err = None
+            try:
+                ctx = self.brain.weather.context_block()
+            except Exception as e:
+                err = e
+
+            def _apply() -> None:
+                if err is not None:
+                    self.append_log(f"WEATHER › {err}")
+                    return
+                if not ctx:
+                    return
+                try:
+                    self.weather.set_context(ctx)
+                    if ctx.get("city"):
+                        self.loc.setText(f"◎ {ctx['city']}")
+                    self._apply_weather_mood(ctx.get("condition") or "")
+                except Exception as e:
+                    self.append_log(f"WEATHER › {e}")
+
+            QTimer.singleShot(0, _apply)
+
+        import threading
+
+        threading.Thread(target=_work, daemon=True, name="jarvis-weather").start()
+
+    def _orbital(self) -> None:
+        """Refresh ISS satellite track into the atmosphere panel."""
+        def _work() -> None:
+            summary = "track offline"
+            try:
+                from jarvis.core.satellite_track import fetch_iss
+
+                summary = fetch_iss().get("summary") or summary
+            except Exception as e:
+                summary = str(e)
+
+            def _apply() -> None:
+                try:
+                    self.weather.set_orbital(summary)
+                except Exception:
+                    pass
+
+            QTimer.singleShot(0, _apply)
+
+        import threading
+
+        threading.Thread(target=_work, daemon=True, name="jarvis-orbital").start()
 
     def _apply_weather_mood(self, condition: str) -> None:
         mood = weather_mood(condition)
         if mood == self._wx_mood:
             # Still refresh FX in case window resized while clear
             self.atmosphere.set_mood(mood)
+            self._stack_overlays()
             return
         prev = self._wx_mood
         self._wx_mood = mood
@@ -2201,6 +2971,7 @@ class MainWindow(QMainWindow):
             self.status.style().polish(self.status)
         except Exception:
             pass
+        self._stack_overlays()
         label = pal.get("label", mood.upper())
         if mood in ("rain", "storm") and prev == "clear":
             self.append_log(f"ATMOSPHERE › {label} — HUD shifted to weather mode")
@@ -2264,6 +3035,21 @@ class MainWindow(QMainWindow):
             self._launch_vibe_coding(brief="")
             return
 
+        # STUDIO strip — theater-backed creative modes (GUI thread first)
+        studio_vibe = {
+            "start written": "written article editor with outline drafts export and tone controls",
+            "make a video": "video slideshow reel with captions play pause and export",
+            "start design": "design moodboard board with color palette typography and layout mock",
+            "make 3d": "3d three.js orbit product turntable with particles and hud controls",
+            "make a 3d app": "3d webgl scene with orbit controls lighting and animation",
+            "start 3d": "3d three.js cinematic scene with orbit controls and fx",
+            "make animation": "gsap motion graphics timeline with kinetic type and export frame",
+            "start animation": "animation app with gsap canvas ribbons and play pause restart",
+        }
+        if low in studio_vibe:
+            self._launch_vibe_coding(brief=studio_vibe[low])
+            return
+
         # Away button → live away agent theater
         if low in (
             "away mode",
@@ -2275,7 +3061,7 @@ class MainWindow(QMainWindow):
             self._launch_away_agent()
             return
 
-        QTimer.singleShot(900, lambda: self.status.setText("● OPTIMAL"))
+        QTimer.singleShot(120, lambda: self.status.setText("● OPTIMAL"))
 
         if self.brain:
             # Never run the brain on the Qt GUI thread — HITL / network / healer
@@ -2338,15 +3124,16 @@ class MainWindow(QMainWindow):
             theater.ensure_open()
             if hint:
                 theater.sub.setText(str(hint)[:60])
+            # Keep PREVIEW if already locked
+            if getattr(theater, "_preview_locked", False):
+                theater._set_tab("building", force=True)
+            else:
+                theater._set_tab(getattr(theater, "_tab", None) or "working", force=True)
         else:
             theater.show_session(mode=mode, hint=hint)
         theater.raise_()
         try:
             theater.activateWindow()
-        except Exception:
-            pass
-        try:
-            theater._set_tab(getattr(theater, "_tab", None) or "working", force=True)
         except Exception:
             pass
         self.append_log(f"BUILD › theater open · {mode} · {hint}")
@@ -2546,6 +3333,12 @@ class MainWindow(QMainWindow):
 
     def _request_app_exit(self, code: int) -> None:
         """Ask QApplication to quit with a watchdog-aware exit code."""
+        # Stop voice first so Edge TTS doesn't schedule futures during interpreter teardown
+        try:
+            if self.brain:
+                self.brain.stop()
+        except Exception:
+            pass
         from PyQt6.QtWidgets import QApplication
 
         app = QApplication.instance()

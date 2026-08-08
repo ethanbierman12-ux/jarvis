@@ -206,19 +206,19 @@ class SuggestionEngine:
         ideas.extend(
             [
                 {
-                    "title": "Scan something with the camera?",
-                    "detail": "Hold an item in the green box and say scan — I'll identify it.",
-                    "cmd": "open camera",
+                    "title": "Set a California reminder?",
+                    "detail": "Say remind me at 10 pm California to call her.",
+                    "cmd": "list reminders",
                 },
                 {
-                    "title": "Take a voice note?",
-                    "detail": "Say take notes and talk — I'll save it when you say done.",
-                    "cmd": "take notes",
+                    "title": "Morning briefing + tabs?",
+                    "detail": "Say good morning — I'll greet you and open YouTube plus research.",
+                    "cmd": "good morning",
                 },
                 {
-                    "title": "What did I miss while away?",
-                    "detail": "I can summarize schedule and tasks from your absence.",
-                    "cmd": "what did i miss",
+                    "title": "Live message translate?",
+                    "detail": "Say live comms setup to watch Snap, IG, and iMessage.",
+                    "cmd": "live comms setup",
                 },
             ]
         )

@@ -19,10 +19,9 @@ class WorkflowStep:
 
 WORKFLOWS: dict[str, list[WorkflowStep]] = {
     "morning": [
-        WorkflowStep("brief", "Morning standup", "good morning"),
+        WorkflowStep("brief", "Morning standup + tabs", "good morning"),
         WorkflowStep("weather", "Weather telemetry", "weather"),
         WorkflowStep("lamp", "Desk lamp on", "turn on the lamp"),
-        WorkflowStep("work", "Open work layout", "start work"),
         WorkflowStep("music", "Focus playlist", "play my focus playlist"),
     ],
     "night": [

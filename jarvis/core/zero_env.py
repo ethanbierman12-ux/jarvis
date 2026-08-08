@@ -55,7 +55,11 @@ def write_env_manifest(root: Path, *, stack: str, files: list[str], notes: str =
         "files": files,
         "run": _run_hint(stack),
         "notes": notes
-        or "Open index.html or run with system Python. No package install required.",
+        or (
+            "CDN Three.js/GSAP allowed — no npm. Open via Jarvis HTTP preview."
+            if (stack or "").lower() in ("3d", "animation")
+            else "Open index.html or run with system Python. No package install required."
+        ),
     }
     path = root / "jarvis.env.json"
     path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -66,8 +70,10 @@ def _run_hint(stack: str) -> str:
     s = (stack or "").lower()
     if "python" in s:
         return "python main.py"
-    if "static" in s or "html" in s or "site" in s:
-        return "open index.html"
+    if s in ("3d", "animation") or "three" in s or "webgl" in s:
+        return "Serve folder over HTTP and open index.html (CDN Three.js / GSAP — no npm)."
+    if "static" in s or "html" in s or "site" in s or s in ("web", "game", "video", "dashboard"):
+        return "open index.html (or use the Jarvis sandbox preview URL)"
     return "open README.md — sandbox is self-contained"
 
 

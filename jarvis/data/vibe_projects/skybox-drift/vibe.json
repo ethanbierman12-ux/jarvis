@@ -1,0 +1,20 @@
+{
+  "name": "Skybox Drift",
+  "stack": "3d",
+  "pitch": "endless skybox cruise with animated fog and stars",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "styles.css",
+    "scene.js",
+    "ui.js",
+    "preview.html",
+    "research.md",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\skybox-drift",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\skybox-drift\\index.html",
+  "zero_setup": true,
+  "preview_url": "http://127.0.0.1:54024/index.html",
+  "app_url": "http://127.0.0.1:54024/index.html"
+}

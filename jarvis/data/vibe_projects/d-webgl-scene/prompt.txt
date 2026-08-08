@@ -1,0 +1,31 @@
+You are Jarvis, an autonomous vibe-coding agent.
+Product: D Webgl Scene
+Stack hint: 3d
+Brief: 3d webgl scene with orbit controls lighting and animation
+
+Design prompts from research:
+- Build a zero-npm 3d experience called D Webgl Scene — 3d webgl scene with orbit controls lighting and animation.
+- Full-bleed WebGL/canvas stage, dark void, cyan/teal accents.
+- Orbit/drag controls, resize handler, pause on visibilitychange.
+- HUD with Pause / Reset / Quality toggles and keyboard shortcuts.
+- CDN only: three.js + addons, optional gsap — no npm install.
+
+Image URLs to embed in the UI (use as <img src> when relevant):
+- https://picsum.photos/seed/d-webgl-scene-hero-0/960/540
+- https://loremflickr.com/960/540/3d%2CD%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/d-webgl-scene-gallery-1-1/960/540
+- https://loremflickr.com/960/540/3d%2CD%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/d-webgl-scene-gallery-2-2/960/540
+
+Web references:
+- Examples of CSS Website Designs for Inspiration - Designmodo: Google News
+- Meet Munus Shih | Creative Technologist, Designer, Educator - SHOUTOUT LA: Google News
+- Playful Physics – Liquid in Web Design - Designmodo: Google News
+- Create interactive 3D visuals with three.js - Creative Bloq: Google News
+
+ZERO-NPM advanced visual app. Prefer CDN ES modules only.
+Allowed: three@0.160 (importmap), three/addons OrbitControls, gsap, canvas API.
+Forbidden: npm install, vite scaffolding, create-react-app, node_modules, webpack.
+Deliver AT LEAST: index.html, styles.css, scene.js (or anim.js), ui.js, preview.html, research.md, README.md.
+Must run under http://127.0.0.1 with requestAnimationFrame.
+Include: PerspectiveCamera or orthographic stage, lights, resize handler, pause on visibilitychange, HUD (Pause/Reset), keyboard shortcuts, substantial JS (300+ lines total). Zero stubs.

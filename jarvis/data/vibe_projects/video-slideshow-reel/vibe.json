@@ -1,0 +1,17 @@
+{
+  "name": "Video Slideshow Reel",
+  "stack": "game",
+  "pitch": "video slideshow reel with captions play pause and export",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "game.js",
+    "preview.html",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\video-slideshow-reel",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\video-slideshow-reel\\index.html",
+  "zero_setup": true,
+  "preview_url": "http://127.0.0.1:55529/preview.html",
+  "app_url": "http://127.0.0.1:55529/preview.html"
+}

@@ -1,5 +1,5 @@
 {
-  "updated_at": 1785108945.3927307,
+  "updated_at": 1785762248.0352144,
   "apps": {
     "pulse-arena": {
       "title": "Pulse Arena",
@@ -70,6 +70,53 @@
       "last_at": 1785108945.3639934,
       "publish_url": "http://127.0.0.1:5173",
       "high_score": 16
+    },
+    "html-app": {
+      "title": "Html App",
+      "total_points": 22,
+      "visits": 1,
+      "searches": 0,
+      "actions": 3,
+      "events": [
+        {
+          "t": 1785762237.5324044,
+          "kind": "action",
+          "points": 10,
+          "label": "scaffold",
+          "meta": {}
+        },
+        {
+          "t": 1785762240.804531,
+          "kind": "visit",
+          "points": 5,
+          "label": "session",
+          "meta": {}
+        },
+        {
+          "t": 1785762245.1861992,
+          "kind": "score",
+          "points": 5,
+          "label": "inspect Neon Briefing",
+          "meta": {}
+        },
+        {
+          "t": 1785762246.5135162,
+          "kind": "action",
+          "points": 1,
+          "label": "filter",
+          "meta": {}
+        },
+        {
+          "t": 1785762248.0346267,
+          "kind": "action",
+          "points": 1,
+          "label": "filter",
+          "meta": {}
+        }
+      ],
+      "last_at": 1785762248.0346267,
+      "publish_url": "",
+      "high_score": 22
     }
   }
 }

@@ -1,0 +1,20 @@
+{
+  "name": "D Webgl Scene",
+  "stack": "3d",
+  "pitch": "3d webgl scene with orbit controls lighting and animation",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "styles.css",
+    "scene.js",
+    "ui.js",
+    "preview.html",
+    "research.md",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\d-webgl-scene",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\d-webgl-scene\\index.html",
+  "zero_setup": true,
+  "preview_url": "http://127.0.0.1:52831/index.html",
+  "app_url": "http://127.0.0.1:52831/index.html"
+}

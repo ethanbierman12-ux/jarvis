@@ -159,6 +159,110 @@
       "engine": "template",
       "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\pulse-runner",
       "created": "2026-07-27T10:05:49"
+    },
+    {
+      "slug": "video-slideshow-reel",
+      "name": "Video Slideshow Reel",
+      "stack": "game",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\video-slideshow-reel",
+      "created": "2026-07-28T09:57:45"
+    },
+    {
+      "slug": "d-webgl-scene",
+      "name": "D Webgl Scene",
+      "stack": "3d",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\d-webgl-scene",
+      "created": "2026-07-28T21:34:37"
+    },
+    {
+      "slug": "checklist-arena",
+      "name": "Checklist Arena",
+      "stack": "web",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\checklist-arena",
+      "created": "2026-07-28T21:42:26"
+    },
+    {
+      "slug": "crystal-forge",
+      "name": "Crystal Forge",
+      "stack": "3d",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\crystal-forge",
+      "created": "2026-07-28T21:51:37"
+    },
+    {
+      "slug": "skybox-drift",
+      "name": "Skybox Drift",
+      "stack": "3d",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\skybox-drift",
+      "created": "2026-07-28T22:02:17"
+    },
+    {
+      "slug": "reel-mood-studio",
+      "name": "Reel Mood Studio",
+      "stack": "video",
+      "engine": "template",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\reel-mood-studio",
+      "created": "2026-07-28T22:15:48"
+    },
+    {
+      "slug": "parallax-codex",
+      "name": "Parallax Codex",
+      "stack": "animation",
+      "engine": "template+agents",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\parallax-codex",
+      "created": "2026-07-28T22:29:59"
+    },
+    {
+      "slug": "photon-trail",
+      "name": "Photon Trail",
+      "stack": "3d",
+      "engine": "template+agents",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\photon-trail",
+      "created": "2026-07-29T08:23:46"
+    },
+    {
+      "slug": "glow-stretch",
+      "name": "Glow Stretch",
+      "stack": "web",
+      "engine": "template+agents",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\glow-stretch",
+      "created": "2026-07-29T08:50:47"
+    },
+    {
+      "slug": "video-slideshow-reel-213441",
+      "name": "Video Slideshow Reel",
+      "stack": "game",
+      "engine": "template+agents",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\video-slideshow-reel-213441",
+      "created": "2026-07-29T21:34:47"
+    },
+    {
+      "slug": "video-slideshow-reel-214725",
+      "name": "Video Slideshow Reel",
+      "stack": "game",
+      "engine": "template+agents",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\video-slideshow-reel-214725",
+      "created": "2026-08-03T21:47:31"
+    },
+    {
+      "slug": "video-slideshow-reel-054424",
+      "name": "Video Slideshow Reel",
+      "stack": "game",
+      "engine": "template+agents",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\video-slideshow-reel-054424",
+      "created": "2026-08-07T05:44:30"
+    },
+    {
+      "slug": "video-slideshow-reel-012838",
+      "name": "Video Slideshow Reel",
+      "stack": "game",
+      "engine": "template+agents",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\video-slideshow-reel-012838",
+      "created": "2026-08-08T01:28:44"
     }
   ]
 }

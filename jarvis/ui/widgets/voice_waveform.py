@@ -75,8 +75,15 @@ class VoiceWaveform(QWidget):
             want = self._IDLE_MS if not self._eco else 160
             if self._timer.interval() != want:
                 self._timer.setInterval(want)
-            if max(self._levels) < 0.10:
-                return
+            # Keep decaying paint until bars settle — early return froze the last peak
+            if max(self._levels) < 0.10 and max(self._trace_a + self._trace_b) < 0.12:
+                if getattr(self, "_idle_painted", False):
+                    return
+                self._idle_painted = True
+            else:
+                self._idle_painted = False
+        else:
+            self._idle_painted = False
         self.update()
 
     def paintEvent(self, _event) -> None:
@@ -103,9 +110,23 @@ class VoiceWaveform(QWidget):
             p.drawLine(x0, y0, x0 + dx, y0 + dy)
 
         mid = h / 2
-        # Dual traces
-        self._draw_trace(p, self._trace_a, QColor(0, 229, 255, 200), mid, h * 0.32)
-        self._draw_trace(p, self._trace_b, QColor(255, 154, 60, 160), mid, h * 0.22)
+        # Dual traces — cyan + teal when speaking (secure boot)
+        cyan = QColor(0, 240, 255, 210 if self._speaking else 180)
+        teal = QColor(0, 180, 210, 190 if self._speaking else 140)
+        self._draw_trace(p, self._trace_a, cyan, mid, h * 0.34)
+        self._draw_trace(p, self._trace_b, teal, mid, h * 0.24)
+
+        # Concentric mini-rings on the left (voice core echo)
+        if self._speaking or self._amp > 0.08:
+            rx, ry = 22, mid
+            for i, sc in enumerate((6, 11, 16)):
+                r = sc * (1.0 + 0.35 * self._amp + (0.2 if self._speaking else 0))
+                col = QColor(0, 240, 255, 120 - i * 25)
+                if i == 1:
+                    col = QColor(0, 180, 210, 100)
+                p.setPen(QPen(col, 1.4))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.drawEllipse(QPointF(rx, ry), r, r)
 
         # Bar field along the bottom third
         n = len(self._levels)
@@ -115,7 +136,9 @@ class VoiceWaveform(QWidget):
         base_y = h - 6
         for lvl in self._levels:
             bh = max(1, int((h * 0.42) * lvl))
-            color = QColor(0, 229, 255, 180)
+            color = QColor(0, 240, 255, 180)
+            if self._speaking and lvl > 0.4:
+                color = QColor(0, 210, 230, 200)
             if lvl > 0.65:
                 color = QColor(61, 255, 154, 210)
             p.setPen(Qt.PenStyle.NoPen)

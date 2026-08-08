@@ -1,0 +1,69 @@
+{
+  "agents": [
+    {
+      "id": "manager",
+      "name": "MANAGER",
+      "title": "Work Director",
+      "xp": 1,
+      "color": "#00f0ff",
+      "blurb": "Routes jobs, sets priorities, ships outcome streams"
+    },
+    {
+      "id": "research",
+      "name": "SCHOLAR",
+      "title": "Research Scout",
+      "xp": 1,
+      "color": "#7cf0ff",
+      "blurb": "Analyzes the web and invents new outcome ideas"
+    },
+    {
+      "id": "market",
+      "name": "MARKET",
+      "title": "Market Agent",
+      "xp": 1,
+      "color": "#ffc14a",
+      "blurb": "Trends, niches, demand signals"
+    },
+    {
+      "id": "stitch",
+      "name": "STITCH",
+      "title": "Etsy Tee Designer",
+      "xp": 1,
+      "color": "#ff6bcb",
+      "blurb": "T-shirt concepts, mock briefs, listing copy"
+    },
+    {
+      "id": "reel",
+      "name": "REEL",
+      "title": "TikTok Poster",
+      "xp": 1,
+      "color": "#ff4fd8",
+      "blurb": "Short-form scripts that push Etsy traffic"
+    },
+    {
+      "id": "flip",
+      "name": "FLIP",
+      "title": "eBay Flip Finder",
+      "xp": 1,
+      "color": "#3dff9a",
+      "blurb": "Arbitrage angles and flip checklists"
+    },
+    {
+      "id": "ledger",
+      "name": "LEDGER",
+      "title": "Stock Scout",
+      "xp": 1,
+      "color": "#9eb7ff",
+      "blurb": "Ticker research notes \u2014 never auto-trades"
+    },
+    {
+      "id": "muse",
+      "name": "MUSE",
+      "title": "Music Maker",
+      "xp": 1,
+      "color": "#ffb089",
+      "blurb": "Track concepts, hooks, production briefs"
+    }
+  ],
+  "updated": "2026-07-28T01:53:01.238481"
+}

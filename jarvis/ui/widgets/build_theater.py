@@ -90,6 +90,11 @@ class BuildTheater(QFrame):
         self._preview_url = ""
         self._browser_url = ""
         self._active = False
+        self._preview_locked = False  # once True, stay on PREVIEW until user clicks another tab
+        self._last_forced_url = ""
+        self._last_forced_at = 0.0
+        self._external_opened_for = ""
+        self._load_gen = 0  # bump on each navigate; ignore stale loadFinished(False)
         self._type_target = ""
         self._type_idx = 0
         self._key_target = ""
@@ -102,6 +107,17 @@ class BuildTheater(QFrame):
 
         self._live = None
         self._preview = None
+        self._overlay = None
+        self._overlay_host = None
+        self._overlay_banner = None
+        self._app_view = None
+        self._btn_open_browser = None
+        self._btn_reload_app = None
+        # Off-screen parking for native WebEngine views (z-order fix)
+        self._web_park = QWidget(self)
+        self._web_park.hide()
+        self._web_park.setFixedSize(1, 1)
+        self._web_park.move(-20000, -20000)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(10, 8, 10, 10)
@@ -156,7 +172,9 @@ class BuildTheater(QFrame):
             b.setCheckable(True)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.setProperty("active", "false")
-            b.clicked.connect(lambda _checked=False, k=key: self._set_tab(k, force=True))
+            b.clicked.connect(
+                lambda _checked=False, k=key: self._set_tab(k, force=True, user=True)
+            )
             self._tab_btns[key] = b
             tabs.addWidget(b)
         tabs.addStretch(1)
@@ -268,8 +286,25 @@ class BuildTheater(QFrame):
             s2.setAttribute(
                 QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True
             )
+            s2.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled, True)
+            s2.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadImages, True)
+            s2.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
+            try:
+                s2.setAttribute(QWebEngineSettings.WebAttribute.WebGLEnabled, True)
+            except Exception:
+                pass
+            try:
+                s2.setAttribute(
+                    QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, False
+                )
+            except Exception:
+                pass
             self._preview_fallback.hide()
             prev_lay.addWidget(self._preview, 1)
+            try:
+                self._preview.loadFinished.connect(self._on_preview_load_finished)
+            except Exception:
+                pass
         except Exception as e:
             self._live_fallback.setText(f"WebEngine unavailable — {e}")
             self._preview_fallback.setText(f"WebEngine unavailable — {e}")
@@ -325,6 +360,7 @@ class BuildTheater(QFrame):
         self._prompts = []
         self._preview_url = ""
         self._browser_url = ""
+        self._preview_locked = False
         self._type_target = ""
         self._type_idx = 0
         self._key_target = ""
@@ -340,10 +376,13 @@ class BuildTheater(QFrame):
         self.file_list.clear()
         self.build_log.clear()
         self.code_view.setPlainText("// waiting for code stream…")
+        self._preview_fallback.setText("App preview appears after files are written…")
+        self._preview_fallback.show()
         self._refresh_stats()
         self._fill_parent()
         # Warm Google home (empty search bar — typing comes next)
         if self._live is not None:
+            self._mount_live(True)
             self._live.load(QUrl("https://www.google.com/"))
             self.url_bar.setText("https://www.google.com/")
             self._last_nav_url = "https://www.google.com/"
@@ -366,6 +405,424 @@ class BuildTheater(QFrame):
             self._type_timer.start()
         if not self._key_timer.isActive():
             self._key_timer.start()
+        # If preview already ready, stay on PREVIEW (don't bounce to WORKING)
+        if self._preview_locked or self._preview_url.startswith("http"):
+            QTimer.singleShot(0, lambda: self._set_tab("building", force=True))
+
+    def force_preview(self, url: str = "", *, path: str = "", name: str = "") -> None:
+        """Hard-switch to PREVIEW with a FRESH WebEngine view (reparented views go blank)."""
+        url = (url or self._preview_url or "").strip()
+        now = time.time()
+        # Same URL already forced recently — just keep PREVIEW visible (no reload spam / Chrome tabs)
+        if (
+            url
+            and url == getattr(self, "_last_forced_url", "")
+            and self._preview_locked
+            and (now - float(getattr(self, "_last_forced_at", 0) or 0)) < 2.5
+        ):
+            try:
+                self._set_tab("building", force=True)
+                self.show()
+                self.raise_()
+            except Exception:
+                pass
+            return
+
+        self._active = True
+        self._preview_locked = True
+        self._research_lock = False
+        self._pct = 100
+        try:
+            self.bar.setValue(100)
+        except Exception:
+            pass
+        label = str(name or path or "app")[:60]
+        self._status = f"Complete — {label}"
+        if self._status not in self._building:
+            self._building.append(self._status)
+        self._sync_logs()
+        self._fill_parent()
+        self.show()
+        self.raise_()
+
+        self._kill_live_view()
+
+        self._tab = "building"
+        for k, b in self._tab_btns.items():
+            on = k == "building"
+            b.blockSignals(True)
+            b.setChecked(on)
+            b.blockSignals(False)
+            b.setProperty("active", "true" if on else "false")
+            try:
+                b.style().unpolish(b)
+                b.style().polish(b)
+            except Exception:
+                pass
+            b.update()
+
+        try:
+            self.stack.setCurrentIndex(2)
+            for i in range(self.stack.count()):
+                w = self.stack.widget(i)
+                if w is not None:
+                    w.setVisible(i == 2)
+        except Exception:
+            pass
+
+        # Hide the old broken preview widget — we use _app_view instead
+        try:
+            if self._preview is not None:
+                self._preview.hide()
+                self._preview.setVisible(False)
+        except Exception:
+            pass
+
+        self._ensure_overlay()
+        self._place_overlay()
+        self._overlay.show()
+        self._overlay.raise_()
+        self._overlay_banner.setText(f"3 · PREVIEW · {label.upper()}")
+
+        view = self._ensure_app_view()
+        if url.startswith("http"):
+            self._preview_url = url
+            self._last_forced_url = url
+            self._last_forced_at = now
+            self.url_bar.setText(url)
+            self.status.setText(f"LIVE · LOADING APP · {url}")
+            self._load_app_url(url)
+            QTimer.singleShot(100, self._place_overlay)
+            # One delayed reload is enough — triple timers aborted loads and spawned Chrome tabs
+            QTimer.singleShot(400, lambda u=url: self._load_app_url(u))
+        elif path:
+            from pathlib import Path as _P
+
+            root = _P(path)
+            for name_html in ("index.html", "preview.html"):
+                cand = root / name_html if root.is_dir() else root
+                if cand.exists():
+                    file_url = QUrl.fromLocalFile(str(cand.resolve())).toString()
+                    self.url_bar.setText(file_url)
+                    self.status.setText("LIVE · LOADING LOCAL APP")
+                    self._load_app_url(file_url)
+                    break
+        else:
+            self.status.setText("LIVE · PREVIEW · no URL yet — open in browser after serve")
+
+        self.key_strip.setText(
+            "PREVIEW — if still blank tap OPEN IN BROWSER (same URL works outside)"
+        )
+        self.sub.setText(f"{label} · preview ready")
+        try:
+            self.update()
+            self.repaint()
+        except Exception:
+            pass
+        _ = view
+
+    def _ensure_overlay(self) -> None:
+        if self._overlay is not None:
+            return
+        self._overlay = QWidget(self)
+        self._overlay.setObjectName("PreviewOverlay")
+        self._overlay.setStyleSheet(
+            "QWidget#PreviewOverlay { background: #02080e; border: 2px solid #00f0ff; }"
+        )
+        lay = QVBoxLayout(self._overlay)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        self._overlay_banner = QLabel("3 · PREVIEW")
+        self._overlay_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._overlay_banner.setStyleSheet(
+            "color:#02080e; background:#00f0ff; font-weight:700;"
+            " padding:10px; letter-spacing:3px; font-size:14px;"
+        )
+        lay.addWidget(self._overlay_banner)
+
+        btns = QHBoxLayout()
+        btns.setContentsMargins(8, 6, 8, 6)
+        btns.setSpacing(8)
+        self._btn_open_browser = QPushButton("OPEN IN BROWSER")
+        self._btn_reload_app = QPushButton("RELOAD APP")
+        for b in (self._btn_open_browser, self._btn_reload_app):
+            b.setObjectName("GhostBtn")
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.setStyleSheet(
+                "color:#00f0ff; border:1px solid #00f0ff; padding:8px 14px;"
+                " letter-spacing:2px; background:rgba(0,20,30,200);"
+            )
+            btns.addWidget(b)
+        btns.addStretch(1)
+        lay.addLayout(btns)
+        self._btn_open_browser.clicked.connect(self._open_preview_external)
+        self._btn_reload_app.clicked.connect(lambda: self._load_app_url(self._preview_url, force=True))
+
+        self._overlay_host = QWidget()
+        self._overlay_host.setStyleSheet("background:#02060c;")
+        oh = QVBoxLayout(self._overlay_host)
+        oh.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self._overlay_host, 1)
+        self._overlay.hide()
+
+    def _ensure_app_view(self):
+        """Always use a dedicated WebEngine for the app — never the Google view."""
+        if self._app_view is not None:
+            try:
+                self._app_view.show()
+                return self._app_view
+            except Exception:
+                self._app_view = None
+        self._ensure_overlay()
+        try:
+            from PyQt6.QtWebEngineWidgets import QWebEngineView
+            from PyQt6.QtWebEngineCore import QWebEngineSettings
+        except Exception as e:
+            self._overlay_banner.setText(f"PREVIEW · WebEngine missing — {e}")
+            return None
+
+        view = QWebEngineView(self._overlay_host)
+        s = view.settings()
+        s.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+        s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+        s.setAttribute(QWebEngineSettings.WebAttribute.LocalStorageEnabled, True)
+        s.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadImages, True)
+        try:
+            s.setAttribute(QWebEngineSettings.WebAttribute.WebGLEnabled, True)
+        except Exception:
+            pass
+        try:
+            s.setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, False)
+        except Exception:
+            pass
+        from PyQt6.QtWidgets import QSizePolicy as _SP
+
+        view.setSizePolicy(_SP.Policy.Expanding, _SP.Policy.Expanding)
+        view.setMinimumSize(200, 160)
+        lay = self._overlay_host.layout()
+        if lay is not None:
+            lay.addWidget(view, 1)
+        view.loadFinished.connect(self._on_app_load_finished)
+        try:
+            view.renderProcessTerminated.connect(
+                lambda *_a: self._overlay_banner.setText(
+                    "3 · PREVIEW · RENDER CRASHED — tap RELOAD or OPEN IN BROWSER"
+                )
+            )
+        except Exception:
+            pass
+        self._app_view = view
+        view.show()
+        return view
+
+    def _load_app_url(self, url: str, *, force: bool = False) -> None:
+        url = (url or "").strip()
+        if not url:
+            return
+        self._preview_url = url
+        self.url_bar.setText(url)
+        view = self._ensure_app_view()
+        if view is None:
+            # Only open system browser when WebEngine is missing (button still works)
+            self._open_preview_external(once=True)
+            return
+        self._place_overlay()
+        try:
+            host = self._overlay_host
+            if host is not None:
+                hw = max(320, host.width() or 0, getattr(self._overlay, "width", lambda: 0)() - 4)
+                hh = max(240, host.height() or 0, 200)
+                if host.width() < 50 or host.height() < 50:
+                    try:
+                        og = self._overlay.geometry() if self._overlay else None
+                        if og and og.width() > 100:
+                            host.setMinimumSize(max(320, og.width() - 8), max(240, og.height() - 90))
+                            hw = max(320, og.width() - 8)
+                            hh = max(240, og.height() - 90)
+                    except Exception:
+                        pass
+                view.setMinimumSize(320, 240)
+                view.resize(hw, hh)
+            view.show()
+            view.raise_()
+            cur = ""
+            try:
+                cur = view.url().toString()
+            except Exception:
+                pass
+            same = cur.rstrip("/") == url.rstrip("/") and cur.startswith("http")
+            if not force and same:
+                self.status.setText(f"LIVE · APP RUNNING · {url}")
+                return
+            if force or not cur or cur in ("about:blank", "data:,") or not same:
+                self._load_gen = int(getattr(self, "_load_gen", 0) or 0) + 1
+                gen = self._load_gen
+                try:
+                    view.setHtml(
+                        "<!DOCTYPE html><html><body style='margin:0;height:100vh;display:grid;"
+                        "place-items:center;background:#02060c;color:#00f0ff;"
+                        "font-family:Bahnschrift,Segoe UI,sans-serif;letter-spacing:.2em'>"
+                        "LOADING APP…</body></html>",
+                        QUrl("https://jarvis.local/loading/"),
+                    )
+                except Exception:
+                    pass
+                QTimer.singleShot(80, lambda u=url, v=view, g=gen: self._navigate_app(v, u, g))
+            else:
+                view.reload()
+            self.status.setText(f"LIVE · LOADING · {url}")
+        except Exception as e:
+            self.status.setText(f"LIVE · PREVIEW ERROR · {e}")
+            self._overlay_banner.setText("3 · PREVIEW · ERROR — OPEN IN BROWSER")
+
+    def _navigate_app(self, view, url: str, gen: int | None = None) -> None:
+        try:
+            if view is None:
+                return
+            if gen is not None and gen != getattr(self, "_load_gen", 0):
+                return  # superseded by a newer load
+            self._place_overlay()
+            view.show()
+            view.raise_()
+            view.setUrl(QUrl(url))
+        except Exception as e:
+            self.status.setText(f"LIVE · navigate failed · {e}")
+            # Do not auto-open Chrome — user can tap OPEN IN BROWSER
+
+    def _open_preview_external(self, *, once: bool = False) -> None:
+        url = (self._preview_url or "").strip()
+        if not url:
+            self.status.setText("LIVE · no preview URL to open")
+            return
+        if once and url == getattr(self, "_external_opened_for", ""):
+            return
+        try:
+            from PyQt6.QtGui import QDesktopServices
+
+            QDesktopServices.openUrl(QUrl(url))
+            self._external_opened_for = url
+            self.status.setText(f"LIVE · opened system browser · {url}")
+            self.key_strip.setText("Opened in your browser — that is the real app preview")
+        except Exception as e:
+            self.status.setText(f"LIVE · browser open failed · {e}")
+
+    def _on_app_load_finished(self, ok: bool) -> None:
+        try:
+            if ok:
+                self.status.setText(f"LIVE · APP RUNNING · {self._preview_url}")
+                if self._overlay_banner is not None:
+                    self._overlay_banner.setText("3 · PREVIEW · APP RUNNING")
+                if self._app_view is not None:
+                    self._app_view.show()
+                    self._app_view.raise_()
+            else:
+                # Aborted mid-reload loads often report False — never spawn Chrome tabs for that
+                self.status.setText(
+                    "LIVE · PREVIEW LOAD FAILED — tap OPEN IN BROWSER if blank"
+                )
+                if self._overlay_banner is not None:
+                    self._overlay_banner.setText(
+                        "3 · PREVIEW · LOAD FAILED — USE OPEN IN BROWSER"
+                    )
+        except Exception:
+            pass
+
+    def _place_overlay(self) -> None:
+        if self._overlay is None:
+            return
+        try:
+            g = self.stack.geometry()
+            if g.width() < 50 or g.height() < 50:
+                g = self.rect().adjusted(10, 160, -10, -10)
+            self._overlay.setGeometry(g)
+            self._overlay.raise_()
+            if self._app_view is not None and self._overlay_host is not None:
+                self._app_view.resize(
+                    max(200, self._overlay_host.width()),
+                    max(160, self._overlay_host.height()),
+                )
+                self._app_view.show()
+        except Exception:
+            pass
+
+    def _hide_overlay(self) -> None:
+        if self._overlay is not None:
+            self._overlay.hide()
+        if self._app_view is not None:
+            try:
+                self._app_view.hide()
+            except Exception:
+                pass
+
+    def _kill_live_view(self) -> None:
+        """Windows WebEngine keeps painting after hide — force it dead."""
+        if self._live is None:
+            return
+        try:
+            self._live.setUrl(QUrl("about:blank"))
+        except Exception:
+            pass
+        try:
+            self._live.hide()
+            self._live.setVisible(False)
+            self._live.setFixedSize(0, 0)
+            self._live.setMaximumSize(0, 0)
+            self._live.move(-20000, -20000)
+            self._live.setParent(self._web_park)
+        except Exception:
+            try:
+                self._live.hide()
+            except Exception:
+                pass
+
+    def _mount_live(self, on_working: bool) -> None:
+        """Reparent Google WebEngine so it cannot paint over PREVIEW."""
+        if self._live is None:
+            return
+        try:
+            if on_working:
+                self._hide_overlay()
+                from PyQt6.QtWidgets import QSizePolicy as _SP
+
+                self._live.setSizePolicy(_SP.Policy.Expanding, _SP.Policy.Expanding)
+                self._live.setMinimumSize(0, 0)
+                self._live.setMaximumSize(16777215, 16777215)
+                lay = self._live_host.layout()
+                if self._live.parent() is not self._live_host:
+                    self._live.setParent(self._live_host)
+                    if lay is not None:
+                        lay.addWidget(self._live, 1)
+                self._live_host.show()
+                self._live.show()
+                self._live.setVisible(True)
+                self._live.resize(
+                    max(100, self._live_host.width()),
+                    max(100, self._live_host.height()),
+                )
+            else:
+                self._kill_live_view()
+        except Exception:
+            try:
+                self._live.hide()
+            except Exception:
+                pass
+
+    def _resurrect_overlay(self) -> None:
+        if not self._preview_locked:
+            return
+        self._ensure_overlay()
+        self._place_overlay()
+        if self._overlay is not None:
+            self._overlay.show()
+            self._overlay.raise_()
+        self._kill_live_view()
+        if self._preview_url:
+            self._load_app_url(self._preview_url)
+
+    def _on_preview_load_finished(self, ok: bool) -> None:
+        # legacy preview widget callback — ignore (app uses _on_app_load_finished)
+        return
 
     def apply_progress(self, payload: Any) -> None:
         if isinstance(payload, str):
@@ -375,6 +832,16 @@ class BuildTheater(QFrame):
         msg = str(payload.get("msg") or payload.get("log") or "").strip()
         stage = str(payload.get("agent_stage") or payload.get("stage") or "").lower()
         tab = str(payload.get("tab") or "").lower()
+        preview_url = str(payload.get("preview_url") or "").strip()
+
+        # Once preview is live, stay on PREVIEW unless user clicked another tab
+        # (manual click clears lock via _set_tab)
+        if preview_url.startswith("http") or stage in ("preview", "ship", "live"):
+            self._preview_locked = True
+            self._research_lock = False
+            tab = "building"
+        elif self._preview_locked and tab not in ("working", "coding"):
+            tab = "building"
 
         if not tab:
             if stage in ("plan", "invent", "prompt", "copy", "working", "research"):
@@ -523,21 +990,35 @@ class BuildTheater(QFrame):
                 self._type_target = content
                 self._type_idx = 0
 
-        # App preview — prefer live server URL
-        preview_url = str(payload.get("preview_url") or "").strip()
+        # App preview — prefer live server URL (never trust setHtml stubs for multi-file apps)
         if preview_url.startswith("http"):
+            self._preview_locked = True
             self._load_preview(preview_url)
             tab = "building"
-        elif payload.get("html") and not self._preview_url:
+        elif (
+            payload.get("html")
+            and not self._preview_url
+            and not self._preview_locked
+            and stage not in ("preview", "ship", "live")
+        ):
+            # Early HTML only while researching — final preview must be http://
             html = str(payload.get("html") or "")
-            if self._preview is not None and html:
+            if self._preview is not None and html and "<canvas" not in html.lower():
                 self._preview.setHtml(html, QUrl("https://jarvis.local/preview/"))
                 self.url_bar.setText("jarvis://sandbox/preview")
                 tab = "building"
 
+        # Sticky lock wins over coding/working inference
+        if self._preview_locked:
+            tab = "building"
+
         # Switch tab last so nothing overrides it
         if tab in ("working", "coding", "building"):
             self._set_tab(tab, force=True)
+
+        if preview_url.startswith("http") and tab == "building":
+            # One delayed layout pass — avoid stacked reloads that abort each other
+            QTimer.singleShot(200, lambda u=preview_url: self._load_preview(u))
 
         if payload.get("chars") is not None:
             try:
@@ -561,39 +1042,14 @@ class BuildTheater(QFrame):
         self._refresh_stats()
 
     def show_done(self, *, path: str = "", name: str = "", preview_url: str = "") -> None:
-        self._research_lock = False
-        self._pct = 100
-        self.bar.setValue(100)
-        label = name or path or "project"
-        self._status = f"Complete — {label}"
-        self.status.setText(f"LIVE · {self._status}")
-        self._building.append(self._status)
-        self._sync_logs()
-        # Prefer live http preview, then path/index.html
-        url = (preview_url or self._preview_url or "").strip()
-        if url.startswith("http"):
-            self._load_preview(url)
-        elif path:
-            from pathlib import Path
+        self.force_preview(preview_url or self._preview_url, path=path, name=name)
 
-            p = Path(path)
-            if path.startswith(("http://", "https://")):
-                self._load_preview(path)
-            else:
-                for name_html in ("index.html", "preview.html"):
-                    cand = p / name_html if p.is_dir() else p
-                    if cand.exists():
-                        if self._preview is not None:
-                            self._preview.show()
-                            self._preview.load(QUrl.fromLocalFile(str(cand.resolve())))
-                            self.url_bar.setText(cand.resolve().as_uri())
-                            self._preview_fallback.hide()
-                        else:
-                            self._preview_fallback.setText(f"Open: {cand}")
-                            self._preview_fallback.show()
-                        break
-        self._set_tab("building", force=True)
-        self.ensure_open()
+    def _load_preview(self, url: str) -> None:
+        # Back-compat — real app preview uses _load_app_url / _app_view
+        self._load_app_url(url, force=True)
+
+    def _reload_preview_if(self, url: str) -> None:
+        self._load_app_url(url or self._preview_url, force=True)
 
     def _navigate_live(self, url: str) -> None:
         now = time.time()
@@ -687,37 +1143,27 @@ class BuildTheater(QFrame):
         except Exception:
             pass
 
-    def _load_preview(self, url: str) -> None:
-        self._preview_url = url
-        self.url_bar.setText(url)
-        if self._preview is not None:
-            try:
-                self._preview.show()
-                self._preview_host.show()
-                self._preview_fallback.hide()
-                self._preview.load(QUrl(url))
-            except Exception as e:
-                self._preview_fallback.setText(f"Preview failed: {e}\n{url}")
-                self._preview_fallback.show()
-        else:
-            self._preview_fallback.setText(f"Preview: {url}")
-            self._preview_fallback.show()
-
-    def _set_tab(self, tab: str, force: bool = False) -> None:
+    def _set_tab(self, tab: str, force: bool = False, *, user: bool = False) -> None:
         want = tab if tab in ("working", "coding", "building") else "working"
+        # Sticky PREVIEW after app is ready — only a user click can leave
+        if self._preview_locked and want != "building":
+            if user:
+                self._preview_locked = False
+                self._hide_overlay()
+            else:
+                want = "building"
+
         if not force and want == self._tab and self.stack.currentIndex() == {
             "working": 0, "coding": 1, "building": 2
         }.get(want, 0):
             return
+
         self._tab = want
-        # Manual / forced switches leave research — don't yank back to WORKING
         if want in ("coding", "building"):
             self._research_lock = False
         idx = {"working": 0, "coding": 1, "building": 2}.get(self._tab, 0)
         self.stack.setCurrentIndex(idx)
         self.stack.show()
-        # CRITICAL: hide inactive pages. QWebEngineView uses native windows that
-        # stay painted on top of siblings if the page is only "stacked" not hidden.
         for i in range(self.stack.count()):
             w = self.stack.widget(i)
             if w is None:
@@ -729,32 +1175,43 @@ class BuildTheater(QFrame):
             else:
                 w.hide()
                 w.setVisible(False)
-        # Explicitly park the two webviews so only the active tab's is visible
+
+        # Park / restore Google WebEngine (native z-order)
+        self._mount_live(self._tab == "working")
+        if self._tab == "building" and self._preview_locked:
+            QTimer.singleShot(0, self._resurrect_overlay)
+        elif self._tab != "building":
+            self._hide_overlay()
+
         try:
-            if self._live is not None:
-                if self._tab == "working":
-                    self._live_host.show()
-                    self._live.setVisible(True)
-                    self._live.show()
-                    self._live.raise_()
-                    self._live.resize(self._live_host.size())
-                else:
-                    self._live.hide()
-                    self._live.setVisible(False)
             if self._preview is not None:
                 if self._tab == "building":
-                    self._preview_host.show()
-                    self._preview.setVisible(True)
-                    self._preview.show()
-                    self._preview.raise_()
-                    self._preview.resize(self._preview_host.size())
-                    # Reload if we already have a URL (webview may have been blank while hidden)
+                    # When locked, preview lives in the cyan overlay — don't steal it back
+                    if self._preview_locked:
+                        QTimer.singleShot(0, self._resurrect_overlay)
+                    else:
+                        self._preview_host.show()
+                        if self._preview.parent() is not self._preview_host:
+                            self._preview.setParent(self._preview_host)
+                            lay = self._preview_host.layout()
+                            if lay is not None:
+                                lay.addWidget(self._preview, 1)
+                        self._preview.setVisible(True)
+                        self._preview.show()
+                        self._preview.raise_()
+                        QTimer.singleShot(0, self._fit_preview)
                     if self._preview_url.startswith("http"):
                         try:
                             cur = self._preview.url().toString()
                         except Exception:
                             cur = ""
-                        if cur.rstrip("/") != self._preview_url.rstrip("/"):
+                        if (
+                            force
+                            or not cur
+                            or cur in ("about:blank", "data:,")
+                            or "jarvis.local" in cur
+                            or cur.rstrip("/") != self._preview_url.rstrip("/")
+                        ):
                             self._preview.load(QUrl(self._preview_url))
                             self.url_bar.setText(self._preview_url)
                 else:
@@ -762,6 +1219,7 @@ class BuildTheater(QFrame):
                     self._preview.setVisible(False)
         except Exception:
             pass
+
         page = self.stack.currentWidget()
         if page is not None:
             page.setVisible(True)
@@ -777,17 +1235,33 @@ class BuildTheater(QFrame):
             b.style().unpolish(b)
             b.style().polish(b)
             b.update()
-        labels = {
-            "working": "WORKING · Google research",
-            "coding": "CODING · writing files",
-            "building": "PREVIEW · runnable app",
-        }
-        if self._status and not str(self._status).startswith("Complete"):
+        if self._tab == "building" and self._preview_url:
+            self.status.setText(f"LIVE · PREVIEW · {self._preview_url}")
+        elif self._status and not str(self._status).startswith("Complete"):
             self.status.setText(f"LIVE · {self._status}")
         else:
+            labels = {
+                "working": "WORKING · Google research",
+                "coding": "CODING · writing files",
+                "building": "PREVIEW · runnable app",
+            }
             self.status.setText(f"LIVE · {labels.get(self._tab, self._tab)}")
         self.raise_()
         self._fill_parent()
+
+    def _fit_preview(self) -> None:
+        if self._preview is None:
+            return
+        try:
+            self._preview_host.show()
+            self._preview.resize(
+                max(200, self._preview_host.width()),
+                max(160, self._preview_host.height()),
+            )
+            self._preview.show()
+            self._preview.raise_()
+        except Exception:
+            pass
 
     def _tick_keyboard(self) -> None:
         if not self._active or not self._key_target:
@@ -842,6 +1316,16 @@ class BuildTheater(QFrame):
             return
         self.setGeometry(parent.rect())
         self.raise_()
+        if self._preview_locked:
+            QTimer.singleShot(0, self._place_overlay)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        try:
+            super().resizeEvent(event)
+        except Exception:
+            pass
+        if self._preview_locked:
+            self._place_overlay()
 
     def _place(self) -> None:
         self._fill_parent()

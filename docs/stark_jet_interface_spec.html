@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Stark Jet Interface Spec — Far From Home Fabricator</title>
+<style>
+  :root { --cyan:#00E5FF; --blue:#00A9FF; --amber:#FF9500; --void:#02080E; }
+  body { margin:0; background:var(--void); color:#c8e6f0; font:14px/1.5 Bahnschrift,Segoe UI,sans-serif; }
+  main { max-width:860px; margin:0 auto; padding:32px 24px 80px; }
+  h1 { color:var(--cyan); font-weight:300; letter-spacing:.12em; font-size:22px; }
+  h2 { color:var(--cyan); font-weight:300; letter-spacing:.08em; font-size:15px; margin-top:2.2em; border-bottom:1px solid rgba(0,229,255,.25); padding-bottom:6px; }
+  code, pre { color:var(--cyan); font-family:Consolas,monospace; font-size:12px; }
+  pre { background:#071018; border:1px solid rgba(0,229,255,.2); padding:14px; overflow:auto; }
+  .swatch { display:inline-block; width:14px; height:14px; border-radius:2px; vertical-align:middle; margin-right:6px; }
+  ul { padding-left:1.2em; }
+  li { margin:.35em 0; }
+  .dim { color:rgba(0,229,255,.55); font-size:12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>STARK_LAB_OS_V4.6.2 — Production Sheet</h1>
+  <p class="dim">Spider-Man: Far From Home jet fabricator · Jarvis in-HUD replica (not After Effects)</p>
+
+  <h2>Layer Comp Stack</h2>
+  <ol>
+    <li>Base camera feed (slightly crushed shadows, cyan midtones)</li>
+    <li>Light wrap wash (~#00283C @ 20% opacity)</li>
+    <li>Fitter matrix: 40px crosshair grid @ 15% cyan</li>
+    <li>3D wireframe schematic (suit hex + web-shooter layers)</li>
+    <li>HUD text / dials / binary streams (thin Bahnschrift)</li>
+    <li>Cursor reticule + particle dust + wavelength line</li>
+    <li>Master glow / optional chromatic fringe</li>
+  </ol>
+
+  <h2>Color Palette</h2>
+  <ul>
+    <li><span class="swatch" style="background:#00E5FF"></span> UI cyan <code>#00E5FF</code></li>
+    <li><span class="swatch" style="background:#00A9FF"></span> Stark blue <code>#00A9FF</code></li>
+    <li><span class="swatch" style="background:#FF9500"></span> Warning / isolate amber <code>#FF9500</code></li>
+    <li>Menus ~75% opacity · grid ~25% · active flash 100%</li>
+    <li>No pure white — silver-cyan highlights only</li>
+  </ul>
+
+  <h2>Menu Taxonomy</h2>
+  <ul>
+    <li>Headers: <code>SPIDER-MAN: BLACK SUIT</code> · <code>SYSTEM OVERRIDE</code></li>
+    <li>Tabs: GENERAL UPGRADES · STEALTH UPGRADES · WEAPON UPGRADES</li>
+    <li>Weapon: Phaser Web (+25% voltage), Fluid Compression, Discharge MJ, Polymer Adhesive</li>
+    <li>Easter eggs: <code>DESIGNATION: BFP</code> · <code>STARK_LAB_OS_V4.6.2</code> · <code>MAX CEILING CONFIG</code></li>
+  </ul>
+
+  <h2>Gesture Grammar (Jarvis)</h2>
+  <ul>
+    <li><b>Pinch</b> — select / flash / nudge value</li>
+    <li><b>Swipe L/R</b> — cycle tabs</li>
+    <li><b>Swipe U/D</b> — cycle list items</li>
+    <li><b>Palm push (depth)</b> — zoom schematic (MediaPipe z)</li>
+  </ul>
+
+  <h2>Audio EQ Targets</h2>
+  <ul>
+    <li>Hum / drone: 60–80 Hz sine bed</li>
+    <li>Zap / swipe: 2–4 kHz short whoosh</li>
+    <li>Select confirm: mid harmonic chord</li>
+  </ul>
+
+  <h2>After Effects Elastic Bounce (reference)</h2>
+<pre>// position — boundary snap with 10% squash feel
+vel = 0;
+amp = .08;
+freq = 2.2;
+decay = 6;
+n = 0;
+if (numKeys > 0){
+  n = nearestKey(time).index;
+  if (key(n).time > time) n--;
+}
+if (n > 0){
+  t = time - key(n).time;
+  if (t &lt; 0.35){
+    v = velocityAtTime(key(n).time - .001);
+    return value + v*amp*Math.sin(freq*t*2*Math.PI)/Math.exp(decay*t);
+  }
+}
+value;</pre>
+
+  <h2>Jarvis Voice</h2>
+  <p>Say <code>open fabricator</code>, <code>stark lab</code>, <code>suit lab</code>, or <code>open hologram</code>.</p>
+</main>
+</body>
+</html>

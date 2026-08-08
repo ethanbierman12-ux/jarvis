@@ -77,6 +77,40 @@ class SystemControl:
         )
         return "Standing by. Double-clap on your wake device to power me back on."
 
+    def cast_to_fire_tv(self) -> str:
+        """Open Windows wireless display / Connect panel for Insignia Fire TV Miracast."""
+        opened = False
+        try:
+            subprocess.Popen(
+                ["explorer.exe", "ms-settings-connectabledevices:devicediscovery"],
+                shell=False,
+            )
+            opened = True
+        except Exception:
+            pass
+        try:
+            # Win+K Connect flyout
+            user32 = ctypes.windll.user32
+            VK_LWIN, VK_K = 0x5B, 0x4B
+            KEYEVENTF_KEYUP = 0x0002
+            user32.keybd_event(VK_LWIN, 0, 0, 0)
+            user32.keybd_event(VK_K, 0, 0, 0)
+            user32.keybd_event(VK_K, 0, KEYEVENTF_KEYUP, 0)
+            user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+            opened = True
+        except Exception:
+            pass
+        if not opened:
+            return (
+                "Could not open Cast. Press Win+K, then pick your Insignia Fire TV. "
+                "On the TV: Settings → Display & Sounds → Display → Enable Display Mirroring."
+            )
+        return (
+            "Cast panel open — pick your Insignia Fire TV. "
+            "If missing: on the TV go Settings → Display & Sounds → Display → "
+            "Enable Display Mirroring, then try again."
+        )
+
     def wol_status(self) -> str:
         from jarvis.core.wol import list_nics, primary_mac
 

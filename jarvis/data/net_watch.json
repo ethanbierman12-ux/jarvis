@@ -1,0 +1,76 @@
+{
+  "devices": {
+    "f8:d0:0e:66:1a:6f": {
+      "ip": "10.0.0.1",
+      "mac": "f8:d0:0e:66:1a:6f",
+      "vendor": "",
+      "first_seen": 1786060639.7690544,
+      "last_seen": 1786063146.1338472,
+      "last_alert": 0.0,
+      "trusted": true
+    },
+    "f8:fc:e1:8c:f7:14": {
+      "ip": "10.0.0.10",
+      "mac": "f8:fc:e1:8c:f7:14",
+      "vendor": "",
+      "first_seen": 1786060639.7690687,
+      "last_seen": 1786062421.4590318,
+      "last_alert": 0.0,
+      "trusted": true
+    },
+    "44:6d:7f:e5:74:e8": {
+      "ip": "10.0.0.69",
+      "mac": "44:6d:7f:e5:74:e8",
+      "vendor": "",
+      "first_seen": 1786060639.7690773,
+      "last_seen": 1786062421.4590318,
+      "last_alert": 0.0,
+      "trusted": true
+    },
+    "50:07:c3:24:f8:53": {
+      "ip": "10.0.0.93",
+      "mac": "50:07:c3:24:f8:53",
+      "vendor": "",
+      "first_seen": 1786060639.7690854,
+      "last_seen": 1786063146.1338472,
+      "last_alert": 0.0,
+      "trusted": true
+    },
+    "78:80:38:42:45:3a": {
+      "ip": "10.0.0.129",
+      "mac": "78:80:38:42:45:3a",
+      "vendor": "",
+      "first_seen": 1786060639.7690947,
+      "last_seen": 1786063146.1338472,
+      "last_alert": 0.0,
+      "trusted": true
+    },
+    "d4:3a:2f:a6:54:f8": {
+      "ip": "10.0.0.195",
+      "mac": "d4:3a:2f:a6:54:f8",
+      "vendor": "",
+      "first_seen": 1786060639.7691042,
+      "last_seen": 1786063146.1338472,
+      "last_alert": 0.0,
+      "trusted": true
+    },
+    "08:6a:e5:27:da:76": {
+      "ip": "10.0.0.210",
+      "mac": "08:6a:e5:27:da:76",
+      "vendor": "",
+      "first_seen": 1786060639.7691126,
+      "last_seen": 1786062421.4590318,
+      "last_alert": 0.0,
+      "trusted": true
+    },
+    "00:15:5d:be:9e:88": {
+      "ip": "172.23.77.38",
+      "mac": "00:15:5d:be:9e:88",
+      "vendor": "",
+      "first_seen": 1786063146.1338472,
+      "last_seen": 1786063146.1338472,
+      "last_alert": 1786063146.1338472,
+      "trusted": false
+    }
+  }
+}

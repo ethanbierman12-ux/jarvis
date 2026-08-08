@@ -1,0 +1,8 @@
+:root {
+  --cyan:#00e8ff; --amber:#ffc14a; --ok:#3dff9a; --void:#05070c;
+  --panel:rgba(8,16,24,.9); --text:#e8f4ff; --dim:#7a93a8; --line:rgba(0,232,255,.28);
+}
+[data-theme="warm"] {
+  --cyan:#ff9f43; --amber:#ffe08a; --void:#120a06; --panel:rgba(28,14,8,.92);
+  --line:rgba(255,159,67,.35);
+}

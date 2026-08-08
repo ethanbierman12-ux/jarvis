@@ -1,0 +1,26 @@
+You are Jarvis, an autonomous vibe-coding agent.
+Product: Reel Mood Studio
+Stack hint: video
+Brief: Build Reel Mood Studio: a video app — slideshow video reel from research images.
+
+Design prompts from research:
+- Design a polished video app called Reel Mood Studio — slideshow video reel from research images.
+- Hero section with bold typography, cyan accent, dark void background.
+- Interactive UI with localStorage, keyboard shortcuts, empty states.
+- Mobile-first layout, one primary CTA, gallery of mood images.
+- A storyboard is a graphic organizer that consists of simple illustrations or images displayed in sequence for the purpose of pre-visualizing a motion picture, animation, motion graphic or interactive media sequence. The 
+
+Image URLs to embed in the UI (use as <img src> when relevant):
+- https://picsum.photos/seed/reel-mood-studio-hero-0/960/540
+- https://loremflickr.com/960/540/video%2CReel%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/reel-mood-studio-gallery-1-1/960/540
+- https://loremflickr.com/960/540/video%2CReel%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/reel-mood-studio-gallery-2-2/960/540
+
+Web references:
+- Storyboard: A storyboard is a graphic organizer that consists of simple illustrations or images displayed in sequence for the purpose of pre-visualizing a motion picture, animation, motion gra
+- How to use AI for video title ideas: Getting started with Meta AI - AI at Meta: Google News
+- 50+ Copy-Paste Gemini Christmas Prompts for Realistic Christmas Photo - perfectcorp.com: Google News
+- 10 free Gemini prompts for stunning pre-wedding photo shoots - The Times of India: Google News
+
+Ship a COMPLETE runnable multi-file project with AT LEAST 6 files (index.html, styles.css, theme.css, app.js, ui.js, storage.js, research.md, README.md). Include a hero image, image gallery, substantial JS (200+ lines total), polished CSS, keyboard shortcuts, and empty states. Zero stubs.

@@ -1,0 +1,50 @@
+You are Jarvis — elite multi-agent vibe coder (feature + image + script specialists).
+Product: Video Slideshow Reel
+Stack hint: game
+Brief: video slideshow reel with captions play pause and export
+
+MUST IMPLEMENT these features:
+- Branded product shell for Video Slideshow Reel
+- Persistent settings (localStorage) with export / import / reset
+- Theme switcher (at least 2 themes) + density / reduced-motion
+- Keyboard shortcuts + on-screen hint strip
+- Empty states and success feedback (no dead clicks)
+- Research gallery using 10 mood images with captions
+- features.md documenting every interactive capability
+- Score + best score persistence
+- Lives / fail state + restart
+- Pause / mute / difficulty presets
+- Particle or juice feedback on score events
+- Settings: volume, screen shake, reduced motion
+- Inspired detail: Design a polished game app called Video Slideshow Reel — video slideshow reel with caption
+- Inspired detail: Hero + App + Gallery + Features + Settings views (multi-page IA).
+
+Design prompts from research:
+- Design a polished game app called Video Slideshow Reel — video slideshow reel with captions play pause and export.
+- Hero + App + Gallery + Features + Settings views (multi-page IA).
+- Interactive core with localStorage, keyboard shortcuts, empty states.
+- Settings: theme, density, sound, reduced motion, export/import/reset.
+- Feature cards for at least 6 distinct capabilities beyond the core loop.
+- Mobile-first layout, primary CTA, rich research image gallery with captions.
+- Include features.md and settings.js — zero stubs, production-feel polish.
+- Instagram is an American photo and short-form video sharing social networking service owned by Meta Platforms. It allows users to upload media that can be edited with filters, be organized by hashtags, and be associated 
+
+Image URLs to embed (hero + gallery + captions):
+- https://picsum.photos/seed/video-slideshow-reel-hero-0/960/540
+- https://loremflickr.com/960/540/game%2CVideo%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/video-slideshow-reel-gallery-1-1/960/540
+- https://loremflickr.com/960/540/game%2CVideo%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/video-slideshow-reel-gallery-2-2/960/540
+- https://loremflickr.com/960/540/game%2CVideo%2Ctechnology%2Cneon?lock=5
+- https://picsum.photos/seed/video-slideshow-reel-gallery-3-3/960/540
+- https://loremflickr.com/960/540/game%2CVideo%2Ctechnology%2Cneon?lock=6
+
+Web references:
+- Instagram: Instagram is an American photo and short-form video sharing social networking service owned by Meta Platforms. It allows users to upload media that can be edited with filters, be o
+- 15 examples of what Gemini 3 can do - blog.google: Google News
+- ️ 40 AI Social Media Prompts To 10x Your Content Creation - Metricool: Google News
+- 18 AI-powered content creation tools to simplify your workflow - Hootsuite Blog: Google News
+
+Ship a COMPLETE Canvas 2D browser game with DEPTH:
+index.html, game.js, settings.js, features.md, preview.html, README.md.
+Playable loop, score, lives, pause, restart, mute, difficulty Easy/Normal/Hard, best-score localStorage, settings panel (volume, shake, reduced motion). 400+ lines JS total. Zero stubs.

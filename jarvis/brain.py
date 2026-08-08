@@ -31,10 +31,13 @@ from jarvis.core.work_mode import WorkMode
 from jarvis.core.habits import HabitEngine
 from jarvis.core.personality import Personality
 from jarvis.core.lighting import SmartLighting
+from jarvis.core.rgb_peripherals import RgbPeripherals
 from jarvis.core.alexa_lamp import AlexaLamp
 from jarvis.core.phone_bridge import PhoneBridge
 from jarvis.core.rlhf import RLHFEngine
 from jarvis.core.soundscape import Soundscape
+from jarvis.core.scanner_radio import ScannerRadio
+from jarvis.core.local_customizer import LocalCustomizer
 from jarvis.core.diary import Diary, VisualMemory
 from jarvis.core.memory import VectorMemory
 from jarvis.core.pinecone_memory import PineconeMemory
@@ -43,6 +46,8 @@ from jarvis.core.audio_devices import AudioRouter
 from jarvis.core.home_assistant import HomeAssistant
 from jarvis.core.macro_gateway import MacroGateway
 from jarvis.core.doorbell_bridge import DoorbellBridge
+from jarvis.core.snapchat_calls import SnapchatCallBridge, SnapCallEvent
+from jarvis.core.comms_live import CommsLiveBridge, CommsEvent
 from jarvis.core.healer import PcHealer
 from jarvis.core.scaffolder import ProjectScaffolder
 from jarvis.core import app_scores
@@ -55,6 +60,7 @@ from jarvis.core.workshop import WorkshopInventory
 from jarvis.core.package_tracker import PackageTracker
 from jarvis.core.advanced_ai import AdvancedAIPack
 from jarvis.core.cron_jobs import CronRegistry
+from jarvis.core.reminders import ReminderService, Reminder
 from jarvis.core.memory_consolidate import MemoryConsolidator
 from jarvis.core.clipboard_insight import ClipboardInsight
 from jarvis.core.iot_bridge import IoTBridge
@@ -220,7 +226,19 @@ class Brain:
             hue_username=settings.hue_username,
             lifx_token=settings.lifx_token,
         )
+        self.rgb = RgbPeripherals(
+            enabled=bool(getattr(settings, "openrgb_enabled", True)),
+            host=getattr(settings, "openrgb_host", "") or "127.0.0.1",
+            port=int(getattr(settings, "openrgb_port", 6742) or 6742),
+            openrgb_path=getattr(settings, "openrgb_path", "") or "",
+        )
         self.soundscape = Soundscape()
+        self.scanner_radio = ScannerRadio(
+            city=getattr(settings, "city", "") or "Philadelphia",
+            feed_url=getattr(settings, "scanner_feed_url", "") or "",
+            feed_id=getattr(settings, "scanner_feed_id", "") or "",
+            rtl_freq=getattr(settings, "scanner_rtl_freq", "") or "",
+        )
         self.diary = Diary()
         self.vmemory = VisualMemory()
         self.pinecone = PineconeMemory(
@@ -283,6 +301,32 @@ class Brain:
             enabled=bool(getattr(settings, "doorbell_ntfy_enabled", True)),
             on_event=self.handle_doorbell,
         )
+        snap_topic = (getattr(settings, "snapchat_ntfy_topic", "") or "").strip()
+        self.snapchat = SnapchatCallBridge(
+            enabled=bool(getattr(settings, "snapchat_calls_enabled", True)),
+            auto_answer=bool(getattr(settings, "snapchat_auto_answer", True)),
+            poll_sec=float(getattr(settings, "snapchat_poll_sec", 1.25) or 1.25),
+            cooldown_sec=float(
+                getattr(settings, "snapchat_cooldown_sec", 25.0) or 25.0
+            ),
+            ntfy_topic=snap_topic,
+            ntfy_server=getattr(settings, "snapchat_ntfy_server", "") or "https://ntfy.sh",
+            on_call=self.handle_snapchat_call,
+        )
+        apps = tuple(
+            str(a).lower()
+            for a in (getattr(settings, "comms_live_apps", None) or [])
+            if str(a).strip()
+        ) or ("snapchat", "instagram", "imessage")
+        self.comms_live = CommsLiveBridge(
+            enabled=bool(getattr(settings, "comms_live_enabled", True)),
+            translate=bool(getattr(settings, "comms_live_translate", True)),
+            target_lang=str(getattr(settings, "comms_live_target_lang", "en") or "en"),
+            speak_messages=bool(getattr(settings, "comms_live_speak", True)),
+            poll_sec=float(getattr(settings, "comms_live_poll_sec", 1.5) or 1.5),
+            apps=apps,
+            on_event=self.handle_comms_live,
+        )
         self.rlhf = RLHFEngine()
         self.n8n = N8nBridge(
             base_url=getattr(settings, "n8n_url", "") or "",
@@ -294,9 +338,17 @@ class Brain:
                 notion_token=getattr(settings, "notion_token", "") or "",
                 buffer_access_token=getattr(settings, "buffer_access_token", "") or "",
                 gmail_access_token=getattr(settings, "gmail_access_token", "") or "",
+                gmail_refresh_token=getattr(settings, "gmail_refresh_token", "") or "",
+                gmail_client_id=getattr(settings, "gmail_client_id", "") or "",
+                gmail_client_secret=getattr(settings, "gmail_client_secret", "") or "",
             )
         except Exception:
             self.cloud = CloudIntegrations()
+        # Vault may hold tokens while settings.json fields are empty — always re-merge
+        try:
+            self._refresh_cloud_tokens()
+        except Exception:
+            pass
         try:
             self.manus = ManusBridge(
                 api_key=getattr(settings, "manus_api_key", "") or "",
@@ -350,6 +402,25 @@ class Brain:
             on_return_brief=lambda t: self._on_return_brief(t),
             diary=self.diary,
         )
+        try:
+            from jarvis.core.gaze_workspace import GazeWorkspace
+
+            self.gaze_ws = GazeWorkspace(
+                enabled=bool(getattr(settings, "gaze_workspace_enabled", True)),
+                up_dwell_sec=float(getattr(settings, "gaze_up_dwell_sec", 3) or 3),
+                left_dwell_sec=float(getattr(settings, "gaze_left_dwell_sec", 2) or 2),
+                on_look_up=lambda: self._emit("gaze_look_up", True),
+                on_look_left_scroll=lambda: self._emit("gaze_scroll_tools", True),
+                on_look_center=lambda: self._emit("gaze_look_center", True),
+                on_zone=lambda ev: self._emit(
+                    "gaze_zone",
+                    {"zone": ev.zone, "dwell": round(ev.dwell_sec, 1)},
+                ),
+            )
+            self.context.gaze = self.gaze_ws
+        except Exception as e:
+            print(f"[gaze] init: {e}")
+            self.gaze_ws = None
         self.game_focus = GameFocusWatch(
             on_enter=self._on_game_focus,
             on_leave=self._on_game_unfocus,
@@ -394,6 +465,41 @@ class Brain:
         )
         self.cron = CronRegistry(on_report=self._cron_report)
         self._wire_cron_handlers()
+        self.reminders = ReminderService(
+            default_tz=getattr(settings, "timezone", "America/New_York")
+            or "America/New_York",
+            on_fire=self.handle_reminder_fire,
+        )
+        try:
+            from jarvis.core.net_watch import NetWatch
+            from jarvis.core.secure_backup import SecureBackup
+            from jarvis.core.space_weather import SpaceWeather
+            from jarvis.core.deadman import DeadmanSwitch
+            from jarvis.core.process_harden import ProcessHarden
+
+            self.backups = SecureBackup()
+            self.process_harden = ProcessHarden()
+            self.space_weather = SpaceWeather(
+                on_severe=lambda msg: self._on_space_severe(msg),
+            )
+            self.deadman = DeadmanSwitch(
+                enabled=bool(getattr(settings, "deadman_enabled", False)),
+                phrase=str(getattr(settings, "deadman_phrase", "jarvis clear") or "jarvis clear"),
+                interval_sec=float(getattr(settings, "deadman_hours", 24) or 24) * 3600.0,
+                on_miss=lambda msg: self._on_deadman_miss(msg),
+            )
+            self.net_watch = NetWatch(
+                enabled=bool(getattr(settings, "net_watch_enabled", True)),
+                poll_sec=float(getattr(settings, "net_watch_poll_sec", 45) or 45),
+                on_alert=lambda msg, _d: self._on_net_intruder(msg),
+            )
+        except Exception as e:
+            print(f"[home-ops] init: {e}")
+            self.backups = None
+            self.process_harden = None
+            self.space_weather = None
+            self.deadman = None
+            self.net_watch = None
         self.wake_brief = WakeBrief(
             spend=self.spend,
             steward=self.steward,
@@ -411,23 +517,18 @@ class Brain:
         )
         self.sites = SiteBuilder(hitl=self.hitl)
         self.vibe = VibeCoder(hitl=self.hitl)
+        self.local_code = LocalCustomizer(
+            project_path=getattr(settings, "work_project_path", "") or "",
+            ide=getattr(settings, "work_ide", "") or "code",
+            last_project_fn=lambda: getattr(self.vibe, "last_project", None),
+        )
         self.net = InternetAgent()
-        # Agent crew — six-agent pipeline (supervisor/research/memory/tools/comms/critic)
+        # Agent crew — heavy; start deferred so HUD/voice come up first
         self.crew = None
-        if bool(getattr(settings, "crew_enabled", True)):
-            try:
-                from jarvis.core.agent_crew import AgentCrew
-
-                self.crew = AgentCrew(
-                    settings,
-                    vstore=self.vstore,
-                    internet=self.net,
-                    phone=self.phone,
-                    n8n=self.n8n,
-                    computer_use=self.cu_agent,
-                )
-            except Exception as e:
-                print(f"[crew] init: {e}")
+        self.work_crew = None
+        self.auto_loop = None
+        self.systems_v2 = None
+        self._crew_boot_started = False
         self._ghost = False
         self._pending_shutdown = False
         self._absent_since: float | None = None
@@ -459,7 +560,7 @@ class Brain:
             on_heard=lambda t: self.handle_utterance(t, from_voice=True),
             voice=settings.tts_voice,
             rate=settings.tts_rate,
-            pitch=getattr(settings, "tts_pitch", "-4Hz"),
+            pitch=getattr(settings, "tts_pitch", "-2Hz"),
             volume=getattr(settings, "tts_volume", "+0%"),
             noise_reduce=settings.noise_reduce,
             mic_prefer=mic_pref,
@@ -479,7 +580,25 @@ class Brain:
             deepgram_api_key=getattr(settings, "deepgram_api_key", "") or "",
             deepgram_model=getattr(settings, "deepgram_model", "") or "nova-2",
             duplex_enabled=bool(getattr(settings, "duplex_voice", True)),
+            chunk_sentences=bool(getattr(settings, "tts_chunk_sentences", True)),
         )
+        try:
+            from jarvis.core.voice_clone import VoiceCloneLab
+
+            self.voice_clone = VoiceCloneLab(
+                voice_engine=self.voice,
+                settings=settings,
+                on_status=lambda m: self._emit("heard", f"[clone] {m}"),
+                on_ui=lambda d: self._emit("voice_clone_ui", d),
+                duck_media=lambda: getattr(self.voice, "on_before_tts", lambda: None)(),
+                unduck_media=lambda: getattr(self.voice, "on_after_tts", lambda: None)(),
+            )
+            eng = str(getattr(settings, "voice_clone_engine", "auto") or "auto")
+            if eng and eng != "auto":
+                self.voice_clone.set_engine(eng)
+        except Exception as e:
+            print(f"[voice-clone] init: {e}")
+            self.voice_clone = None
         self._scan_open_browser = False
         self.vision = VisionService(
             camera_index=settings.camera_index,
@@ -614,7 +733,9 @@ class Brain:
                 )
                 self.memory_night = MemoryConsolidator(self.vstore)
                 self.iot = IoTBridge(
-                    on_event=lambda kind, data: self._on_iot_event(kind, data)
+                    on_event=lambda kind, data: self._on_iot_event(kind, data),
+                    serial_port=getattr(settings, "iot_serial_port", "") or "",
+                    serial_baud=int(getattr(settings, "iot_serial_baud", 115200) or 115200),
                 )
                 self.proactive = ProactiveAgent(
                     telemetry_fn=lambda: self.system.telemetry(),
@@ -682,6 +803,57 @@ class Brain:
                     version="1.0",
                     note="Browser/desktop agent (Anthropic / OpenAI / browser-use)",
                 )
+                self.registry.register(
+                    "net_watch",
+                    version="1.0",
+                    note="LAN ARP unknown-MAC alerts",
+                )
+                self.registry.register(
+                    "secure_backup",
+                    version="1.0",
+                    note="Local encrypted zip backups + prune",
+                )
+                self.registry.register(
+                    "deadman",
+                    version="1.0",
+                    note="Verbal handshake lockdown / backup on miss",
+                )
+                self.registry.register(
+                    "space_weather",
+                    version="1.0",
+                    note="NOAA SWPC + ISS overhead",
+                )
+                self.registry.register(
+                    "gaze_workspace",
+                    version="1.0",
+                    note="Look-up deck detail · look-left scroll · throw-up · posture",
+                )
+                self.registry.register(
+                    "voice_clone",
+                    version="1.0",
+                    note="Room grab · denoise · F5/XTTS/SoVITS/ElevenLabs engines",
+                )
+                self.registry.register(
+                    "process_harden",
+                    version="1.0",
+                    note="Background process scan + Chris Titus guide (HITL)",
+                )
+                self.registry.register(
+                    "edge_node",
+                    version="1.0",
+                    note="Jetson / home-server headless daemon",
+                )
+                self.registry.register(
+                    "slang_translate",
+                    version="1.0",
+                    note="EN↔ES casual + acronym expand",
+                )
+                self.registry.register(
+                    "systems_ai_v2",
+                    version="2.0",
+                    note="SWE-bench · Cloud Agent · LangGraph · OpenAI Agents sandbox · "
+                    "Mistweb/Tick · Pydad · Agno Type-C · LlamaIndex Workflow RAG",
+                )
             except Exception:
                 pass
         except Exception as e:
@@ -700,16 +872,21 @@ class Brain:
         self.tasks.start()
         # Prefetcher used to silently open Chrome/Code on a schedule — off by default
         # self.prefetcher.start()
-        # Boot: clean welcome only (loading was already spoken during overlay)
-        welcome = "Welcome, Sir."
-        try:
-            welcome = self.persona.boot_welcome()
-        except Exception:
-            pass
-        self._emit("speak_ui", welcome)
-        self._emit("hud_alert", welcome)
-        # Short delay so loading TTS + boot SFX can finish cleanly
-        threading.Timer(0.55, lambda w=welcome: self.say(w)).start()
+        # Iconic boot: Daddy's home → Jarvis speaks → Stark workshop music
+        if bool(getattr(self.settings, "stark_arrival_boot", True)):
+            self._emit("speak_ui", "Daddy's home.")
+            self._emit("hud_alert", "DADDY'S HOME")
+            # Wait for voice/duplex to settle — do not block first paint
+            threading.Timer(1.8, self._run_stark_arrival).start()
+        else:
+            welcome = "Welcome home, Sir. All systems are online."
+            try:
+                welcome = self.persona.boot_welcome()
+            except Exception:
+                pass
+            self._emit("speak_ui", welcome)
+            self._emit("hud_alert", welcome)
+            threading.Timer(0.05, lambda w=welcome: self.say(w)).start()
         self._emit("listening", False)
         # Discoverability — soft tip so the travel companion isn't a 80% secret
         threading.Timer(5.2, self._maybe_announce_companion).start()
@@ -725,12 +902,17 @@ class Brain:
             self._emit("travis_ui", self.travis.mode.value)
         # Persist smooth / eco HUD if last session left it on
         try:
-            if bool(getattr(self.settings, "performance_mode", False)):
+            if bool(getattr(self.settings, "performance_mode", False)) or bool(
+                getattr(self.settings, "zero_latency", True)
+            ):
                 threading.Timer(
-                    0.9, lambda: self._set_performance_mode(True)
+                    0.35, lambda: self._set_performance_mode(True)
                 ).start()
+                threading.Timer(0.2, self._apply_zero_latency).start()
         except Exception:
             pass
+        # Heavy agents after voice is live
+        threading.Timer(1.2, self._boot_heavy_agents).start()
         threading.Timer(0.4, self._wake_command_center).start()
         threading.Timer(3.2, self._morning_weather_nudge).start()
         # Background micro-agents (sys monitor / horizon / packages)
@@ -744,6 +926,16 @@ class Brain:
                 self.cron.start()
         except Exception as e:
             print(f"[cron] {e}")
+        try:
+            if getattr(self, "reminders", None):
+                self.reminders.start()
+        except Exception as e:
+            print(f"[reminders] {e}")
+        try:
+            if getattr(self, "net_watch", None):
+                self.net_watch.start()
+        except Exception as e:
+            print(f"[net-watch] {e}")
         # Do NOT auto-apply Windows theme (was turning the taskbar white in daytime).
         # Optional one-shot repair if a prior build forced light system theme.
         try:
@@ -794,6 +986,18 @@ class Brain:
                 self.doorbell.start()
         except Exception as e:
             print(f"[doorbell] {e}")
+        # Snapchat / Phone Link incoming calls
+        try:
+            if getattr(self, "snapchat", None):
+                self.snapchat.start()
+        except Exception as e:
+            print(f"[snapchat] {e}")
+        # Live Snap / IG / iMessage read + translate
+        try:
+            if getattr(self, "comms_live", None):
+                self.comms_live.start()
+        except Exception as e:
+            print(f"[comms] {e}")
         # iPhone companion PWA (Tailscale)
         if getattr(self.settings, "companion_enabled", True):
             try:
@@ -820,6 +1024,140 @@ class Brain:
             threading.Thread(
                 target=self._boot_hub, daemon=True, name="hub-boot"
             ).start()
+
+    def _run_stark_arrival(self) -> None:
+        """Daddy's home → Jarvis → research tabs → Highway to Hell + Play → help."""
+        from jarvis.core.stark_arrival import run_stark_arrival
+
+        def _sfx() -> None:
+            try:
+                from jarvis.ui.hud_sfx import play_whoosh
+
+                play_whoosh()
+            except Exception:
+                pass
+
+        def _say(text: str) -> None:
+            try:
+                self._emit("speak_ui", text)
+                self._emit("speak", text)
+            except Exception:
+                pass
+            try:
+                self.voice.say_wait(text, polish=False)
+            except Exception:
+                try:
+                    self.voice.say(text)
+                    time.sleep(max(1.2, len(text.split()) * 0.28))
+                except Exception as e:
+                    print(f"[stark-arrival] speak: {e}")
+
+        def _play() -> str:
+            try:
+                return self.music.play_highway_to_hell()
+            except Exception as e:
+                print(f"[stark-arrival] music: {e}")
+                return f"Highway to Hell failed: {e}"
+
+        def _press() -> str:
+            try:
+                return self.music.press_play()
+            except Exception:
+                try:
+                    return self.music.press_play_key()
+                except Exception as e:
+                    return str(e)
+
+        # Never run on the Qt main thread — Spotify focus can stall the HUD
+        threading.Thread(
+            target=lambda: run_stark_arrival(
+                say_wait=_say,
+                play_music=_play,
+                press_play=_press,
+                open_research=self._arrival_open_research,
+                help_brief=self._arrival_help_brief,
+                on_status=lambda m: self.feed.push("arrival", m[:160]),
+                on_hud=lambda m: self._emit("hud_alert", m[:80]),
+                on_track=lambda t: self._emit("track", t),
+                play_sfx=_sfx,
+                user_name=getattr(self.settings, "user_name", "Sir") or "Sir",
+                play_music_enabled=bool(
+                    getattr(self.settings, "stark_arrival_music", True)
+                ),
+            ),
+            daemon=True,
+            name="stark-arrival",
+        ).start()
+
+    def _arrival_open_research(self) -> str:
+        """Open research + work tabs on the tools / secondary screen."""
+        urls = [
+            "https://www.youtube.com",
+            "https://www.perplexity.ai",
+            "https://news.google.com",
+            "https://scholar.google.com",
+            "https://www.google.com/search?q=AI+research+news+today",
+        ]
+        for u in list(getattr(self.settings, "work_urls", None) or []):
+            if u and u not in urls:
+                urls.append(u)
+        prefer: str | int = "secondary"
+        try:
+            from jarvis.core.displays import displays
+
+            screens = displays.refresh()
+            if len(screens) < 2:
+                prefer = "primary"
+            elif len(screens) >= 3:
+                prefer = "left"
+        except Exception:
+            prefer = "primary"
+
+        def _job() -> None:
+            try:
+                from jarvis.core.displays import displays
+
+                msg = displays.open_urls(urls, prefer, activate=True)
+                self._emit("hud_alert", "Research tabs ready")
+                self.feed.push("arrival", msg[:160])
+            except Exception as e:
+                print(f"[arrival] research tabs: {e}")
+
+        threading.Thread(target=_job, daemon=True, name="arrival-tabs").start()
+        return "Opening research tabs now."
+
+    def _arrival_help_brief(self) -> str:
+        """Short helpful brief after arrival music starts."""
+        parts: list[str] = []
+        try:
+            wx = self.weather.speak_brief()
+            if wx:
+                parts.append(str(wx)[:160])
+        except Exception:
+            pass
+        try:
+            if getattr(self, "wake_brief", None):
+                packet = self.wake_brief.compose(mode="wake")
+                spoken = ""
+                if isinstance(packet, dict):
+                    spoken = str(packet.get("spoken") or packet.get("text") or "")
+                if spoken:
+                    parts.append(spoken[:220])
+        except Exception:
+            pass
+        try:
+            cal = self.brief.schedule_only()
+            day = self.habits.tell_me_about_my_day(cal) if cal else ""
+            if day:
+                parts.append(str(day)[:180])
+        except Exception:
+            pass
+        if not parts:
+            return (
+                "I'm ready to help — ask me to research anything, "
+                "run a crew task, or open your project."
+            )
+        return "Here's your brief. " + " ".join(parts)[:360]
 
     def _boot_hub(self) -> None:
         try:
@@ -1162,9 +1500,72 @@ class Brain:
         except Exception:
             pass
         try:
+            dm = getattr(self, "deadman", None)
+            if dm is not None:
+                dm.tick()  # on_miss handles speak/lock; avoid double HUD spam
+        except Exception:
+            pass
+        try:
+            sw = getattr(self, "space_weather", None)
+            if sw is not None:
+                now = time.time()
+                last = float(getattr(self, "_space_poll_ts", 0) or 0)
+                if now - last > 600:
+                    self._space_poll_ts = now
+                    sw.poll_severe()
+                # ISS overhead → command deck (every ~3 min)
+                last_iss = float(getattr(self, "_iss_poll_ts", 0) or 0)
+                if now - last_iss > 180:
+                    self._iss_poll_ts = now
+                    try:
+                        from jarvis.core.satellite_track import fetch_iss
+
+                        track = fetch_iss()
+                        if track.get("ok") and track.get("over_home"):
+                            fired = float(getattr(self, "_iss_deck_ts", 0) or 0)
+                            if now - fired > 1800:
+                                self._iss_deck_ts = now
+                                self._emit("iss_deck", True)
+                                self._emit("hud_alert", "ISS OVERHEAD")
+                                summary = str(track.get("summary") or "ISS near overhead")
+                                self.say(summary)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        try:
+            # Quiet auto-backup on the HUD schedule (background thread)
+            hours = float(getattr(self.settings, "auto_backup_hours", 0) or 0)
+            if hours > 0 and getattr(self, "backups", None):
+                now = time.time()
+                last = float(getattr(self, "_auto_backup_ts", 0) or 0)
+                if last <= 0:
+                    self._auto_backup_ts = now
+                elif now - last > max(3600.0, hours * 3600.0):
+                    self._auto_backup_ts = now
+                    self._run_backup_bg(label="auto")
+        except Exception:
+            pass
+        try:
             threading.Timer(60.0, self._proactive_loop).start()
         except Exception:
             pass
+
+    def _run_backup_bg(self, *, label: str = "auto") -> str:
+        """Kick secure backup off the voice/UI thread."""
+        b = getattr(self, "backups", None)
+        if b is None:
+            return "Backup module offline."
+
+        def _job() -> None:
+            try:
+                msg = b.run(label=label)
+                self._emit("heard", f"[backup] {msg}")
+            except Exception as e:
+                print(f"[backup] {e}")
+
+        threading.Thread(target=_job, daemon=True, name=f"jarvis-backup-{label}").start()
+        return f"Secure backup started ({label})."
 
     def _on_healer_prompt(self, hog) -> None:
         name = getattr(hog, "name", "process")
@@ -1541,10 +1942,20 @@ class Brain:
                         hitl=self.hitl,
                     )
                 path = self.sites.last_site
+                preview_url = ""
+                try:
+                    # Serve site folder over HTTP so CSS/JS work in PREVIEW tab
+                    site_root = path.parent if path and path.is_file() else path
+                    if site_root and getattr(self, "vibe", None):
+                        preview_url = self.vibe.ensure_preview_url(site_root) or ""
+                except Exception as e:
+                    print(f"[site] preview serve: {e}")
                 payload = {
                     "path": str(path) if path else "",
                     "brand": (self.sites.last_content or {}).get("brand") or "",
                     "prompt": self.sites.last_prompt or "",
+                    "preview_url": preview_url,
+                    "url": preview_url,
                 }
                 self._emit("site_ui", payload)
                 self.feed.push("site", reply[:220])
@@ -1559,9 +1970,333 @@ class Brain:
 
         threading.Thread(target=_job, daemon=True, name="site-build").start()
         return (
-            "Understood. Opening Build Theater — Working, Coding, and Building tabs live. "
+            "Understood. Opening Build Theater — Working, Coding, and Preview tabs live. "
             "Watch the agent plan, write files, run the terminal, and hot-reload the browser."
         )
+
+    def _studio_open(self, url: str, label: str) -> str:
+        """Open a creative-suite tool in the browser (or app URI)."""
+        try:
+            webbrowser.open(url)
+        except Exception as e:
+            return self._flavor("error", f"Could not open {label}: {e}")
+        self.feed.push("studio", f"Opened {label}")
+        return self._flavor("ok", f"Opening {label}.")
+
+    def _open_obsidian(self, *, note: str = "") -> str:
+        """Launch Obsidian (exe + vault path → URI → folder)."""
+        import os
+        import subprocess
+        from pathlib import Path
+        from urllib.parse import quote
+
+        vault = (getattr(self.settings, "obsidian_vault_path", None) or "").strip()
+        vault_name = (getattr(self.settings, "obsidian_vault_name", None) or "").strip()
+        if vault and not vault_name:
+            vault_name = Path(vault).name
+
+        local = os.environ.get("LOCALAPPDATA", "")
+        exe_candidates = []
+        if local:
+            exe_candidates = [
+                Path(local) / "Programs" / "Obsidian" / "Obsidian.exe",
+                Path(local) / "Programs" / "obsidian" / "Obsidian.exe",
+                Path(local) / "Obsidian" / "Obsidian.exe",
+            ]
+        for exe in exe_candidates:
+            if exe.is_file():
+                try:
+                    args = [str(exe)]
+                    if vault and Path(vault).is_dir():
+                        args.append(vault)
+                    subprocess.Popen(args, shell=False)
+                    self.feed.push("studio", "Opened Obsidian")
+                    return self._flavor(
+                        "ok",
+                        f"Launching Obsidian"
+                        + (f" — {vault_name}." if vault_name else "."),
+                    )
+                except Exception as e:
+                    print(f"[obsidian] exe launch: {e}")
+
+        # Deep link (works after vault is registered once)
+        uri = "obsidian://open"
+        if vault_name:
+            uri = f"obsidian://open?vault={quote(vault_name)}"
+            if note:
+                uri += f"&file={quote(note)}"
+        try:
+            webbrowser.open(uri)
+            self.feed.push("studio", "Opened Obsidian")
+            if vault:
+                return self._flavor(
+                    "ok",
+                    f"Opening Obsidian — vault {vault_name or vault}.",
+                )
+            return self._flavor("ok", "Opening Obsidian.")
+        except Exception:
+            pass
+
+        if vault and Path(vault).is_dir():
+            try:
+                os.startfile(vault)  # type: ignore[attr-defined]
+                return self._flavor("ok", f"Opening vault folder {vault_name or vault}.")
+            except Exception:
+                pass
+
+        return self._flavor(
+            "error",
+            "Obsidian not found. Install it, or set obsidian vault to YOUR_PATH.",
+        )
+
+    def _obsidian_capture(self, title: str, body: str) -> str:
+        """Write a markdown note into the configured Obsidian vault (Jarvis/ folder)."""
+        from datetime import datetime
+        from pathlib import Path
+
+        vault = (getattr(self.settings, "obsidian_vault_path", None) or "").strip()
+        if not vault:
+            return ""
+        root = Path(vault)
+        if not root.is_dir():
+            return ""
+        dest = root / "Jarvis"
+        try:
+            dest.mkdir(parents=True, exist_ok=True)
+            safe = re.sub(r"[^\w\s\-]+", "", title).strip()[:60] or "note"
+            stamp = datetime.now().strftime("%Y%m%d-%H%M")
+            path = dest / f"{stamp} {safe}.md"
+            path.write_text(
+                f"# {title}\n\n"
+                f"_Captured by Jarvis · {datetime.now().isoformat(timespec='seconds')}_\n\n"
+                f"{body.strip()}\n",
+                encoding="utf-8",
+            )
+            return str(path)
+        except Exception as e:
+            print(f"[obsidian] capture failed: {e}")
+            return ""
+
+    def _studio_command(self, t: str) -> str | None:
+        """STUDIO strip — Written/Claude/Obsidian/Video/Cling/Research/Perplexity/Design/Figma/Audio/11 Labs/Images/Mid-Journey/Automation/N8N."""
+        # Exact / near-exact button cmds first
+        exact = {
+            "start written": "written",
+            "open claude": "claude",
+            "open clawed": "claude",
+            "open obsidian": "obsidian",
+            "make a video": "video",
+            "open cling": "cling",
+            "start research": "research",
+            "open perplexity": "perplexity",
+            "start design": "design",
+            "open figma": "figma",
+            "make audio": "audio",
+            "open 11 labs": "eleven",
+            "open eleven labs": "eleven",
+            "make images": "images",
+            "open mid journey": "midjourney",
+            "open midjourney": "midjourney",
+            "start automation": "automation",
+            "open n8n": "n8n",
+            # Web & desktop / game / asset frameworks
+            "open arwes": "arwes",
+            "open aui": "arwes",
+            "open electron": "electron",
+            "open dear pygui": "dearpygui",
+            "open pygui": "dearpygui",
+            "open godot": "godot",
+            "open unreal": "unreal",
+            "open unreal engine": "unreal",
+            "open rainmeter": "rainmeter",
+            "open envato": "envato",
+            "open motion array": "motionarray",
+        }
+        key = exact.get(t.strip().lower())
+        if not key:
+            # Spoken variants
+            if re.search(r"\b(start |open )?(written|writing mode|write for me)\b", t):
+                key = "written"
+            elif re.search(
+                r"\b(open |launch )?(clawed|claude\.?ai|claude)\b", t
+            ) and not re.search(r"\b(key|api|set)\b", t):
+                key = "claude"
+            elif re.search(r"\b(open |launch )?obsidian\b", t):
+                key = "obsidian"
+            elif re.search(r"\b(open |launch )?(cling|kling)\b", t):
+                key = "cling"
+            elif re.search(r"\b(open |launch )?perplexity\b", t):
+                key = "perplexity"
+            elif re.search(r"\b(open |launch )?figma\b", t):
+                key = "figma"
+            elif re.search(r"\b(open |launch )?(11 labs|eleven ?labs)\b", t):
+                key = "eleven"
+            elif re.search(r"\b(open |launch )?(mid[- ]?journey)\b", t):
+                key = "midjourney"
+            elif re.search(r"\b(open |launch )?n8n\b", t) and not re.search(
+                r"\b(trigger|run)\b", t
+            ):
+                key = "n8n"
+            elif re.search(r"\b(open |launch )?(arwes|aui)\b", t):
+                key = "arwes"
+            elif re.search(r"\b(open |launch )?electron\b", t):
+                key = "electron"
+            elif re.search(r"\b(open |launch )?(dear )?pygui\b", t):
+                key = "dearpygui"
+            elif re.search(r"\b(open |launch )?godot\b", t):
+                key = "godot"
+            elif re.search(r"\b(open |launch )?(unreal( engine)?|ue5)\b", t):
+                key = "unreal"
+            elif re.search(r"\b(open |launch )?rainmeter\b", t):
+                key = "rainmeter"
+            elif re.search(r"\b(open |launch )?envato\b", t):
+                key = "envato"
+            elif re.search(r"\b(open |launch )?motion ?array\b", t):
+                key = "motionarray"
+            elif re.search(r"\b(start |do |open )?research( mode)?\b", t) and re.fullmatch(
+                r"(start |do |open )?research( mode)?", t.strip()
+            ):
+                # bare strip button only — don't steal "research the latest…"
+                key = "research"
+            elif re.search(r"\b(start |open )?design( mode)?\b", t):
+                key = "design"
+            elif re.search(r"\b(make|generate|create)\s+(me\s+)?(an?\s+)?audio\b", t):
+                key = "audio"
+            elif re.search(r"\b(make|generate|create)\s+(me\s+)?(an?\s+)?images?\b", t):
+                key = "images"
+            elif re.search(r"\b(start |open )?automation\b", t):
+                key = "automation"
+            else:
+                return None
+
+        frameworks = {
+            "arwes": (
+                "https://arwes.dev/",
+                "Arwes UI — sci-fi React framework",
+            ),
+            "electron": (
+                "https://www.electronjs.org/",
+                "Electron — wrap web UI as desktop",
+            ),
+            "dearpygui": (
+                "https://dearpygui.readthedocs.io/",
+                "Dear PyGui — hardware-accelerated Python GUI",
+            ),
+            "godot": (
+                "https://godotengine.org/",
+                "Godot — lightweight 3D holographic engine",
+            ),
+            "unreal": (
+                "https://www.unrealengine.com/en-US/unreal-engine-5",
+                "Unreal Engine 5 — UMG / Niagara holograms",
+            ),
+            "rainmeter": (
+                "https://www.rainmeter.net/",
+                "Rainmeter — Iron Man / sci-fi desktop skins",
+            ),
+            "envato": (
+                "https://elements.envato.com/search/sci-fi-hud",
+                "Envato Elements — Sci-Fi HUD assets",
+            ),
+            "motionarray": (
+                "https://motionarray.com/browse/stock-footage/?q=futuristic%20hud",
+                "Motion Array — futuristic UI loops",
+            ),
+        }
+        if key in frameworks:
+            url, label = frameworks[key]
+            self.habits.log("studio", key)
+            return self._studio_open(url, label)
+        if key == "written":
+            self.habits.log("studio", "written")
+            # Prefer Claude web for drafting when available; still open Build Theater editor
+            try:
+                webbrowser.open("https://claude.ai/new")
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                self._run_vibe_code(
+                    brief="written article editor with outline drafts export and tone controls"
+                ),
+            )
+        if key == "claude":
+            self.habits.log("studio", "claude")
+            return self._studio_open("https://claude.ai/new", "Claude")
+        if key == "obsidian":
+            self.habits.log("studio", "obsidian")
+            return self._open_obsidian()
+        if key == "video":
+            self.habits.log("studio", "video")
+            return self._flavor(
+                "ok",
+                self._run_vibe_code(
+                    brief="video slideshow reel with captions play pause and export"
+                ),
+            )
+        if key == "cling":
+            self.habits.log("studio", "cling")
+            return self._studio_open("https://kling.ai/", "Cling · Kling video")
+        if key == "research":
+            self.habits.log("studio", "research")
+            # Kick a live scholar pass on a useful default; voice can override next
+            return self._flavor(
+                "ok",
+                self._start_research_job("latest AI tools for creators 2026"),
+            )
+        if key == "perplexity":
+            self.habits.log("studio", "perplexity")
+            return self._studio_open("https://www.perplexity.ai/", "Perplexity")
+        if key == "design":
+            self.habits.log("studio", "design")
+            return self._flavor(
+                "ok",
+                self._run_vibe_code(
+                    brief="design moodboard board with color palette typography and layout mock"
+                ),
+            )
+        if key == "figma":
+            self.habits.log("studio", "figma")
+            return self._studio_open("https://www.figma.com/", "Figma")
+        if key == "audio":
+            self.habits.log("studio", "audio")
+            try:
+                self.settings.tts_prefer_elevenlabs = True
+                if hasattr(self, "live_voice") and self.live_voice:
+                    self.live_voice.model = getattr(
+                        self.settings, "elevenlabs_model", None
+                    ) or "eleven_turbo_v2_5"
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Audio mode armed — ElevenLabs preferred. "
+                "Say something and I will speak it, or open 11 Labs for the full studio.",
+            )
+        if key == "eleven":
+            self.habits.log("studio", "eleven")
+            return self._studio_open("https://elevenlabs.io/app", "11 Labs")
+        if key == "images":
+            self.habits.log("studio", "images")
+            return self._studio_open(
+                "https://www.midjourney.com/imagine", "Images · Midjourney Imagine"
+            )
+        if key == "midjourney":
+            self.habits.log("studio", "midjourney")
+            return self._studio_open("https://www.midjourney.com/", "Mid-Journey")
+        if key == "automation":
+            self.habits.log("studio", "automation")
+            base = (getattr(self.settings, "n8n_url", None) or "http://127.0.0.1:5678").rstrip(
+                "/"
+            )
+            return self._studio_open(f"{base}/home/workflows", "Automation · n8n")
+        if key == "n8n":
+            self.habits.log("studio", "n8n")
+            base = (getattr(self.settings, "n8n_url", None) or "http://127.0.0.1:5678").rstrip(
+                "/"
+            )
+            return self._studio_open(base, "N8N")
+        return None
 
     def _run_vibe_code(self, brief: str = "") -> str:
         """Kick off autonomous vibe coding / agent development."""
@@ -1600,14 +2335,16 @@ class Brain:
                 preview_url = str(meta.get("preview_url") or "").strip()
                 app_url = str(meta.get("app_url") or "").strip()
                 if not preview_url:
+                    try:
+                        preview_url = self.vibe.ensure_preview_url() or ""
+                        app_url = preview_url or app_url
+                    except Exception:
+                        pass
+                if not preview_url:
                     port = getattr(self.vibe, "_preview_port", None)
                     root = self.vibe.last_project
                     if port and root is not None:
-                        entry = (
-                            "index.html"
-                            if (root / "index.html").exists()
-                            else "preview.html"
-                        )
+                        entry = self.vibe._preview_entry(root)
                         preview_url = f"http://127.0.0.1:{port}/{entry}"
                         app_url = preview_url
                 payload = {
@@ -1634,9 +2371,9 @@ class Brain:
 
         threading.Thread(target=_job, daemon=True, name="vibe-code").start()
         return (
-            "Understood. Opening Build Theater — watch Working, Coding, and Building tabs live. "
+            "Understood. Opening Build Theater — Working, Coding, and Preview tabs. "
             "I will invent the product if needed, write the brief, generate the code, "
-            "and open the project. Watch the vibe panel."
+            "and open the runnable preview. Watch the vibe panel."
         )
 
     def _run_biz_find(self, query: str = "") -> str:
@@ -1912,8 +2649,38 @@ class Brain:
         except Exception:
             pass
         try:
+            rem = getattr(self, "reminders", None)
+            if rem is not None:
+                rem.stop()
+        except Exception:
+            pass
+        try:
+            door = getattr(self, "doorbell", None)
+            if door is not None:
+                door.stop()
+        except Exception:
+            pass
+        try:
+            snap = getattr(self, "snapchat", None)
+            if snap is not None:
+                snap.stop()
+        except Exception:
+            pass
+        try:
+            comms = getattr(self, "comms_live", None)
+            if comms is not None:
+                comms.stop()
+        except Exception:
+            pass
+        try:
             if self.watch:
                 self.watch.stop()
+        except Exception:
+            pass
+        try:
+            iot = getattr(self, "iot", None)
+            if iot is not None:
+                iot.close()
         except Exception:
             pass
 
@@ -1937,7 +2704,29 @@ class Brain:
             "ring motion",
         ):
             return self.handle_doorbell("motion")
-        if c.startswith("room ") or c.startswith("nfc ") or c.startswith("mirror "):
+        if c in (
+            "snapchat",
+            "snap call",
+            "snapchat call",
+            "snap_incoming",
+            "snap incoming",
+        ):
+            return self.handle_snapchat_call(
+                SnapCallEvent(caller="Someone", source="test", title="macro")
+            )
+        if c in ("snapchat answer", "answer snap", "answer snapchat"):
+            snap = getattr(self, "snapchat", None)
+            if snap is None:
+                return "Snapchat bridge not loaded."
+            return snap.try_answer_now()
+        if (
+            c.startswith("room ")
+            or c.startswith("nfc ")
+            or c.startswith("mirror ")
+            or c.startswith("ambient ")
+            or c.startswith("desk light ")
+            or c in ("iot status", "room status", "presence status")
+        ):
             if getattr(self, "iot", None):
                 return self.iot.handle(c)
         if c in ("healer", "healer status"):
@@ -2030,6 +2819,202 @@ class Brain:
         except Exception as e:
             print(f"[doorbell] phone: {e}")
         return line
+
+    def handle_snapchat_call(self, event: SnapCallEvent | str | None = None) -> str:
+        """Incoming Snapchat / Phone Link call — announce, notify, optional answer."""
+        if isinstance(event, str):
+            ev = SnapCallEvent(caller=event or "Someone", source="test")
+        elif event is None:
+            ev = SnapCallEvent(caller="Someone", source="test")
+        else:
+            ev = event
+        caller = (ev.caller or "Someone").strip() or "Someone"
+        line = f"Incoming Snapchat call from {caller}."
+        hud = f"SNAP › {caller.upper()[:24]}"
+        phone_msg = f"Snapchat: {caller} is calling"
+        try:
+            self._emit("hud_alert", hud)
+            self._emit("heard", f"[snapchat] {ev.source}: {caller}")
+        except Exception:
+            pass
+        try:
+            if hasattr(self.voice, "say_protected"):
+                self.voice.say_protected(line)
+            else:
+                self.say(line)
+        except Exception as e:
+            print(f"[snapchat] speak: {e}")
+        try:
+            self.phone.notify(
+                phone_msg,
+                title="JARVIS · Snapchat",
+                priority=5,
+                tags=["telephone_receiver", "rotating_light", "warning"],
+            )
+        except Exception as e:
+            print(f"[snapchat] phone: {e}")
+        return line
+
+    def handle_comms_live(self, event: CommsEvent | None = None) -> str:
+        """Live Snap / IG / iMessage line — HUD + optional speak + phone push."""
+        if event is None:
+            return "No message."
+        app = (event.app or "message").strip().lower()
+        label = {
+            "snapchat": "SNAP",
+            "instagram": "IG",
+            "imessage": "iMSG",
+        }.get(app, app.upper()[:6])
+        sender = (event.sender or "Someone").strip() or "Someone"
+        body = (event.translated or event.text or "").strip()
+        original = (event.text or "").strip()
+        if event.kind == "call":
+            line = f"Incoming {label} call from {sender}."
+            hud = f"{label} › CALL · {sender.upper()[:20]}"
+            phone_msg = f"{label}: {sender} is calling"
+        else:
+            show = body
+            if (
+                event.translated
+                and original
+                and event.translated.lower() != original.lower()
+                and event.lang
+                and event.lang != getattr(self.settings, "comms_live_target_lang", "en")
+            ):
+                show = f"{body}  (orig: {original[:80]})"
+            elif (
+                event.translated
+                and original
+                and event.translated.lower() != original.lower()
+            ):
+                show = f"{body}"
+            line = f"{label} from {sender}: {show[:180]}"
+            hud = f"{label} › {sender.upper()[:16]}"
+            phone_msg = f"{label} {sender}: {body[:160]}"
+        try:
+            self._emit("hud_alert", hud)
+            self._emit(
+                "heard",
+                f"[comms] {app}/{event.kind}: {sender}: {(body or original)[:100]}",
+            )
+            self._emit(
+                "artifact",
+                {
+                    "title": f"{label} · LIVE",
+                    "text": (
+                        f"From: {sender}\nApp: {app}\nKind: {event.kind}\n"
+                        f"Text: {original}\n"
+                        f"Translated: {event.translated or '—'}\n"
+                        f"Lang: {event.lang or '—'}\n"
+                        f"Source: {event.source}"
+                    ),
+                },
+            )
+        except Exception:
+            pass
+        # Avoid double-speak when Snap call bridge also fires
+        quiet = bool(getattr(self, "_quiet_mode", False))
+        speak = bool(getattr(self.settings, "comms_live_speak", True))
+        if speak and not quiet and not (
+            event.kind == "call" and app == "snapchat"
+        ):
+            try:
+                if hasattr(self.voice, "say_protected"):
+                    self.voice.say_protected(line)
+                else:
+                    self.say(line)
+            except Exception as e:
+                print(f"[comms] speak: {e}")
+        if bool(getattr(self.settings, "comms_live_notify_phone", True)):
+            try:
+                self.phone.notify(
+                    phone_msg,
+                    title=f"JARVIS · {label}",
+                    priority=5 if event.kind == "call" else 4,
+                    tags=["speech_balloon", "globe_with_meridians"],
+                )
+            except Exception as e:
+                print(f"[comms] phone: {e}")
+        return line
+
+    def handle_reminder_fire(self, rem: Reminder) -> None:
+        """Due reminder — HUD + speak + phone push."""
+        msg = (rem.message or "Reminder").strip()
+        when = rem.label_time or "now"
+        line = f"Reminder: {msg}. That's {when}."
+        try:
+            self._emit("hud_alert", f"REMIND › {msg[:40]}")
+            self._emit("heard", f"[reminder] {msg}")
+            self._emit(
+                "artifact",
+                {
+                    "title": "REMINDER",
+                    "text": f"{msg}\n\nScheduled for: {when}\nZone: {rem.timezone}",
+                },
+            )
+        except Exception:
+            pass
+        try:
+            if hasattr(self.voice, "say_protected"):
+                self.voice.say_protected(line)
+            else:
+                self.say(line)
+        except Exception as e:
+            print(f"[reminders] speak: {e}")
+        try:
+            self.phone.notify(
+                f"{msg} ({when})",
+                title="JARVIS · Reminder",
+                priority=5,
+                tags=["alarm_clock", "rotating_light"],
+            )
+        except Exception as e:
+            print(f"[reminders] phone: {e}")
+
+    def _on_net_intruder(self, msg: str) -> None:
+        try:
+            self._emit("hud_alert", "NET WATCH · UNKNOWN DEVICE")
+            self._emit("heard", f"[net] {msg}")
+            self.say(msg)
+        except Exception:
+            pass
+        try:
+            self.phone.notify(msg, title="JARVIS · Net Watch", priority=5, tags=["warning"])
+        except Exception:
+            pass
+
+    def _on_deadman_miss(self, msg: str) -> None:
+        try:
+            self._emit("hud_alert", "DEADMAN MISS")
+            self.say(msg)
+            self.system.lock()
+        except Exception:
+            pass
+        try:
+            self.phone.notify(msg, title="JARVIS · Deadman", priority=5, tags=["rotating_light"])
+        except Exception:
+            pass
+        try:
+            if getattr(self, "backups", None):
+                self._run_backup_bg(label="deadman")
+        except Exception:
+            pass
+
+    def _on_space_severe(self, msg: str) -> None:
+        try:
+            self._emit("hud_alert", "SPACE WEATHER")
+            self.say(msg)
+        except Exception:
+            pass
+        try:
+            if getattr(self, "backups", None):
+                self._run_backup_bg(label="solar")
+        except Exception:
+            pass
+        try:
+            self.phone.notify(msg, title="JARVIS · Space Weather", priority=4)
+        except Exception:
+            pass
 
     def handle_companion(self, text: str) -> str:
         """iPhone PWA chat — same brain router, return spoken reply for the phone UI."""
@@ -2486,6 +3471,47 @@ class Brain:
             self.ha.on_jarvis_state(mode)
         except Exception:
             pass
+        if not bool(getattr(self.settings, "ambient_light_sync", True)):
+            return
+        try:
+            from jarvis.core.iot_bridge import AMBIENT_RGB
+
+            raw = (mode or "idle").lower().strip()
+            if raw in ("thinking", "process", "processing", "fetch"):
+                key = "thinking"
+            elif raw in ("compiling", "compile", "coding", "build", "vibe", "site", "code"):
+                key = "compiling"
+            elif raw in ("error", "panic"):
+                key = "error"
+            else:
+                key = "idle"
+            if key == getattr(self, "_last_ambient_sync", None):
+                return
+            self._last_ambient_sync = key
+            rgb = AMBIENT_RGB.get(key, AMBIENT_RGB["idle"])
+            iot = getattr(self, "iot", None)
+            if iot is not None:
+                iot.sync_ambient(key)
+            try:
+                # Prefer keyboard-class devices; never blast DualSense as fallback
+                detail = self.rgb.set_color(rgb, target="keyboard")
+                if isinstance(detail, str) and detail.lower().startswith("could not"):
+                    self.rgb.set_color(rgb, target="all")
+            except Exception:
+                pass
+            light_mode = {
+                "idle": "calm",
+                "thinking": "focus",
+                "compiling": "coding",
+                "error": "late_night",
+            }.get(key)
+            if light_mode:
+                try:
+                    self.lights.set_mode(light_mode)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _on_game_focus(self, name: str) -> None:
         """Mute listen path while a real game is up — never open Windows settings."""
@@ -2587,7 +3613,7 @@ class Brain:
 
         now = time.time()
         with self._lock:
-            if now - self._start_cooldown < 1.2:
+            if now - self._start_cooldown < 0.4:
                 return
             self._start_cooldown = now
 
@@ -2605,7 +3631,7 @@ class Brain:
             self._emit("heard", f"[start] {play_msg}")
 
             def _settle():
-                time.sleep(1.5)
+                time.sleep(0.35)
                 self._emit("listening", False)
 
             threading.Thread(target=_settle, daemon=True).start()
@@ -2613,6 +3639,8 @@ class Brain:
         threading.Thread(target=_do, daemon=True, name="jarvis-start").start()
 
     def say(self, text: str) -> None:
+        if getattr(self, "_stopped", False):
+            return
         # HUD gets full text; voice speaks complete sentences (not a 20-word chop)
         shaped = text
         try:
@@ -2688,6 +3716,17 @@ class Brain:
             except Exception as e:
                 print(f"[ui:{key}] {e}")
 
+    def _screenshot(self) -> str:
+        """Capture the desktop to Pictures/Jarvis and report the path."""
+        try:
+            path = self.screen.capture_png()
+            if path is None:
+                return "Could not capture the screen."
+            self._emit("hud_alert", f"Screenshot saved · {path.name}")
+            return f"Screenshot saved to {path}."
+        except Exception as e:
+            return f"Screenshot failed: {e}"
+
     def _on_hitl_ask(self, req: HitlRequest) -> None:
         """Push HITL card to HUD + speak the ask."""
         payload = {
@@ -2732,7 +3771,12 @@ class Brain:
     ) -> str:
         ok = self.hitl.resolve(request_id, approve=approve, answer=answer)
         if not ok:
-            return "No HITL gate is waiting."
+            # Stale gate click after voice already resolved — quiet no-op
+            try:
+                self._emit("hitl_clear", True)
+            except Exception:
+                pass
+            return ""
         try:
             log_hitl(
                 {
@@ -2765,6 +3809,8 @@ class Brain:
         on = bool(on)
         try:
             self.settings.performance_mode = on
+            if on:
+                self.settings.zero_latency = True
             self.settings.save()
         except Exception:
             pass
@@ -2778,18 +3824,232 @@ class Brain:
             if on:
                 self._emit(
                     "bond",
-                    {"dim": True, "ambient": "conserve", "fps": 10},
+                    {"dim": True, "ambient": "conserve", "fps": 8},
                 )
             else:
                 self._emit("bond", {"fps": 15, "ambient": "normal"})
         except Exception:
             pass
         if on:
+            try:
+                self._apply_zero_latency()
+            except Exception:
+                pass
             return self._flavor(
                 "ok",
                 "Smooth mode on — HUD throttled so voice stays snappy.",
             )
         return self._flavor("ok", "Full fidelity HUD restored.")
+
+    def _boot_heavy_agents(self) -> None:
+        """Load crew / work-crew / auto-loop after voice HUD is already live."""
+        if getattr(self, "_crew_boot_started", False):
+            return
+        self._crew_boot_started = True
+
+        def _go() -> None:
+            try:
+                if bool(getattr(self.settings, "crew_enabled", True)) and self.crew is None:
+                    from jarvis.core.agent_crew import AgentCrew
+
+                    self.crew = AgentCrew(
+                        self.settings,
+                        vstore=self.vstore,
+                        internet=self.net,
+                        phone=self.phone,
+                        n8n=self.n8n,
+                        computer_use=self.cu_agent,
+                    )
+                    print("[crew] deferred boot ready")
+            except Exception as e:
+                print(f"[crew] deferred init: {e}")
+            try:
+                if self.work_crew is None:
+                    from jarvis.core.work_crew import WorkCrew
+
+                    self.work_crew = WorkCrew(
+                        self.settings,
+                        research=getattr(self.crew, "research", None)
+                        if self.crew
+                        else None,
+                    )
+            except Exception as e:
+                print(f"[work-crew] deferred init: {e}")
+            try:
+                if self.auto_loop is None:
+                    from jarvis.core.auto_loop import AutoLoopEngine
+
+                    self.auto_loop = AutoLoopEngine(
+                        self.settings,
+                        codesmith=getattr(self.crew, "code", None)
+                        if self.crew
+                        else None,
+                        on_progress=lambda m: self.feed.push("loop", m[:160]),
+                    )
+            except Exception as e:
+                print(f"[auto-loop] deferred init: {e}")
+            try:
+                if (
+                    bool(getattr(self.settings, "systems_ai_v2_enabled", True))
+                    and self.systems_v2 is None
+                ):
+                    from jarvis.core.systems_ai_v2 import SystemsAIv2
+
+                    def _llm(prompt: str) -> str:
+                        try:
+                            from jarvis.core.llm_client import complete
+
+                            return complete(prompt) or ""
+                        except Exception:
+                            return ""
+
+                    self.systems_v2 = SystemsAIv2(
+                        settings=self.settings,
+                        vstore=getattr(self, "vstore", None),
+                        internet=getattr(self, "net", None),
+                        llm_fn=_llm,
+                        on_status=lambda m: self.feed.push("systems", m[:160]),
+                    )
+                    print("[systems-v2] deferred boot ready")
+            except Exception as e:
+                print(f"[systems-v2] deferred init: {e}")
+
+        threading.Thread(target=_go, daemon=True, name="jarvis-heavy-boot").start()
+
+    def _apply_zero_latency(self) -> None:
+        """Tighten watchers + voice-facing settings for lean runtime."""
+        try:
+            self.settings.zero_latency = True
+            self.settings.performance_mode = True
+            self.settings.tts_instant_ack = False  # avoid "On it" double-TTS lag
+            self.settings.telemetry_interval_ms = min(
+                int(getattr(self.settings, "telemetry_interval_ms", 2000) or 2000),
+                2000,
+            )
+            self.settings.snapchat_poll_sec = min(
+                float(getattr(self.settings, "snapchat_poll_sec", 0.55) or 0.55),
+                0.55,
+            )
+            self.settings.comms_live_poll_sec = min(
+                float(getattr(self.settings, "comms_live_poll_sec", 0.55) or 0.55),
+                0.55,
+            )
+            self.settings.save()
+        except Exception:
+            pass
+        try:
+            snap = getattr(self, "snapchat", None)
+            if snap is not None:
+                snap.poll_sec = max(0.4, float(self.settings.snapchat_poll_sec))
+        except Exception:
+            pass
+        try:
+            comms = getattr(self, "comms_live", None)
+            if comms is not None:
+                comms.poll_sec = max(0.35, float(self.settings.comms_live_poll_sec))
+        except Exception:
+            pass
+        try:
+            voice = getattr(self, "voice", None)
+            if voice is not None:
+                voice.rate = getattr(self.settings, "tts_rate", "+8%") or "+8%"
+                voice.chunk_sentences = True
+        except Exception:
+            pass
+
+    def optimize_jarvis(self) -> str:
+        """One-shot lean profile: smooth HUD, fast voice, tight watchers."""
+        try:
+            self.settings.performance_mode = True
+            self.settings.zero_latency = True
+            self.settings.tts_rate = "+8%"
+            self.settings.tts_instant_ack = False
+            self.settings.tts_chunk_sentences = True
+            self.settings.telemetry_interval_ms = 2000
+            self.settings.presence_check_fps = 2
+            self.settings.snapchat_poll_sec = 0.55
+            self.settings.comms_live_poll_sec = 0.55
+            self.settings.chat_memory_turns = min(
+                int(getattr(self.settings, "chat_memory_turns", 8) or 8), 6
+            )
+            self.settings.noise_reduce = False  # CPU-heavy on mic path
+            self.settings.save()
+        except Exception as e:
+            return f"Could not save optimize settings: {e}"
+        try:
+            self._set_performance_mode(True)
+        except Exception:
+            pass
+        try:
+            self._apply_zero_latency()
+        except Exception:
+            pass
+        try:
+            self._emit(
+                "artifact",
+                {
+                    "title": "JARVIS · OPTIMIZED",
+                    "text": (
+                        "Smooth HUD · zero-latency watchers · snappy TTS\n"
+                        "Crew agents boot deferred · chroma stays lazy\n"
+                        "Restart once if voice rate still feels old."
+                    ),
+                },
+            )
+        except Exception:
+            pass
+        return (
+            "Jarvis optimized — smooth HUD, faster speech, no On-it lag, leaner watchers. "
+            "Restart once for a fully clean boot."
+        )
+
+    def upgrade_everything(self) -> str:
+        """Full polish pass: optimize + cinematic AR pro profile + voice fixes."""
+        bits: list[str] = []
+        try:
+            bits.append(self.optimize_jarvis().split("—")[0].strip() or "Optimized")
+        except Exception as e:
+            bits.append(f"optimize skipped ({e})")
+        try:
+            from jarvis.core.aerospatial import AerospatialMapper
+
+            ar = AerospatialMapper()
+            bits.append(ar.apply_pro_profile())
+        except Exception as e:
+            bits.append(f"AR profile skipped ({e})")
+        try:
+            self.settings.tts_instant_ack = False
+            self.settings.zero_latency = True
+            self.settings.performance_mode = True
+            self.settings.suggestions_enabled = True
+            self.settings.save()
+        except Exception:
+            pass
+        try:
+            self._emit("aerospatial_cinematic", True)
+        except Exception:
+            pass
+        try:
+            self._emit(
+                "artifact",
+                {
+                    "title": "JARVIS · UPGRADE EVERYTHING",
+                    "text": (
+                        "✓ Zero-latency voice (no On-it double speak)\n"
+                        "✓ Smooth / performance HUD\n"
+                        "✓ Cinematic AR pro: lerp · hold-lock · CLAHE · light adapt\n"
+                        "✓ Web shooter · biometric · PC gauges · spatial audio\n"
+                        "Say: open aerospatial · good morning · help"
+                    ),
+                },
+            )
+        except Exception:
+            pass
+        summary = " · ".join(bits[:3])
+        return (
+            f"Upgrade complete. {summary} "
+            "Say open aerospatial for the cinematic hologram lab."
+        )
 
     def _on_vision(self, ev: VisionEvent) -> None:
         import time
@@ -2828,6 +4088,7 @@ class Brain:
             and (
                 getattr(self.settings, "posture_nudge", False)
                 or getattr(self.settings, "auto_soundscape", False)
+                or getattr(self.settings, "gaze_workspace_enabled", True)
             )
         ):
             try:
@@ -2973,11 +4234,24 @@ class Brain:
             except Exception:
                 pass
 
-            # HITL voice resolve takes priority while a classic gate is open
+            # Instant voice ack — skip in zero-latency / fast-local (avoids double TTS delay)
+            if from_voice and bool(getattr(self.settings, "tts_instant_ack", True)):
+                try:
+                    skip_ack = bool(getattr(self.settings, "zero_latency", False))
+                    if not skip_ack and not is_fast_local_command((text or "").lower()):
+                        self.voice.say_ack("On it.")
+                except Exception:
+                    pass
+
+            # HITL voice resolve — only yes/no / matching option (never swallow cmds)
             hitl_msg = self.hitl.resolve_voice(text)
             if hitl_msg:
                 # If async clarify is pending, prefer that path below after wake strip
                 if not getattr(self, "_pending_clarify", None):
+                    try:
+                        self._emit("hitl_clear", True)
+                    except Exception:
+                        pass
                     self._emit("speak_ui", hitl_msg)
                     self._emit("hud_alert", hitl_msg)
                     self.say(hitl_msg)
@@ -3201,8 +4475,8 @@ class Brain:
                     self.say(reply)
         finally:
             self._handling = False
-            # Free the mic quickly so the next command isn't dropped
-            delay = 0.05 if self._note_mode else 0.06
+            # Free the mic immediately so the next command isn't dropped
+            delay = 0.02 if self._note_mode else 0.02
             threading.Timer(delay, lambda: self.voice.set_busy(False)).start()
 
     def _strip_wake(self, text: str) -> tuple[str, bool]:
@@ -3377,6 +4651,696 @@ class Brain:
             return self._flavor("ok", self.handle_doorbell("ding"))
         return None
 
+    def _try_snapchat_cmd(self, t: str) -> str | None:
+        """Snapchat call watcher setup / test / answer."""
+        if not t:
+            return None
+        if re.search(
+            r"\b(snapchat\s+(setup|link|status|url)|"
+            r"setup\s+(snap|snapchat)(\s+calls?)?|"
+            r"link\s+(my\s+)?(snap|snapchat)(\s+calls?)?|"
+            r"snap\s+call\s+(setup|status|link)|"
+            r"link\s+snap)\b",
+            t,
+        ):
+            return self._flavor("ok", self.snapchat_setup_message())
+        if re.search(
+            r"\b(test\s+(snap|snapchat)(\s+call)?|"
+            r"simulate\s+(snap|snapchat)(\s+call)?|"
+            r"snapchat\s+test)\b",
+            t,
+        ):
+            import time as _time
+
+            snap = getattr(self, "snapchat", None)
+            if snap is not None:
+                snap._until = _time.monotonic() + snap.cooldown_sec
+                snap._last_fingerprint = "test:test"
+            return self._flavor(
+                "ok",
+                self.handle_snapchat_call(
+                    SnapCallEvent(caller="Test", source="test", title="voice test")
+                ),
+            )
+        if re.search(
+            r"\b((auto\s+)?answer\s+(the\s+)?(snap|snapchat)(\s+call)?|"
+            r"pick\s+up\s+(the\s+)?(snap|snapchat)|"
+            r"snapchat\s+answer)\b",
+            t,
+        ):
+            snap = getattr(self, "snapchat", None)
+            if snap is None:
+                return self._flavor("warn", "Snapchat bridge is not loaded.")
+            return self._flavor("ok", snap.try_answer_now())
+        if re.search(
+            r"\b(enable|turn\s+on)\s+(snap|snapchat)(\s+calls?)?\b|"
+            r"\b(snap|snapchat)\s+calls?\s+on\b",
+            t,
+        ):
+            return self._flavor("ok", self._set_snapchat_enabled(True))
+        if re.search(
+            r"\b(disable|turn\s+off)\s+(snap|snapchat)(\s+calls?)?\b|"
+            r"\b(snap|snapchat)\s+calls?\s+off\b",
+            t,
+        ):
+            return self._flavor("ok", self._set_snapchat_enabled(False))
+        return None
+
+    def _try_reminder_cmd(self, t: str) -> str | None:
+        """Timezone-aware timed reminders (California / Pacific / local)."""
+        if not t:
+            return None
+        rem = getattr(self, "reminders", None)
+        if rem is None:
+            return None
+        if re.search(
+            r"\b(list reminders|my reminders|reminder status|what reminders|"
+            r"show reminders|pending reminders)\b",
+            t,
+        ):
+            return self._flavor("ok", rem.status())
+        if re.search(
+            r"\b(cancel (all )?reminders?|clear reminders?|"
+            r"delete (all )?reminders?)\b",
+            t,
+        ):
+            m = re.search(
+                r"\b(?:cancel|clear|delete)\s+(?:reminder\s+)?(.+)$", t
+            )
+            hint = (m.group(1) if m else "all").strip()
+            if hint in ("reminders", "reminder", "all reminders"):
+                hint = "all"
+            return self._flavor("ok", rem.cancel(hint))
+        # set / remind at time (with or without zone)
+        if re.search(
+            r"\b("
+            r"remind me\b.+\b(at|when|turns?)\b|"
+            r"set (a |me a )?reminder\b|"
+            r"reminder (for|at)\b|"
+            r"nudge me (at|when)\b|"
+            r"alarm (for|at)\b"
+            r")",
+            t,
+        ) and re.search(
+            r"\b(at\s+\d|when\s+it|turns?\s+\d|\d{1,2}\s*(:\d{2})?\s*(a\.?m\.?|p\.?m\.?)|"
+            r"california|cali|pacific|tonight|tomorrow)\b",
+            t,
+        ):
+            return self._flavor("ok", rem.add_from_utterance(t))
+        return None
+
+        return None
+
+    def _try_voice_clone_cmd(self, t: str) -> str | None:
+        """Room grab / YouTube clone / speak-as / engine select."""
+        if not t:
+            return None
+        lab = getattr(self, "voice_clone", None)
+        if lab is None:
+            return None
+
+        if re.search(
+            r"\b(voice clone status|clone (lab )?status|voice samples? status)\b",
+            t,
+        ):
+            return self._flavor("ok", lab.status())
+
+        if re.search(
+            r"\b(list (voice )?clones?|list voice samples|show (voice )?clones?)\b",
+            t,
+        ):
+            return self._flavor("ok", lab.list_samples())
+
+        if re.search(
+            r"\b(clear (voice )?clone|stop (impersonating|cloning)|"
+            r"use (normal|standard|default) (jarvis )?voice)\b",
+            t,
+        ):
+            return self._flavor("ok", lab.clear_active())
+
+        m_eng = re.search(
+            r"\b(?:set |use )?(?:voice )?clone engine(?: to)?\s+"
+            r"(auto|f5|f5[- ]?tts|xtts|coqui|gpt[- ]?sovits|sovits|eleven(?:labs)?|edge)\b",
+            t,
+        )
+        if m_eng:
+            return self._flavor("ok", lab.set_engine(m_eng.group(1)))
+
+        m_yt = re.search(
+            r"\b(?:clone (?:voice )?from youtube|youtube (?:voice )?clone)\b"
+            r".*?(https?://\S+|www\.youtube\.com\S+|youtu\.be/\S+)",
+            t,
+            re.I,
+        )
+        if m_yt:
+            url = m_yt.group(1).rstrip(".,)")
+            return self._flavor("ok", lab.clone_from_youtube(url))
+
+        m_use = re.search(
+            r"\b(?:talk|speak|use) as (?:clone |voice )?"
+            r"['\"]?([a-z0-9_\- ]{2,40})['\"]?\b",
+            t,
+        )
+        if m_use and not re.search(r"\bspeak as clone\b", t):
+            name = m_use.group(1).strip()
+            if name not in ("clone", "jarvis", "me", "you"):
+                # If followed by quoted speech, use then speak
+                m_line = re.search(r"\bsay\b[:\s]+(.+)$", t)
+                msg = lab.use_clone(name)
+                if m_line:
+                    return self._flavor("ok", lab.speak_as_clone(m_line.group(1).strip()))
+                return self._flavor("ok", msg)
+
+        m_speak = re.search(
+            r"\b(?:speak|talk|say) as clone\b[:\s]*(.*)$",
+            t,
+        )
+        if m_speak:
+            line = (m_speak.group(1) or "").strip() or "Hello — voice clone online."
+            return self._flavor("ok", lab.speak_as_clone(line))
+
+        if re.search(
+            r"\b("
+            r"grab (voice|clone)|clone (this )?voice|record (a )?voice (sample|clone)|"
+            r"voice grab|sample (this )?voice|ten second(s)? (voice )?clone|"
+            r"clone (the )?(next )?10 seconds?|listen(ing)? (and )?clone"
+            r")\b",
+            t,
+        ):
+            if not bool(getattr(self.settings, "voice_clone_enabled", True)):
+                return self._flavor("ok", "Voice clone is disabled in settings.")
+            # Optional name: "grab voice as marcus"
+            m_name = re.search(r"\bas ([a-z0-9_\-]{2,32})\b", t)
+            name = m_name.group(1) if m_name else ""
+            sec = float(getattr(self.settings, "voice_clone_seconds", 10) or 10)
+            m_sec = re.search(r"\b(\d{1,2})\s*seconds?\b", t)
+            if m_sec:
+                sec = float(m_sec.group(1))
+            self._emit("show_tools", True)
+            return self._flavor(
+                "ok",
+                lab.grab_room_async(
+                    seconds=sec,
+                    name=name,
+                    denoise=bool(getattr(self.settings, "voice_clone_denoise", True)),
+                ),
+            )
+
+        return None
+
+    def _try_home_ops_cmd(self, t: str) -> str | None:
+        """Edge / net watch / backups / deadman / space weather / harden / translate."""
+        if not t:
+            return None
+        # Deadman phrase check-in (any utterance containing the phrase)
+        try:
+            dm = getattr(self, "deadman", None)
+            if dm is not None:
+                hit = dm.check_in(t)
+                if hit:
+                    return self._flavor("ok", hit)
+                # Periodic tick when user talks (on_miss already spoke — don't re-say)
+                dm.tick()
+        except Exception:
+            pass
+
+        if re.search(r"\b(edge setup|jetson setup|home server setup)\b", t):
+            from jarvis.core.edge_node import edge_setup_message
+
+            guide = edge_setup_message()
+            try:
+                self._emit("artifact", {"title": "EDGE / JETSON SETUP", "text": guide})
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Edge setup is on screen — Jetson or mini-PC keeps net watch and backups "
+                "alive when this PC is off.",
+            )
+        if re.search(r"\b(edge status|home ops status)\b", t):
+            bits = []
+            try:
+                from jarvis.core.edge_node import edge_status
+
+                bits.append(edge_status())
+            except Exception:
+                pass
+            for attr in ("net_watch", "deadman", "backups"):
+                obj = getattr(self, attr, None)
+                if obj is not None and hasattr(obj, "status"):
+                    try:
+                        bits.append(obj.status())
+                    except Exception:
+                        pass
+            return self._flavor("ok", " · ".join(bits) if bits else "Home ops offline.")
+
+        if re.search(r"\b(net watch status|network watch|lan scan|scan (the )?network|"
+                     r"unknown (devices|macs)|wifi intruder)\b", t):
+            nw = getattr(self, "net_watch", None)
+            if nw is None:
+                return self._flavor("warn", "Net watch not loaded.")
+            if "trust" in t:
+                return self._flavor("ok", nw.trust_all_current())
+            found = nw.scan_once()
+            return self._flavor(
+                "ok",
+                f"{nw.status()}. Right now {len(found)} ARP entries. "
+                "Say trust network to whitelist current devices.",
+            )
+        if re.search(r"\b(trust (the )?(network|lan|wifi|devices)|whitelist (lan|network))\b", t):
+            nw = getattr(self, "net_watch", None)
+            if nw is None:
+                return self._flavor("warn", "Net watch not loaded.")
+            return self._flavor("ok", nw.trust_all_current())
+        if re.search(r"\b(net watch (on|enable)|enable net watch)\b", t):
+            nw = getattr(self, "net_watch", None)
+            if nw is None:
+                return None
+            nw.enabled = True
+            nw.start()
+            self.settings.net_watch_enabled = True
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Net watch on — I'll announce unknown MACs.")
+        if re.search(r"\b(net watch (off|disable)|disable net watch)\b", t):
+            nw = getattr(self, "net_watch", None)
+            if nw is None:
+                return None
+            nw.enabled = False
+            nw.stop()
+            self.settings.net_watch_enabled = False
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Net watch off.")
+
+        if re.search(r"\b(run backup|secure backup|backup (now|jarvis|everything)|"
+                     r"encrypt(ed)? backup)\b", t):
+            b = getattr(self, "backups", None)
+            if b is None:
+                return self._flavor("warn", "Backup module offline.")
+            return self._flavor("ok", self._run_backup_bg(label="voice"))
+        if re.search(r"\b(backup status|list backups)\b", t):
+            b = getattr(self, "backups", None)
+            if b is None:
+                return self._flavor("warn", "Backup module offline.")
+            return self._flavor("ok", b.status())
+        if re.search(r"\b(prune backups)\b", t):
+            b = getattr(self, "backups", None)
+            if b is None:
+                return None
+            return self._flavor("ok", b.prune(8))
+
+        if re.search(r"\b(arm deadman|deadman (on|arm)|enable deadman)\b", t):
+            dm = getattr(self, "deadman", None)
+            if dm is None:
+                return None
+            hours = float(getattr(self.settings, "deadman_hours", 24) or 24)
+            msg = dm.arm(hours=hours)
+            self.settings.deadman_enabled = True
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", msg)
+        if re.search(r"\b(disarm deadman|deadman (off|disarm)|disable deadman)\b", t):
+            dm = getattr(self, "deadman", None)
+            if dm is None:
+                return None
+            self.settings.deadman_enabled = False
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", dm.disarm())
+        if re.search(r"\b(deadman status)\b", t):
+            dm = getattr(self, "deadman", None)
+            if dm is None:
+                return None
+            return self._flavor("ok", dm.status())
+
+        if re.search(r"\b(space weather|solar (flare|storm)|geomagnetic)\b", t):
+            sw = getattr(self, "space_weather", None)
+            if sw is None:
+                return self._flavor(
+                    "ok",
+                    "Space weather module offline.",
+                )
+            return self._flavor("ok", sw.speak_brief())
+        if re.search(r"\b(iss (status|overhead|pass)|where('?s| is) the iss)\b", t):
+            sw = getattr(self, "space_weather", None)
+            if sw is None:
+                return None
+            return self._flavor("ok", sw.iss_overhead())
+
+        if re.search(r"\b(scan processes|process (harden|scan)|check (for )?miners|"
+                     r"background process(es)?)\b", t):
+            ph = getattr(self, "process_harden", None)
+            if ph is None:
+                return None
+
+            def _scan() -> None:
+                try:
+                    msg = ph.speak_scan()
+                    self._emit("heard", f"[harden] {msg}")
+                    self.say(msg)
+                except Exception as e:
+                    print(f"[harden] {e}")
+
+            threading.Thread(target=_scan, daemon=True, name="jarvis-proc-scan").start()
+            return self._flavor("ok", "Scanning background processes.")
+        if re.search(r"\b(chris titus|winutil|windows harden guide)\b", t):
+            ph = getattr(self, "process_harden", None)
+            if ph is None:
+                return None
+            guide = ph.chris_titus_guide()
+            try:
+                self._emit("artifact", {"title": "WINDOWS HARDEN", "text": guide})
+            except Exception:
+                pass
+            return self._flavor("ok", "Windows harden guide is on screen — review before running anything.")
+        m = re.search(r"\b(?:kill|close) process\s+(.+)$", t)
+        if m:
+            ph = getattr(self, "process_harden", None)
+            if ph is None:
+                return None
+            return self._flavor("ok", ph.kill(m.group(1).strip(" .,!?")))
+
+        m = re.search(
+            r"\b(?:translate(?:\s+to)?\s+(spanish|es|english|en)|"
+            r"(spanish|english)\s+for)\s+(.+)$",
+            t,
+            re.I,
+        )
+        if m:
+            from jarvis.core.slang_translate import translate_casual
+
+            lang = (m.group(1) or m.group(2) or "es").lower()
+            to = "es" if lang.startswith(("s", "es")) else "en"
+            body = (m.group(3) or "").strip(" .,!?\"'")
+            return self._flavor("ok", translate_casual(body, to=to))
+        m = re.search(r"\b(?:expand|decode)\s+(?:acronyms?\s+)?(.+)$", t)
+        if m and re.search(r"\b(acronym|slang|icymi|lmao|expand)\b", t):
+            from jarvis.core.slang_translate import expand_acronyms
+
+            return self._flavor("ok", expand_acronyms(m.group(1)))
+
+        return None
+
+    def _try_comms_live_cmd(self, t: str) -> str | None:
+        """Live Snap / IG / iMessage translate watcher."""
+        if not t:
+            return None
+        if re.search(
+            r"\b((live\s+)?(comms|messages?)\s+(setup|status|link)|"
+            r"setup\s+(live\s+)?(comms|messages?|translate)|"
+            r"message\s+translate\s+(setup|status)|"
+            r"(imessage|instagram|snap)\s+translate\s+(on|setup|status))\b",
+            t,
+        ):
+            return self._flavor("ok", self.comms_live_setup_message())
+        if re.search(
+            r"\b((setup|open|install|link)\s+(phone\s+link|your\s+phone|link\s+to\s+windows)|"
+            r"phone\s+link\s+(setup|install|open)|"
+            r"setup\s+phone\s+link|"
+            r"link\s+(my\s+)?(iphone|phone)\s+to\s+(windows|pc))\b",
+            t,
+        ):
+            return self._flavor("ok", self.setup_phone_link_now())
+        if re.search(
+            r"\b(test\s+(live\s+)?(comms|message\s+translate|imessage\s+translate)|"
+            r"simulate\s+(imessage|instagram|snap)\s+message)\b",
+            t,
+        ):
+            return self._flavor("ok", self._test_comms_live(t))
+        if re.search(
+            r"\b((enable|turn\s+on|start)\s+(live\s+)?(comms|message\s+translate)|"
+            r"live\s+comms\s+on|"
+            r"translate\s+(my\s+)?(messages?|snaps?|texts?)\s+on)\b",
+            t,
+        ):
+            return self._flavor("ok", self._set_comms_live_enabled(True))
+        if re.search(
+            r"\b((disable|turn\s+off|stop)\s+(live\s+)?(comms|message\s+translate)|"
+            r"live\s+comms\s+off|"
+            r"translate\s+(my\s+)?(messages?|snaps?|texts?)\s+off)\b",
+            t,
+        ):
+            return self._flavor("ok", self._set_comms_live_enabled(False))
+        m = re.search(
+            r"\btranslate\s+(messages?|texts?|snaps?)\s+to\s+([a-z]{2})\b",
+            t,
+        )
+        if m:
+            return self._flavor("ok", self._set_comms_live_lang(m.group(2)))
+        return None
+
+    def _set_comms_live_enabled(self, on: bool) -> str:
+        try:
+            self.settings.comms_live_enabled = bool(on)
+            self.settings.save()
+        except Exception:
+            pass
+        comms = getattr(self, "comms_live", None)
+        if comms is None:
+            return "Live comms setting saved — restart Jarvis."
+        comms.enabled = bool(on)
+        if on:
+            comms.start()
+            return (
+                "Live message translate on — Snap, Instagram, and iMessage "
+                "(via Phone Link). Keep Phone Link open."
+            )
+        comms.stop()
+        return "Live message translate off."
+
+    def _set_comms_live_lang(self, lang: str) -> str:
+        code = (lang or "en").strip().lower()[:8] or "en"
+        try:
+            self.settings.comms_live_target_lang = code
+            self.settings.comms_live_translate = True
+            self.settings.save()
+        except Exception:
+            pass
+        comms = getattr(self, "comms_live", None)
+        if comms is not None:
+            comms.target_lang = code
+            comms.translate = True
+        return f"I'll translate live messages to `{code}`."
+
+    def _test_comms_live(self, t: str = "") -> str:
+        comms = getattr(self, "comms_live", None)
+        if comms is None:
+            return "Live comms bridge not loaded — restart Jarvis."
+        app = "imessage"
+        low = (t or "").lower()
+        if "instagram" in low or " ig " in f" {low} ":
+            app = "instagram"
+        elif "snap" in low:
+            app = "snapchat"
+        samples = {
+            "imessage": ("Hola, ¿cómo estás?", "Alex"),
+            "instagram": ("Bonjour mon ami", "Sam"),
+            "snapchat": ("Wie geht's dir?", "Jordan"),
+        }
+        text, sender = samples.get(app, samples["imessage"])
+        # Don't use inject_test (would double-fire on_event) — enrich + handle once
+        from jarvis.core.comms_live import CommsEvent
+
+        ev = CommsEvent(
+            app=app, kind="message", sender=sender, text=text, source="test"
+        )
+        comms._enrich(ev)
+        return self.handle_comms_live(ev)
+
+    def setup_phone_link_now(self) -> str:
+        """Install/open Phone Link + notification settings + iPhone app page."""
+        try:
+            from jarvis.core.phone_link_setup import setup_phone_link
+
+            msg = setup_phone_link(ensure_install=True)
+        except Exception as e:
+            msg = f"Phone Link setup helper failed: {e}"
+        try:
+            self.settings.comms_live_enabled = True
+            self.settings.snapchat_calls_enabled = True
+            self.settings.save()
+            if getattr(self, "comms_live", None):
+                self.comms_live.enabled = True
+                self.comms_live.start()
+            if getattr(self, "snapchat", None):
+                self.snapchat.enabled = True
+                self.snapchat.start()
+        except Exception:
+            pass
+        try:
+            self._emit(
+                "artifact",
+                {
+                    "title": "PHONE LINK SETUP",
+                    "text": (
+                        f"{msg}\n\n"
+                        "PC checklist:\n"
+                        "1) Microsoft Store → Install **Phone Link** if prompted\n"
+                        "2) Open Phone Link → Link your iPhone (QR / Microsoft account)\n"
+                        "3) Allow notifications from Phone Link in Windows Settings\n\n"
+                        "iPhone checklist:\n"
+                        "1) Install **Link to Windows**\n"
+                        "2) Sign in same Microsoft account · allow notifications\n"
+                        "3) Keep Bluetooth/Wi‑Fi on while pairing\n\n"
+                        "Then: live comms setup · test live comms · test snapchat call"
+                    ),
+                },
+            )
+        except Exception:
+            pass
+        try:
+            self._ensure_phone_topic()
+            self.phone.notify(
+                "Phone Link setup started on your PC. Finish pairing in Phone Link + "
+                "install Link to Windows on iPhone.",
+                title="JARVIS · Phone Link",
+                priority=4,
+                tags=["iphone", "white_check_mark"],
+            )
+        except Exception:
+            pass
+        return (
+            "I'm setting up Phone Link now — Store, app, and notification settings "
+            "should be open. On your iPhone install Link to Windows and finish pairing. "
+            f"{msg}"
+        )
+
+    def comms_live_setup_message(self) -> str:
+        # Also kick Phone Link so one command does both
+        try:
+            self.setup_phone_link_now()
+        except Exception:
+            pass
+        comms = getattr(self, "comms_live", None)
+        status = comms.status() if comms else "not loaded"
+        try:
+            self._ensure_phone_topic()
+        except Exception:
+            pass
+        try:
+            self.settings.comms_live_enabled = True
+            self.settings.save()
+            if comms is not None:
+                comms.enabled = True
+                comms.start()
+        except Exception:
+            pass
+        guide = (
+            f"{status}\n\n"
+            "LIVE TRANSLATE — Snapchat · Instagram · iMessage\n\n"
+            "1) Phone Link should be opening — finish iPhone pairing.\n"
+            "2) Keep Instagram / Snapchat notifications on.\n"
+            "3) Jarvis reads toasts/windows, translates, speaks + HUD + phone.\n"
+            "4) Say: test live comms · translate messages to es · live comms off\n\n"
+            "iPhone Phone Link is mostly notifications (not full Android-style SMS mirror)."
+        )
+        try:
+            self._emit("artifact", {"title": "LIVE COMMS · TRANSLATE", "text": guide})
+        except Exception:
+            pass
+        return (
+            "Live Snap, Instagram, and iMessage translate is on, and Phone Link setup "
+            "is open. Finish pairing on the phone, then say test live comms."
+        )
+
+    def _set_snapchat_enabled(self, on: bool) -> str:
+        snap = getattr(self, "snapchat", None)
+        try:
+            self.settings.snapchat_calls_enabled = bool(on)
+            self.settings.save()
+        except Exception:
+            pass
+        if snap is None:
+            return "Snapchat setting saved — restart Jarvis to apply."
+        snap.enabled = bool(on)
+        if on:
+            snap.start()
+            return "Snapchat call watcher on. I'll notify you and try to answer."
+        snap.stop()
+        return "Snapchat call watcher off."
+
+    def snapchat_setup_message(self) -> str:
+        snap = getattr(self, "snapchat", None)
+        if snap is None:
+            return "Snapchat bridge is not loaded — restart Jarvis first."
+        # Ensure phone push exists so Snap alerts reach your iPhone
+        try:
+            self._ensure_phone_topic()
+        except Exception:
+            pass
+        topic = (snap.topic or "").strip()
+        if not topic:
+            topic = SnapchatCallBridge.make_topic()
+            snap.topic = topic
+            try:
+                self.settings.snapchat_ntfy_topic = topic
+                self.settings.snapchat_calls_enabled = True
+                self.settings.save()
+            except Exception:
+                pass
+            try:
+                snap.stop()
+                snap.enabled = True
+                snap.start()
+            except Exception:
+                pass
+        else:
+            try:
+                snap.enabled = True
+                self.settings.snapchat_calls_enabled = True
+                self.settings.save()
+                snap.start()
+            except Exception:
+                pass
+        url = snap.webhook_url()
+        phone_topic = (getattr(self.phone, "topic", "") or "").strip()
+        guide = (
+            "SNAPCHAT CALLS LINKED\n\n"
+            f"Status: {snap.status()}\n\n"
+            "A) Alerts TO your iPhone (already on):\n"
+            f"   ntfy topic `{phone_topic or '—'}` — Jarvis pushes when a Snap call is seen.\n"
+            "   Say: test snapchat call\n\n"
+            "B) Optional — iPhone tells Jarvis when Snap rings (Shortcut):\n"
+            f"   POST {url}\n"
+            "   Body text: snap call from Name\n"
+            "   (Shortcuts → Automation → when you get a Snapchat notification → Get Contents of URL)\n\n"
+            "C) PC auto-answer: keep Phone Link connected so the call UI can show on Windows.\n\n"
+            "Commands: test snapchat call · answer snapchat · snapchat status"
+        )
+        try:
+            self._emit(
+                "artifact",
+                {"title": "SNAPCHAT · PHONE LINK", "text": guide},
+            )
+        except Exception:
+            pass
+        # Push the link card to the phone they already subscribed
+        try:
+            if phone_topic:
+                self.phone.notify(
+                    f"Snapchat linked. Shortcut POST → {url}  body: snap call from Name. "
+                    "Also keep Phone Link on for PC answer.",
+                    title="JARVIS · Snapchat linked",
+                    priority=4,
+                    tags=["telephone_receiver", "white_check_mark"],
+                )
+        except Exception:
+            pass
+        return (
+            f"Snapchat is linked to your phone. Alerts go to ntfy `{phone_topic}`. "
+            f"Optional Shortcut topic `{topic}` — I sent the details to your iPhone. "
+            "Say test snapchat call to try it."
+        )
+
     def doorbell_setup_message(self) -> str:
         door = getattr(self, "doorbell", None)
         if door is None:
@@ -3545,6 +5509,22 @@ class Brain:
         if not t:
             return None
 
+        # Iconic Stark arrival — replay anytime
+        if re.search(
+            r"\b(daddy'?s\s+home|daddys\s+home|i'?m\s+home|"
+            r"tony'?s\s+home|stark\s+arrival|home\s+sequence)\b",
+            t,
+        ):
+            threading.Thread(
+                target=self._run_stark_arrival,
+                daemon=True,
+                name="stark-arrival-cmd",
+            ).start()
+            return self._flavor(
+                "ok",
+                "Daddy's home — Jarvis online, then Iron Man workshop music.",
+            )
+
         # DUME / pushback easter eggs (before normal routing)
         cog = getattr(self, "cognitive", None)
         push = None
@@ -3604,17 +5584,179 @@ class Brain:
 
         # Hologram HUD / LiveKit / Pinecone / Anthropic CU
         if re.search(
-            r"\b(open (the )?hologram|hologram (hud|dashboard)|open hub dashboard)\b",
+            r"\b(open (the )?(stark )?(fabricator|jet lab|suit lab)|"
+            r"stark (jet |lab )?(hologram|fabricator)|"
+            r"suit (fabricator|customizer|upgrades?)|"
+            r"edith (lab|interface)|phaser web)\b",
             t,
         ):
-            url = getattr(self.settings, "hologram_url", "") or "http://127.0.0.1:3000"
+            self._emit("fabricator_ui", True)
+            # Workshop ambience on Spotify while the lab is open
             try:
-                webbrowser.open(url)
+                threading.Thread(
+                    target=self.music.play_workshop,
+                    daemon=True,
+                    name="workshop-music",
+                ).start()
+                self._emit("track", "Iron Man workshop")
             except Exception:
                 pass
             return self._flavor(
                 "ok",
-                f"Opening hologram HUD at {url}. Run npm run dev in hub/dashboard if offline.",
+                "Stark fabricator online — Iron Man workshop music on Spotify. "
+                "Tune upgrades, install modules, then say build the suit.",
+            )
+        if re.search(
+            r"\b((build|fabricate|print|weave) (the |my |a )?(suit|spider[- ]?suit|upgraded suit)|"
+            r"slap (to )?build|start (suit )?fabrication)\b",
+            t,
+        ):
+            self._emit("fabricator_ui", True)
+            self._emit("fabricator_build", True)
+            return self._flavor(
+                "ok",
+                "Engaging fabricator print cycle — laser scan, then polymer weave.",
+            )
+        if re.search(
+            r"\b(close (the )?(stark )?(fabricator|jet lab|suit lab)|"
+            r"close (suit|hologram) lab)\b",
+            t,
+        ):
+            self._emit("fabricator_ui", False)
+            return self._flavor("ok", "Fabricator lab closed.")
+        if re.search(
+            r"\b(open (the )?hologram|hologram (hud|dashboard)|open hub dashboard)\b",
+            t,
+        ):
+            # Prefer in-HUD Stark lab; hub URL remains available via "hub dashboard"
+            if "hub" in t or "dashboard" in t:
+                url = getattr(self.settings, "hologram_url", "") or "http://127.0.0.1:3000"
+                try:
+                    webbrowser.open(url)
+                except Exception:
+                    pass
+                return self._flavor(
+                    "ok",
+                    f"Opening hologram HUD at {url}. Run npm run dev in hub/dashboard if offline.",
+                )
+            self._emit("fabricator_ui", True)
+            return self._flavor(
+                "ok",
+                "Opening Stark hologram lab on camera. Say hub dashboard for the web HUD.",
+            )
+        # AR Aerospatial Mapping — room mesh + fabricator hologram overlay
+        if re.search(
+            r"\b(open (the )?(aerospatial|ar map|spatial mesh|ar (lab|overlay|engine))|"
+            r"aerospatial (on|online)|start (aerospatial|room mapping)|"
+            r"augmented reality (map|overlay|hologram))\b",
+            t,
+        ):
+            self._emit("aerospatial_ui", True)
+            self._emit("camera_ui", True)
+            return self._flavor(
+                "ok",
+                "Aerospatial mapping online — scanning room geometry so the Fabricator "
+                "can sit on your desk. Say scan room for a laser pass, or aerospatial setup "
+                "for desktop, smart-mirror, and phone deploy.",
+            )
+        if re.search(
+            r"\b((laser )?scan (the )?room|map (the )?room|start (laser )?scan|"
+            r"aerospatial scan)\b",
+            t,
+        ):
+            self._emit("aerospatial_ui", True)
+            self._emit("aerospatial_scan", True)
+            return self._flavor(
+                "ok",
+                "Laser scan engaged — mapping floor, desk, and walls for hologram lock.",
+            )
+        if re.search(
+            r"\b(aerospatial|ar) (deploy )?(desktop|monitor|mirror|smart mirror|phone|mobile)\b",
+            t,
+        ):
+            mode = "desktop"
+            if "mirror" in t:
+                mode = "mirror"
+            elif "phone" in t or "mobile" in t:
+                mode = "phone"
+            self._emit("aerospatial_ui", True)
+            self._emit("aerospatial_deploy", mode)
+            hints = {
+                "desktop": "Desktop deploy — point the webcam at the room; hologram overlays on the monitor.",
+                "mirror": "Smart mirror deploy — one-way glass at 45 degrees; hologram floats mid-air.",
+                "phone": "Phone deploy — use a Unity AR Foundation template; tap to place the Fabricator.",
+            }
+            return self._flavor("ok", hints[mode])
+        if re.search(
+            r"\b(aerospatial setup|ar setup|how (do i|to) (do )?aerospatial|"
+            r"spatial meshing (setup|guide)|ar foundation setup)\b",
+            t,
+        ):
+            from jarvis.core.aerospatial import SETUP_GUIDE
+
+            try:
+                self._emit(
+                    "artifact",
+                    {"title": "AR AEROSPATIAL SETUP", "text": SETUP_GUIDE},
+                )
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Aerospatial setup is on screen. Desktop webcam overlay works now; "
+                "mirror uses one-way glass; phone uses Unity AR Foundation. "
+                "Say open aerospatial to start mapping.",
+            )
+        if re.search(r"\b(aerospatial status|ar (map )?status|mesh status)\b", t):
+            try:
+                from jarvis.core.aerospatial import AerospatialMapper
+
+                return self._flavor("ok", AerospatialMapper().status())
+            except Exception as e:
+                return self._flavor("warn", f"Aerospatial status unavailable: {e}")
+        if re.search(
+            r"\b(close (the )?(aerospatial|ar map|spatial mesh|ar (lab|overlay))|"
+            r"aerospatial (off|offline)|close ar)\b",
+            t,
+        ):
+            self._emit("aerospatial_ui", False)
+            return self._flavor("ok", "Aerospatial overlay closed.")
+        if re.search(
+            r"\b(cinematic (ar|aerospatial|hologram)|smooth (ar|tracking|hologram)|"
+            r"fix (ar )?jitter|anti[- ]?jitter)\b",
+            t,
+        ):
+            self._emit("aerospatial_ui", True)
+            self._emit("aerospatial_cinematic", True)
+            return self._flavor(
+                "ok",
+                "Cinematic AR on — lerp smoothing, light adapt, matched camera FPS. "
+                "Add a textured mousepad if the desk is blank white or black.",
+            )
+        if re.search(r"\b(raw ar|disable cinematic|cinematic off)\b", t):
+            self._emit("aerospatial_cinematic", False)
+            return self._flavor("ok", "Cinematic smoothing off.")
+        if re.search(
+            r"\b(ar biometric|biometric (ar )?scan|welcome scan|sit down scan)\b",
+            t,
+        ):
+            self._emit("aerospatial_ui", True)
+            self._emit("aerospatial_biometric", True)
+            return self._flavor(
+                "ok",
+                "Biometric scan overlay armed — look at the camera for identity lock.",
+            )
+        if re.search(r"\b(ar gauges|pc (health )?hologram|holographic (cpu|gpu|stats))\b", t):
+            self._emit("aerospatial_ui", True)
+            self._emit("aerospatial_gauges", True)
+            return self._flavor("ok", "PC health gauges on the AR overlay.")
+        if re.search(r"\b(web shooter|spider[- ]?web|shoot web)\b", t):
+            self._emit("aerospatial_ui", True)
+            self._emit("aerospatial_web", True)
+            return self._flavor(
+                "ok",
+                "Web shooter armed — tuck middle and ring fingers, extend thumb, "
+                "index, and pinky to fire a web at the room mesh.",
             )
         if re.search(r"\b(live ?voice status|livekit status|elevenlabs turbo)\b", t):
             return self._flavor("ok", self.live_voice.status())
@@ -3646,6 +5788,39 @@ class Brain:
             except Exception:
                 pass
             return self._flavor("ok", f"Pinecone index host set to {host}.")
+        m = re.search(
+            r"\bset\s+obsidian\s+vault\s+(?:(?:path|folder)\s+)?(?:to\s+)?(.+)$",
+            t,
+            re.I,
+        )
+        if m:
+            from pathlib import Path
+
+            path = m.group(1).strip().strip("\"'").rstrip(".,")
+            p = Path(path).expanduser()
+            if not p.exists():
+                return self._flavor(
+                    "error",
+                    f"That path doesn't exist yet: {p}. Create the vault in Obsidian first.",
+                )
+            self.settings.obsidian_vault_path = str(p.resolve())
+            self.settings.obsidian_vault_name = p.name
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                f"Obsidian vault set to {p.name}. Research notes will land in Jarvis/.",
+            )
+        if re.search(r"\b(obsidian vault status|which obsidian vault)\b", t):
+            vault = (getattr(self.settings, "obsidian_vault_path", None) or "").strip()
+            if vault:
+                return self._flavor("ok", f"Obsidian vault: {vault}")
+            return self._flavor(
+                "ok",
+                "No Obsidian vault configured — say set obsidian vault to YOUR_PATH.",
+            )
         if re.search(
             r"\b(computer use anthropic|use anthropic computer use|"
             r"anthropic computer use)\b",
@@ -3925,10 +6100,18 @@ class Brain:
                 self._start_research_job(f"Explain and fix this error:\n{snip[:800]}"),
             )
 
-        # IoT
-        if re.search(
-            r"\b(iot status|room status|presence status|nfc |room |mirror )\b", t
-        ) or t.startswith("room ") or t.startswith("nfc ") or t.startswith("mirror "):
+        # IoT / desk ambient LEDs
+        if (
+            re.search(
+                r"\b(iot status|room status|presence status|nfc |room |mirror |ambient |desk light )\b",
+                t,
+            )
+            or t.startswith("room ")
+            or t.startswith("nfc ")
+            or t.startswith("mirror ")
+            or t.startswith("ambient ")
+            or t.startswith("desk light ")
+        ):
             if not getattr(self, "iot", None):
                 return self._flavor("ok", "IoT bridge offline.")
             return self._flavor("ok", self.iot.handle(t))
@@ -3979,6 +6162,14 @@ class Brain:
             except Exception:
                 pass
             try:
+                note = self._obsidian_capture(
+                    f"Research · {topic[:80]}", str(out)[:8000]
+                )
+                if note:
+                    self.feed.push("studio", f"Obsidian note · {note}")
+            except Exception:
+                pass
+            try:
                 if getattr(self, "phone", None):
                     self.phone.notify(
                         f"Research done: {topic[:80]}",
@@ -4024,6 +6215,9 @@ class Brain:
             "notion_token",
             "buffer_access_token",
             "gmail_access_token",
+            "gmail_refresh_token",
+            "gmail_client_id",
+            "gmail_client_secret",
         ):
             val = (getattr(self.settings, attr, "") or "").strip()
             if val:
@@ -4100,6 +6294,103 @@ class Brain:
             except Exception:
                 pass
             return self._flavor("ok", "Gmail token saved to the vault.")
+
+        m = re.search(r"\bset\s+gmail\s+refresh\s+token\s+to\s+(\S.+)$", t, re.I)
+        if m:
+            key = self._capture_secret(
+                r"\bset\s+gmail\s+refresh\s+token\s+to\s+(\S.+)$",
+                m.group(1),
+            )
+            key = re.sub(r"\s+", "", key)
+            self.settings.gmail_refresh_token = key
+            cloud.gmail_refresh_token = key
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", "Gmail refresh token saved to the vault.")
+
+        m = re.search(
+            r"\bset\s+gmail\s+client\s+id\s+to\s+(\S.+)$",
+            t,
+            re.I,
+        )
+        if m:
+            key = self._capture_secret(
+                r"\bset\s+gmail\s+client\s+id\s+to\s+(\S.+)$",
+                m.group(1),
+            )
+            key = re.sub(r"\s+", "", key)
+            self.settings.gmail_client_id = key
+            cloud.gmail_client_id = key
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Gmail client id saved. Next: set gmail client secret to …, then say link gmail.",
+            )
+
+        m = re.search(
+            r"\bset\s+gmail\s+client\s+secret\s+to\s+(\S.+)$",
+            t,
+            re.I,
+        )
+        if m:
+            key = self._capture_secret(
+                r"\bset\s+gmail\s+client\s+secret\s+to\s+(\S.+)$",
+                m.group(1),
+            )
+            key = re.sub(r"\s+", "", key)
+            self.settings.gmail_client_secret = key
+            cloud.gmail_client_secret = key
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Gmail client secret saved to the vault. Say link gmail to authorize.",
+            )
+
+        m = re.search(
+            r"\bset\s+gmail\s+(?:e-?mail|address)\s+to\s+(\S+@\S+)\s*$",
+            t,
+            re.I,
+        )
+        if m:
+            addr = m.group(1).strip().rstrip(".,")
+            self.settings.gmail_email = addr
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                f"Gmail email set to {addr}. Next: set gmail app password "
+                "(Google App Password if 2FA is on).",
+            )
+
+        m = re.search(
+            r"\bset\s+gmail\s+(?:app[- ]?)?password\s+to\s+(\S.+)$",
+            t,
+            re.I,
+        )
+        if m:
+            key = self._capture_secret(
+                r"\bset\s+gmail\s+(?:app[- ]?)?password\s+to\s+(\S.+)$",
+                m.group(1),
+            )
+            self.settings.gmail_app_password = key
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                "Gmail password saved to the vault. Say clear email to empty the inbox.",
+            )
 
         m = re.search(
             r"\bset\s+icloud\s+(?:mail\s+)?(?:e-?mail|address)\s+to\s+(\S+@\S+)\s*$",
@@ -4202,26 +6493,72 @@ class Brain:
                 "Buffer setup is on screen. Set an access token, then say buffer status.",
             )
 
-        if re.search(r"\b(link|connect|setup)\s+gmail\b|\bgmail\s+setup\b", t):
+        if re.search(
+            r"\b(link|connect|setup)\s+gmail\b|\bgmail\s+setup\b|\bsetup\s+gmail\s+oauth\b",
+            t,
+        ):
+            from jarvis.core.gmail_oauth import (
+                GMAIL_REDIRECT_URI,
+                GMAIL_SETUP_STEPS,
+                has_gmail_oauth_client,
+                run_gmail_oauth_loopback,
+            )
+
+            cid = (getattr(cloud, "gmail_client_id", "") or "").strip() or (
+                getattr(self.settings, "gmail_client_id", "") or ""
+            ).strip()
+            secret = (getattr(cloud, "gmail_client_secret", "") or "").strip() or (
+                getattr(self.settings, "gmail_client_secret", "") or ""
+            ).strip()
+            if has_gmail_oauth_client() or (cid and secret):
+                self._emit(
+                    "artifact",
+                    {
+                        "title": "GMAIL · OAUTH",
+                        "text": (
+                            "Opening Google consent in your browser.\n"
+                            f"Loopback: {GMAIL_REDIRECT_URI}\n"
+                            "Approve gmail.modify — Jarvis will vault tokens automatically.\n"
+                        ),
+                    },
+                )
+                try:
+                    result = run_gmail_oauth_loopback(cid, secret, timeout_sec=180.0)
+                except Exception as e:
+                    result = {"ok": False, "error": str(e)[:160]}
+                if result.get("ok"):
+                    self._refresh_cloud_tokens()
+                    try:
+                        self.settings.save()
+                    except Exception:
+                        pass
+                    has_rt = "with refresh" if result.get("has_refresh") else "access only"
+                    return self._flavor(
+                        "ok",
+                        f"Gmail linked ({has_rt}). Access token will auto-renew. "
+                        "Say gmail status or gmail inbox.",
+                    )
+                return self._flavor(
+                    "error",
+                    f"Gmail OAuth failed: {result.get('error') or 'unknown'}. "
+                    "Say link gmail again, or check client id/secret.",
+                )
+
             self._emit(
                 "artifact",
                 {
-                    "title": "GMAIL · LINK",
-                    "text": (
-                        "Preferred: Connect Gmail MCP in Cursor (OAuth).\n"
-                        "For Jarvis voice, paste a short-lived OAuth access token:\n"
-                        "  set gmail token to ya29.…\n"
-                        "Then: gmail inbox · gmail status\n"
-                    ),
+                    "title": "GMAIL · LINK (OAuth Desktop)",
+                    "text": GMAIL_SETUP_STEPS,
                 },
             )
             try:
-                webbrowser.open("https://mail.google.com")
+                webbrowser.open("https://console.cloud.google.com/apis/library/gmail.googleapis.com")
             except Exception:
                 pass
             return self._flavor(
                 "ok",
-                "Gmail setup is on screen. Prefer Cursor OAuth; or set gmail token for Jarvis voice.",
+                "Gmail setup is on screen. Create a Desktop OAuth client, then "
+                "set gmail client id and set gmail client secret, then say link gmail again.",
             )
 
         if re.search(
@@ -4269,10 +6606,400 @@ class Brain:
             return self._flavor("ok", cloud.buffer_channels())
 
         if re.search(r"\bgmail\s+status\b", t):
-            return self._flavor("ok", cloud.gmail_status())
+            cloud_st = cloud.gmail_status()
+            try:
+                from jarvis.core.gmail_imap import GmailImap
+
+                imap = GmailImap(
+                    getattr(self.settings, "gmail_email", "") or "",
+                    getattr(self.settings, "gmail_app_password", "") or "",
+                )
+                if imap.configured():
+                    return self._flavor("ok", f"{cloud_st} · {imap.status()}")
+            except Exception:
+                pass
+            return self._flavor("ok", cloud_st)
         if re.search(r"\b(gmail\s+inbox|check\s+(my\s+)?(email|inbox|gmail))\b", t):
             return self._flavor("ok", cloud.gmail_inbox())
 
+        # Clear / empty Gmail inbox — live feed + real archive/trash
+        if re.search(
+            r"\b(clear\s+(my\s+)?(email|emails|mail|inbox|gmail)|"
+            r"empty\s+(my\s+)?(email|emails|mail|inbox|gmail)|"
+            r"gmail\s+clear|inbox\s+zero|zero\s+(my\s+)?inbox|"
+            r"delete\s+all\s+(my\s+)?(email|emails|mail)|"
+            r"trash\s+all\s+(my\s+)?(email|emails|mail|inbox))\b",
+            t,
+        ):
+            has_oauth = bool(getattr(cloud, "gmail_access_token", ""))
+            has_imap = bool(
+                (getattr(self.settings, "gmail_email", "") or "").strip()
+                and (getattr(self.settings, "gmail_app_password", "") or "").strip()
+            )
+            if not has_oauth and not has_imap:
+                return self._flavor(
+                    "error",
+                    "Gmail not linked for clear. Say link gmail, or: "
+                    "set gmail email to you@gmail.com and set gmail app password to …",
+                )
+            mode = "trash" if re.search(r"\b(trash|delete\s+all)\b", t) else "archive"
+            return self._flavor("ok", self._start_gmail_clear(mode=mode))
+
+        return None
+
+    def _start_gmail_clear(self, *, mode: str = "archive") -> str:
+        """Run Gmail clear on a worker thread with live HUD / tools feed."""
+        cloud = getattr(self, "cloud", None)
+
+        log_lines: list[str] = [
+            f"CLEAR EMAIL · mode={mode}",
+            "Live feed — watching Jarvis clear your inbox…",
+            "",
+        ]
+
+        def _paint() -> None:
+            body = "\n".join(log_lines[-80:])
+            self._emit(
+                "artifact",
+                {"title": "CLEAR EMAIL · LIVE", "body": body[:6000], "text": body[:6000]},
+            )
+            try:
+                self._emit("feed", self.feed.lines_for_ui(18))
+            except Exception:
+                pass
+
+        def _on_event(kind: str, text: str, meta: dict | None = None) -> None:
+            line = f"[{(kind or 'info').upper()}] {text}"
+            log_lines.append(line)
+            try:
+                self.feed.push("gmail", text[:200], meta={"phase": kind, **(meta or {})})
+            except Exception:
+                pass
+            try:
+                self._emit("hud_alert", text[:80])
+                self._emit("speak_ui", f"GMAIL › {text[:140]}")
+            except Exception:
+                pass
+            _paint()
+
+        def _job() -> None:
+            try:
+                try:
+                    self._emit("show_tools", True)
+                except Exception:
+                    pass
+                try:
+                    self._emit("show_ops", True)
+                except Exception:
+                    pass
+                _on_event("start", "Engaging Gmail clear protocol…")
+                # Ensure vaulted OAuth token is on the live cloud object
+                try:
+                    self._refresh_cloud_tokens()
+                except Exception:
+                    pass
+                result: dict = {}
+                # 1) OAuth API when token present
+                if cloud and getattr(cloud, "gmail_access_token", ""):
+                    try:
+                        result = cloud.gmail_clear_inbox(
+                            mode=mode, max_total=2000, on_event=_on_event
+                        )
+                        if result.get("ok") or int(result.get("cleared") or 0) > 0:
+                            pass
+                        else:
+                            raise RuntimeError(result.get("summary") or "OAuth clear incomplete")
+                    except Exception as e:
+                        _on_event("warn", f"OAuth clear failed — trying IMAP… ({e})"[:160])
+                        result = {}
+                # 2) IMAP fallback (email + app password)
+                if not result.get("ok"):
+                    from jarvis.core.gmail_imap import GmailImap
+
+                    imap = GmailImap(
+                        getattr(self.settings, "gmail_email", "") or "",
+                        getattr(self.settings, "gmail_app_password", "") or "",
+                    )
+                    if not imap.configured():
+                        raise RuntimeError(
+                            "No Gmail IMAP credentials. Say set gmail email / "
+                            "set gmail app password, then clear email again."
+                        )
+                    result = imap.clear_inbox(mode=mode, on_event=_on_event)
+
+                summary = result.get("summary") or (
+                    f"Cleared {result.get('cleared', 0)} · remaining {result.get('remaining', '?')}"
+                )
+                self._emit(
+                    "artifact",
+                    {
+                        "title": "CLEAR EMAIL · DONE",
+                        "body": "\n".join(log_lines[-100:]) + f"\n\n{summary}",
+                    },
+                )
+                self.say(summary[:280])
+            except Exception as e:
+                err = str(e)
+                _on_event("error", err[:200])
+                hint = ""
+                if "403" in err or "Insufficient" in err or "insufficient" in err.lower():
+                    hint = (
+                        " Need gmail.modify OAuth or a Google App Password for IMAP."
+                    )
+                self.say(f"Clear email failed: {err[:160]}.{hint}")
+
+        threading.Thread(target=_job, daemon=True, name="gmail-clear").start()
+        return (
+            "Clearing Gmail now — live feed is on screen. "
+            + ("Trashing mail." if mode == "trash" else "Archiving out of inbox so Primary is empty.")
+        )
+
+    def _try_auto_loop_cmd(self, t: str) -> str | None:
+        """Plan/Do/Check autonomous loops — walk away while it works."""
+        if not t:
+            return None
+        engine = getattr(self, "auto_loop", None)
+
+        if re.search(r"\b(loop status|auto loop status|loops status)\b", t):
+            if engine is None:
+                return self._flavor("error", "Auto-loop engine offline.")
+            return self._flavor("ok", engine.status_line())
+
+        if re.search(r"\b(stop (all )?loops?|cancel loop|halt loop)\b", t):
+            if engine is None:
+                return self._flavor("error", "No loop engine.")
+            m = re.search(r"\bstop loop\s+([a-f0-9]{6,10})\b", t)
+            lid = m.group(1) if m else ""
+            return self._flavor("ok", engine.stop(lid))
+
+        m = re.search(
+            r"\bloop limits?\s+(\d+)\s+rounds?\s+(\d+)\s*(?:min|minutes?)?\b",
+            t,
+        )
+        if m:
+            self.settings.auto_loop_max_rounds = int(m.group(1))
+            self.settings.auto_loop_max_minutes = float(m.group(2))
+            try:
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor(
+                "ok",
+                f"Loop limits set — {m.group(1)} rounds / {m.group(2)} minutes. "
+                "Done still requires verification.",
+            )
+
+        m = re.search(
+            r"\b(?:start |run |begin )?(?:an? )?(?:auto )?loop\s+(.+)$",
+            t,
+            re.I,
+        )
+        if not m:
+            m = re.search(
+                r"\b(?:work while i sleep|autonomous loop|plan do check)\s*(.*)$",
+                t,
+                re.I,
+            )
+        if m is None:
+            return None
+        # Avoid stealing unrelated "loop" words
+        if not re.search(
+            r"\b(start loop|run loop|auto loop|begin loop|work while i sleep|"
+            r"plan do check|autonomous loop)\b",
+            t,
+        ) and not t.strip().lower().startswith("loop "):
+            return None
+        if engine is None:
+            return self._flavor("error", "Auto-loop engine offline.")
+        goal = (m.group(1) or "").strip(" .,!?")
+        if not goal or goal.lower() in ("status", "limits", "stop"):
+            return None
+        # Strip leading verbs already matched
+        goal = re.sub(
+            r"^(?:for me\s+|please\s+|that\s+)?", "", goal, flags=re.I
+        ).strip()
+        msg = engine.start(goal)
+        self.feed.push("loop", goal[:100])
+        self._emit(
+            "artifact",
+            {
+                "title": "AUTO LOOP ARMED",
+                "body": f"{msg}\n\nCycle: PLAN → DO → CHECK → REPEAT\n"
+                "Fake 'done' claims are rejected without evidence.",
+            },
+        )
+        return self._flavor("ok", msg)
+
+    def _try_work_crew_cmd(self, t: str) -> str | None:
+        """Manager + research + market work agents."""
+        if not t:
+            return None
+        wc = getattr(self, "work_crew", None)
+
+        # Soft refresh — agents + sources + optional HUD reload
+        if re.search(
+            r"\b(refresh agents|reload agents|refresh (work )?crew|"
+            r"refresh sources|agent refresh)\b",
+            t,
+        ):
+            notes: list[str] = []
+            crew = getattr(self, "crew", None)
+            if crew is not None and hasattr(crew, "refresh"):
+                try:
+                    notes.append(crew.refresh())
+                except Exception as e:
+                    notes.append(f"crew: {e}")
+            if wc is not None and hasattr(wc, "refresh"):
+                try:
+                    notes.append(wc.refresh())
+                except Exception as e:
+                    notes.append(f"work: {e}")
+            try:
+                from jarvis.config import Settings
+
+                fresh = Settings.load()
+                for key in (
+                    "tts_rate",
+                    "tts_pitch",
+                    "tts_volume",
+                    "tts_instant_ack",
+                    "tts_chunk_sentences",
+                    "tts_voice",
+                    "auto_loop_max_rounds",
+                    "auto_loop_max_minutes",
+                    "prefer_claude_cli",
+                ):
+                    if hasattr(fresh, key):
+                        setattr(self.settings, key, getattr(fresh, key))
+                self.voice.rate = getattr(self.settings, "tts_rate", "+0%")
+                self.voice.pitch = getattr(self.settings, "tts_pitch", "-2Hz")
+                self.voice.volume = getattr(self.settings, "tts_volume", "+0%")
+                self.voice.voice = getattr(self.settings, "tts_voice", self.voice.voice)
+                self.voice.chunk_sentences = bool(
+                    getattr(self.settings, "tts_chunk_sentences", True)
+                )
+                notes.append("settings + voice refreshed")
+            except Exception:
+                pass
+            # Soft-reload HUD so new Python modules load
+            if re.search(r"\b(reload|soft.?reload|full refresh)\b", t):
+                try:
+                    from jarvis.core.instance import request_reload
+
+                    request_reload()
+                    notes.append("HUD soft-reload requested")
+                except Exception as e:
+                    notes.append(f"reload: {e}")
+            msg = " · ".join(notes) if notes else "Nothing to refresh."
+            self.feed.push("agents", msg[:160])
+            return self._flavor("ok", msg)
+
+        if re.search(r"\b(soft.?reload|reload (the )?hud|reload jarvis)\b", t) and not re.search(
+            r"\breload (the )?core\b", t
+        ):
+            try:
+                from jarvis.core.instance import request_reload
+
+                request_reload()
+            except Exception as e:
+                return self._flavor("error", f"Reload failed: {e}")
+            return self._flavor("ok", "Soft-reload queued — back in a moment.")
+
+        if re.search(r"\b(open agent ops|open work (crew )?dashboard|agent ops dashboard)\b", t):
+            from pathlib import Path
+            import webbrowser
+
+            path = Path(__file__).resolve().parent / "data" / "agent_ops_dashboard.html"
+            try:
+                webbrowser.open(path.resolve().as_uri())
+            except Exception as e:
+                return self._flavor("error", f"Could not open Agent Ops: {e}")
+            return self._flavor("ok", "Opening Agent Ops tile dashboard.")
+
+        if re.search(r"\b(claude cli status|anthropic cli status)\b", t):
+            from jarvis.core.anthropic_cli import status as cli_status
+
+            return self._flavor("ok", cli_status())
+
+        if wc is None:
+            return None
+
+        if re.search(r"\b(work crew|agent 5|work system)\s+status\b", t) or re.fullmatch(
+            r"work crew status", t.strip()
+        ):
+            return self._flavor("ok", wc.status())
+
+        m = re.search(
+            r"\b(?:ask|run)\s+(?:the\s+)?"
+            r"(manager|research(?:\s+agent)?|scholar|market(?:\s+agent)?|"
+            r"stitch|etsy|reel|tiktok|flip|ebay|ledger|stock|trader|muse|music)"
+            r"(?:\s+agent)?\s+(.+)$",
+            t,
+            re.I,
+        )
+        if m:
+            agent = m.group(1)
+            brief = m.group(2).strip()
+            self.feed.push("work", f"{agent}: {brief[:80]}")
+
+            def _job(a=agent, b=brief) -> str:
+                try:
+                    return wc.run_agent(a, b)
+                except Exception as e:
+                    return f"Work agent failed: {e}"
+
+            tid = self.tasks.submit(f"work:{agent}", _job) if getattr(self, "tasks", None) else None
+            if tid:
+                # Also run sync for snappy HUD when CLI/LLM is fast — prefer async
+                def _done() -> None:
+                    try:
+                        out = _job()
+                        self._emit(
+                            "artifact",
+                            {"title": f"WORK · {agent.upper()}", "body": out[:5000]},
+                        )
+                        self.say(out[:280])
+                    except Exception as e:
+                        self.say(f"Work agent error: {e}")
+
+                threading.Thread(target=_done, daemon=True, name=f"work-{agent}").start()
+                return self._flavor(
+                    "ok",
+                    f"{agent} engaged on background task {tid}. Watch Agent Ops for the outcome stream.",
+                )
+            out = _job()
+            self._emit("artifact", {"title": f"WORK · {agent.upper()}", "body": out[:5000]})
+            return self._flavor("ok", out[:900])
+
+        m = re.search(
+            r"\b(?:work crew|agent 5|work system)\s+(?:run|go|start)\s+(.+)$",
+            t,
+            re.I,
+        )
+        if not m:
+            m = re.search(r"\b(?:start work crew|run work crew)\s*(.*)$", t, re.I)
+        if m is not None and (
+            "work crew" in t or "agent 5" in t or "work system" in t or t.startswith("start work")
+        ):
+            brief = (m.group(1) or "").strip() or "Invent a profitable creative outcome stream for today."
+            self.feed.push("work", f"MANAGER dispatch: {brief[:80]}")
+
+            def _dispatch(b=brief) -> None:
+                try:
+                    out = wc.dispatch(b)
+                    self._emit(
+                        "artifact",
+                        {"title": "WORK CREW · OUTCOME STREAM", "body": out[:6000]},
+                    )
+                    self.say(out[:320])
+                except Exception as e:
+                    self.say(f"Work crew failed: {e}")
+
+            threading.Thread(target=_dispatch, daemon=True, name="work-dispatch").start()
+            return self._flavor(
+                "ok",
+                "Manager is live — Research and market agents spinning up an outcome stream.",
+            )
         return None
 
     def _try_crew_cmd(self, t: str) -> str | None:
@@ -4450,6 +7177,295 @@ class Brain:
         return self._flavor(
             "ok", "The crew is on it — VECTOR is routing your request now."
         )
+
+    def _try_systems_v2_cmd(self, t: str) -> str | None:
+        """AI Systems v2 — coding verify, cloud agents, scrape, RAG."""
+        if not t:
+            return None
+        if not re.search(
+            r"\b(systems?(?:\s+v2)?|a\.?i\.?\s*systems?|swe[- ]?bench|"
+            r"cloud\s+agent|langgraph|openai\s+agents?|mistweb|pydad|"
+            r"agno|type[- ]?c\s+scrape|llama\s*index|tick\s+scrape|"
+            r"rag\s+(?:ingest|ask|query)|sandbox\s+exec)\b",
+            t,
+            re.I,
+        ):
+            if not re.search(
+                r"\b((?:mistweb\s+)?(?:scrape|aggregate)|tick\s+(?:add|list|start|stop)|"
+                r"verify\s+(?:this\s+)?(?:code|patch|tests?))\b",
+                t,
+                re.I,
+            ):
+                return None
+
+        sysv = getattr(self, "systems_v2", None)
+        if sysv is None:
+            if re.search(r"\b(systems?(?:\s+v2)?|a\.?i\.?\s*systems?)\b", t, re.I):
+                self._boot_heavy_agents()
+                return self._flavor(
+                    "ok",
+                    "AI Systems v2 is booting — say 'systems status' in a moment.",
+                )
+            return None
+
+        if re.search(
+            r"\b(systems?(?:\s+v2)?\s+status|a\.?i\.?\s*systems?\s+status|"
+            r"systems?\s+probe)\b",
+            t,
+            re.I,
+        ) or re.fullmatch(r"systems?(?:\s+v2)?", t.strip(), re.I):
+            return self._flavor("ok", sysv.status())
+
+        if re.search(
+            r"\b(upgrade\s+systems?|systems?\s+upgrade|engage\s+systems?\s+v2|"
+            r"enable\s+a\.?i\.?\s*systems?)\b",
+            t,
+            re.I,
+        ):
+            return self._flavor("ok", sysv.upgrade_message())
+
+        m = re.search(r"\b(?:mistweb\s+)?(?:scrape|aggregate)\s+(.+)$", t, re.I)
+        if m:
+            q = m.group(1).strip(" .,!?")
+            self.feed.push("mistweb", q[:80])
+
+            def _scrape(query=q) -> None:
+                try:
+                    out = sysv.mist_scrape(query)
+                    self._emit(
+                        "artifact",
+                        {"title": "MISTWEB AGGREGATION", "body": out[:6000]},
+                    )
+                    self.say(out[:280])
+                except Exception as e:
+                    self.say(f"Mistweb failed: {e}")
+
+            threading.Thread(target=_scrape, daemon=True, name="mistweb").start()
+            return self._flavor("ok", f"Mistweb scraping: {q[:80]}")
+
+        m = re.search(r"\b(?:agno|type[- ]?c)\s+(?:scrape\s+)?(.+)$", t, re.I)
+        if m and not re.search(r"\b(status|workers)\b", t, re.I):
+            raw = m.group(1).strip()
+            queries = [x.strip() for x in re.split(r"[;|]| and ", raw) if x.strip()]
+
+            def _agno(qs=queries) -> None:
+                try:
+                    results = sysv.agno.scrape(qs)
+                    items = sysv.agno.flatten(results)
+                    blob = sysv.mistweb.aggregate_text(items)
+                    self._emit(
+                        "artifact",
+                        {
+                            "title": "AGNO TYPE-C SCRAPE",
+                            "body": f"{len(results)} workers · {len(items)} items\n\n{blob[:5000]}",
+                        },
+                    )
+                    self.say(f"Type-C scrape done — {len(items)} items.")
+                except Exception as e:
+                    self.say(f"Agno scrape failed: {e}")
+
+            threading.Thread(target=_agno, daemon=True, name="agno-typec").start()
+            return self._flavor(
+                "ok",
+                f"Agno Type-C workers on {len(queries)} quer{'y' if len(queries) == 1 else 'ies'}.",
+            )
+
+        if re.search(r"\btick\s+(?:list|status|jobs)\b", t, re.I):
+            jobs = sysv.mistweb.tick_list()
+            if not jobs:
+                return self._flavor(
+                    "ok",
+                    "No Tick scrape jobs. Say 'tick add <query> every 60 minutes'.",
+                )
+            lines = [
+                f"{j.job_id}: {j.query} every {int(j.interval_s)}s "
+                f"({'on' if j.enabled else 'off'}) last={j.last_count}"
+                for j in jobs
+            ]
+            return self._flavor("ok", "Tick jobs:\n" + "\n".join(lines))
+
+        m = re.search(
+            r"\btick\s+add\s+(.+?)(?:\s+every\s+(\d+)\s*(m|min|minutes|h|hr|hours|s|sec|seconds)?)?$",
+            t,
+            re.I,
+        )
+        if m:
+            q = m.group(1).strip(" .,!?")
+            n = int(m.group(2) or 60)
+            unit = (m.group(3) or "min").lower()
+            mult = 60.0
+            if unit.startswith("h"):
+                mult = 3600.0
+            elif unit.startswith("s"):
+                mult = 1.0
+            interval = max(60.0, n * mult)
+            job = sysv.mistweb.tick_add(q, interval_s=interval)
+            return self._flavor(
+                "ok",
+                f"Tick job {job.job_id} — re-scrape '{q}' every {int(interval)}s.",
+            )
+
+        if re.search(r"\btick\s+start\b", t, re.I):
+            sysv.mistweb.tick_start()
+            return self._flavor("ok", "Tick scrape scheduler started.")
+        if re.search(r"\btick\s+stop\b", t, re.I):
+            sysv.mistweb.tick_stop()
+            return self._flavor("ok", "Tick scrape scheduler stopped.")
+
+        m = re.search(r"\bpydad\s+(?:extract\s+)?(.+)$", t, re.I)
+        if m:
+            text = m.group(1).strip()
+            r = sysv.pydad.extract(text)
+            body = (
+                f"engine={r.engine}\n{r.summary}\n"
+                f"tags: {', '.join(r.tags)}\n"
+                f"entities: {len(r.entities)}"
+            )
+            self._emit("artifact", {"title": "PYDAD EXTRACT", "body": body[:4000]})
+            return self._flavor("ok", f"Pydad ({r.engine}): {r.summary[:200]}")
+
+        m = re.search(r"\blanggraph\s+(?:run\s+)?(.+)$", t, re.I)
+        if m:
+            goal = m.group(1).strip()
+
+            def _graph(g=goal) -> None:
+                try:
+                    out = sysv.graph_run(g)
+                    self._emit("artifact", {"title": "LANGGRAPH", "body": out[:5000]})
+                    self.say(out[:280])
+                except Exception as e:
+                    self.say(f"LangGraph failed: {e}")
+
+            threading.Thread(target=_graph, daemon=True, name="langgraph").start()
+            return self._flavor("ok", "LangGraph running.")
+
+        m = re.search(r"\b(?:openai\s+agents?|agents?\s+sdk)\s+(.+)$", t, re.I)
+        if m:
+            prompt = m.group(1).strip()
+
+            def _oa(p=prompt) -> None:
+                try:
+                    out = sysv.agents_run(p)
+                    self._emit(
+                        "artifact",
+                        {"title": "OPENAI AGENTS", "body": out[:5000]},
+                    )
+                    self.say(out[:280])
+                except Exception as e:
+                    self.say(f"Agents failed: {e}")
+
+            threading.Thread(target=_oa, daemon=True, name="openai-agents").start()
+            return self._flavor("ok", "OpenAI Agents engaged.")
+
+        m = re.search(r"\bsandbox\s+exec\s+(.+)$", t, re.I | re.S)
+        if m:
+            code = m.group(1).strip()
+            if code.startswith("```"):
+                code = code.strip("`")
+                if code.lower().startswith("python"):
+                    code = code[6:].lstrip()
+            r = sysv.openai_agents.sandbox_exec(code)
+            body = r.get("stdout") or r.get("error") or r.get("stderr") or str(r)
+            self._emit("artifact", {"title": "SANDBOX EXEC", "body": str(body)[:4000]})
+            return self._flavor("ok" if r.get("ok") else "error", str(body)[:400])
+
+        m = re.search(r"\bcloud\s+agent\s+(?:run\s+)?(.+)$", t, re.I)
+        if m and not re.search(r"\bstatus\b", t, re.I):
+            prompt = m.group(1).strip()
+
+            def _cloud(p=prompt) -> None:
+                try:
+                    out = sysv.cloud.run(p)
+                    msg = out.get("result") or out.get("error") or str(out)
+                    self._emit(
+                        "artifact",
+                        {"title": "CLOUD AGENT", "body": str(msg)[:5000]},
+                    )
+                    self.say(str(msg)[:280])
+                except Exception as e:
+                    self.say(f"Cloud agent failed: {e}")
+
+            threading.Thread(target=_cloud, daemon=True, name="cloud-agent").start()
+            return self._flavor("ok", "Cloud Agent SDK launching.")
+
+        if re.search(r"\bcloud\s+agent\s+status\b", t, re.I):
+            return self._flavor("ok", sysv.cloud.status())
+
+        if re.search(r"\bswe[- ]?bench\s+(?:status|verify\s+status)\b", t, re.I):
+            ok, detail = sysv.swe.probe()
+            return self._flavor(
+                "ok",
+                f"SWE-bench Verify: {'ready' if ok else 'off'} — {detail}",
+            )
+
+        if re.search(
+            r"\b(swe[- ]?bench|verify\s+(?:this\s+)?(?:code|patch|tests?))\b",
+            t,
+            re.I,
+        ):
+            m = re.search(
+                r"\b(?:swe[- ]?bench\s+)?verify\s+(?:this\s+)?(?:code|patch|tests?)?\s*(.*)$",
+                t,
+                re.I | re.S,
+            )
+            payload = (m.group(1) if m else "").strip()
+            code, test_code = payload, None
+            if "```" in payload:
+                blocks = re.findall(r"```(?:python)?\s*([\s\S]*?)```", payload)
+                if len(blocks) >= 2:
+                    code, test_code = blocks[0], blocks[1]
+                elif blocks:
+                    code = blocks[0]
+            if not code:
+                return self._flavor(
+                    "clarify",
+                    "Give code to verify, or: swe-bench verify with two python fences "
+                    "(solution + tests).",
+                )
+
+            def _verify(c=code, tc=test_code) -> None:
+                try:
+                    msg = sysv.swe_verify_code(c, tc)
+                    self._emit("artifact", {"title": "SWE-BENCH VERIFY", "body": msg})
+                    self.say(msg)
+                except Exception as e:
+                    self.say(f"Verify failed: {e}")
+
+            threading.Thread(target=_verify, daemon=True, name="swe-verify").start()
+            return self._flavor("ok", "SWE-bench verify running in sandbox.")
+
+        m = re.search(r"\brag\s+ingest\s+(.+)$", t, re.I | re.S)
+        if m:
+            text = m.group(1).strip()
+            did = sysv.rag.ingest(text)
+            return self._flavor("ok", f"LlamaIndex RAG ingested doc {did}.")
+
+        m = re.search(r"\brag\s+(?:ask|query)\s+(.+)$", t, re.I)
+        if m:
+            q = m.group(1).strip()
+
+            def _rag(question=q) -> None:
+                try:
+                    out = sysv.rag_ask(question)
+                    self._emit(
+                        "artifact",
+                        {"title": "LLAMAINDEX RAG", "body": out[:5000]},
+                    )
+                    self.say(out[:280])
+                except Exception as e:
+                    self.say(f"RAG failed: {e}")
+
+            threading.Thread(target=_rag, daemon=True, name="llama-rag").start()
+            return self._flavor("ok", "Querying data-grounded RAG.")
+
+        if re.search(
+            r"\b(llama\s*index|mistweb|pydad|agno|langgraph)\s+status\b",
+            t,
+            re.I,
+        ):
+            return self._flavor("ok", sysv.status())
+
+        return None
 
     def _try_manus_cmd(self, t: str) -> str | None:
         """Return a reply if this is a Manus AI intent, else None."""
@@ -5280,6 +8296,41 @@ class Brain:
             print(f"[doorbell] route: {e}")
 
         try:
+            snap_reply = self._try_snapchat_cmd(t)
+            if snap_reply is not None:
+                return snap_reply
+        except Exception as e:
+            print(f"[snapchat] route: {e}")
+
+        try:
+            rem_reply = self._try_reminder_cmd(t)
+            if rem_reply is not None:
+                return rem_reply
+        except Exception as e:
+            print(f"[reminders] route: {e}")
+
+        try:
+            home_reply = self._try_home_ops_cmd(t)
+            if home_reply is not None:
+                return home_reply
+        except Exception as e:
+            print(f"[home-ops] route: {e}")
+
+        try:
+            vc_reply = self._try_voice_clone_cmd(t)
+            if vc_reply is not None:
+                return vc_reply
+        except Exception as e:
+            print(f"[voice-clone] route: {e}")
+
+        try:
+            comms_reply = self._try_comms_live_cmd(t)
+            if comms_reply is not None:
+                return comms_reply
+        except Exception as e:
+            print(f"[comms] route: {e}")
+
+        try:
             auto_reply = self._try_autonomy_cmd(t)
             if auto_reply is not None:
                 return auto_reply
@@ -5329,6 +8380,30 @@ class Brain:
                 return manus_reply
         except Exception:
             pass
+
+        # AI Systems v2 — SWE / Cloud / LangGraph / Mistweb / RAG
+        try:
+            systems_reply = self._try_systems_v2_cmd(t)
+            if systems_reply is not None:
+                return systems_reply
+        except Exception as e:
+            print(f"[systems-v2] route: {e}")
+
+        # Work Crew — Manager + Research + market outcome agents
+        try:
+            work_reply = self._try_work_crew_cmd(t)
+            if work_reply is not None:
+                return work_reply
+        except Exception as e:
+            print(f"[work-crew] route: {e}")
+
+        # Autonomous Plan/Do/Check loops
+        try:
+            loop_reply = self._try_auto_loop_cmd(t)
+            if loop_reply is not None:
+                return loop_reply
+        except Exception as e:
+            print(f"[auto-loop] route: {e}")
 
         # Agent crew — six-agent pipeline (before Hub)
         try:
@@ -5490,6 +8565,12 @@ class Brain:
                 r"cinematic (morning )?brief|morning status)\b",
                 t,
             ):
+                # YouTube + research tabs first (non-blocking), then brief
+                tabs_note = ""
+                try:
+                    tabs_note = self._morning_launch_tabs()
+                except Exception as e:
+                    print(f"[morning] tabs: {e}")
                 if re.search(r"\b(cinematic|morning status)\b", t):
                     try:
                         cinematic = getattr(self, "advanced", None)
@@ -5497,6 +8578,8 @@ class Brain:
                             spoken = cinematic.morning.run()
                             self._emit("hud_alert", "Cinematic morning briefing")
                             self.feed.push("brief", spoken[:180])
+                            if tabs_note:
+                                spoken = f"{spoken} {tabs_note}".strip()
                             return self._flavor("ok", spoken)
                     except Exception as e:
                         print(f"[advanced_ai] morning: {e}")
@@ -5521,6 +8604,13 @@ class Brain:
                     spoken = self.brief.morning_standup(
                         weather_line=weather_line, open_inbox=False
                     )
+                greet = f"Good morning, {self.settings.user_name}."
+                if spoken and not spoken.lower().startswith("good morning"):
+                    spoken = f"{greet} {spoken}"
+                elif not spoken:
+                    spoken = greet
+                if tabs_note:
+                    spoken = f"{spoken} {tabs_note}".strip()
                 try:
                     self.ha.on_jarvis_state("brief")
                 except Exception:
@@ -5730,20 +8820,27 @@ class Brain:
             self.habits.log("site_build", (brief or "autonomous")[:40])
             return self._flavor("ok", self._run_site_build(brief=brief))
 
+        # STUDIO strip — Written / Clawed / Video / Cling / Research / Perplexity /
+        # Design / Figma / Audio / 11 Labs / Images / Mid-Journey / Automation / N8N
+        studio = self._studio_command(t)
+        if studio is not None:
+            return studio
+
         # Autonomous vibe coding / AI agent development
         if re.search(
             r"\b((start |do |run )?(autonomous )?(ai )?agent (development|coding|dev)|"
             r"(start |do |run )?vibe( coding|ing| code)?|"
             r"code vibe|"
-            r"(build|make|create|generate|ship)\s+(me )?(an? )?(app|project|game|video|reel|trailer|tool|cli)|"
-            r"make (me )?(a )?(game|video|reel|trailer)|"
+            r"(build|make|create|generate|ship)\s+(me )?(an? )?(app|project|game|video|reel|trailer|tool|cli|3d|animation)|"
+            r"make (me )?(a )?(game|video|reel|trailer|3d( app)?|animation)|"
+            r"(start |make )(a )?3d|"
             r"autonomous (coding|development|dev))\b",
             t,
         ):
             brief = ""
             m3 = re.search(
                 r"(?:vibe(?: coding|ing| code)?|agent (?:development|coding|dev)|"
-                r"(?:app|project|game|video|reel|trailer|tool|cli))\s+(?:for|called|named)?\s*(.+)$",
+                r"(?:app|project|game|video|reel|trailer|tool|cli|3d|animation))\s+(?:for|called|named)?\s*(.+)$",
                 t,
             )
             if m3:
@@ -5752,6 +8849,10 @@ class Brain:
                 brief = "browser game with score pause restart and difficulty"
             if re.search(r"\bmake (me )?(a )?(video|reel|trailer)\b", t) and not brief:
                 brief = "video slideshow reel with captions play pause and export"
+            if re.search(r"\b(3d|three\.?js|webgl)\b", t) and not brief:
+                brief = "3d three.js orbit scene with lighting particles and hud controls"
+            if re.search(r"\b(animation|gsap|motion graphics)\b", t) and not brief:
+                brief = "gsap motion graphics timeline with kinetic type and export frame"
             brief = re.sub(
                 r"^(called|named|for|me|a|an|the)\s+", "", brief, flags=re.I
             ).strip()
@@ -5771,6 +8872,11 @@ class Brain:
                         )
                 except Exception as e:
                     return self._flavor("error", f"Publish failed: {e}")
+                preview_url = ""
+                try:
+                    preview_url = self.vibe.ensure_preview_url(path) or ""
+                except Exception:
+                    preview_url = str((self.vibe.last_meta or {}).get("preview_url") or "")
                 self._emit(
                     "code_ui",
                     {
@@ -5779,6 +8885,8 @@ class Brain:
                         "engine": (self.vibe.last_meta or {}).get("engine") or "",
                         "files": (self.vibe.last_meta or {}).get("files") or [],
                         "entry": (self.vibe.last_meta or {}).get("entry") or "",
+                        "preview_url": preview_url,
+                        "app_url": preview_url,
                     },
                 )
                 return self._flavor(
@@ -5787,10 +8895,61 @@ class Brain:
                 )
             return self._flavor("error", "No vibe project to publish yet.")
 
+        # Open / show preview tab + reopen last app in Build Theater
+        if re.search(
+            r"\b("
+            r"(open|show|go to|switch to)\s+(the\s+)?(app\s+)?preview(\s+tab)?|"
+            r"preview\s+tab|"
+            r"(open|show|go to|switch to)\s+(the\s+)?(working|coding|building|preview)\s+tab"
+            r")\b",
+            t,
+        ):
+            tab = "building"
+            if re.search(r"\bcoding\s+tab\b", t):
+                tab = "coding"
+            elif re.search(r"\bworking\s+tab\b", t):
+                tab = "working"
+            preview_url = ""
+            path = self.vibe.last_project
+            name = ""
+            if path and path.exists() and tab == "building":
+                try:
+                    preview_url = self.vibe.ensure_preview_url(path) or ""
+                except Exception:
+                    preview_url = str((self.vibe.last_meta or {}).get("preview_url") or "")
+                name = (self.vibe.last_meta or {}).get("name") or path.name
+                self._emit(
+                    "code_ui",
+                    {
+                        "path": str(path),
+                        "name": name,
+                        "engine": (self.vibe.last_meta or {}).get("engine") or "",
+                        "files": (self.vibe.last_meta or {}).get("files") or [],
+                        "entry": (self.vibe.last_meta or {}).get("entry") or "",
+                        "prompt": self.vibe.last_prompt or "",
+                        "preview_url": preview_url,
+                        "app_url": preview_url,
+                    },
+                )
+            self._emit("theater_tab", {"tab": tab, "preview_url": preview_url})
+            labels = {
+                "working": "Working",
+                "coding": "Coding",
+                "building": "Preview",
+            }
+            if tab == "building" and preview_url:
+                return self._flavor("ok", f"Opening {labels[tab]} — {preview_url}")
+            return self._flavor("ok", f"Switching to the {labels[tab]} tab.")
+
         if re.search(r"\b(open (the |my )?(vibe|project|code) you (built|made)|show (the )?vibe)\b", t):
             path = self.vibe.last_project
             if path and path.exists():
                 meta = self.vibe.last_meta or {}
+                preview_url = ""
+                try:
+                    preview_url = self.vibe.ensure_preview_url(path) or ""
+                except Exception:
+                    preview_url = str(meta.get("preview_url") or "")
                 self._emit(
                     "code_ui",
                     {
@@ -5800,9 +8959,16 @@ class Brain:
                         "files": meta.get("files") or [],
                         "entry": meta.get("entry") or "",
                         "prompt": self.vibe.last_prompt or "",
+                        "preview_url": preview_url,
+                        "app_url": preview_url,
                     },
                 )
-            return self._flavor("ok", self.vibe.open_last())
+                return self._flavor(
+                    "ok",
+                    f"Opening {(meta.get('name') or path.name)} in Build Theater Preview."
+                    + (f" {preview_url}" if preview_url else ""),
+                )
+            return self._flavor("error", "No vibe project yet — say start vibe coding.")
 
         if re.search(r"\b(list (vibe )?projects|what (apps|projects) did you (build|make))\b", t):
             return self._flavor("ok", self.vibe.list_projects())
@@ -5814,13 +8980,26 @@ class Brain:
         if re.search(r"\b(open (the |my )?(website|site) you built|show (the )?website)\b", t):
             path = self.sites.last_site
             if path and path.exists():
+                preview_url = ""
+                try:
+                    site_root = path.parent if path.is_file() else path
+                    preview_url = self.vibe.ensure_preview_url(site_root) or ""
+                except Exception:
+                    pass
                 self._emit(
                     "site_ui",
                     {
                         "path": str(path),
                         "brand": (self.sites.last_content or {}).get("brand") or "",
                         "prompt": self.sites.last_prompt or "",
+                        "preview_url": preview_url,
+                        "url": preview_url,
                     },
+                )
+                return self._flavor(
+                    "ok",
+                    f"Opening site preview in Build Theater."
+                    + (f" {preview_url}" if preview_url else ""),
                 )
             return self._flavor("ok", self.sites.open_last())
         if re.search(r"\b(list (my )?sites|what websites did you build)\b", t):
@@ -5901,6 +9080,83 @@ class Brain:
             self._emit("news_ui", False)
             return self._flavor("ok", "Closing the news panel.")
 
+        # Local dispatch / scanner (Broadcastify public feeds — listen only)
+        if re.search(
+            r"\b(stop (the )?(scanner|dispatch|police radio|sdr|rtl))\b",
+            t,
+        ):
+            return self._flavor("ok", self.scanner_radio.stop())
+        if re.search(r"\b(scanner status|dispatch status)\b", t):
+            return self._flavor("ok", self.scanner_radio.status())
+        if re.search(
+            r"\b((put on|play|tune|open|listen to) (the )?(local )?sdr|"
+            r"rtl[- ]?sdr|software defined radio)\b",
+            t,
+        ):
+            self.habits.log("scanner", "sdr")
+            return self._flavor("ok", self.scanner_radio.play_rtl())
+        m_scan = re.search(
+            r"\b(?:put on|play|tune|open|listen to|pull up)\s+(?:the\s+)?"
+            r"(local\s+dispatch|police\s+radio|fire\s+dispatch|ems(?:\s+dispatch)?|"
+            r"air\s+traffic(?:\s+control)?|aviation(?:\s+radio)?|scanner|"
+            r"weather\s+radio|dispatch)\b",
+            t,
+        )
+        if m_scan or re.search(
+            r"\b(local dispatch|police radio|fire scanner|scanner feed)\b", t
+        ):
+            phrase = (m_scan.group(1) if m_scan else "dispatch").lower()
+            kind = "dispatch"
+            if "police" in phrase:
+                kind = "police"
+            elif "fire" in phrase:
+                kind = "fire"
+            elif "ems" in phrase:
+                kind = "ems"
+            elif "air" in phrase or "aviation" in phrase or "atc" in phrase:
+                kind = "aviation"
+            elif "weather" in phrase:
+                kind = "weather"
+            elif "scanner" in phrase:
+                kind = "scanner"
+            self.habits.log("scanner", kind)
+            self._emit("track", f"Scanner · {kind}")
+            return self._flavor("ok", self.scanner_radio.play(kind))
+
+        # Local-only code customize (never remote public sites)
+        if re.search(
+            r"\b((change|tweak|fix|update|modify) (the )?(layout|design|css|style) "
+            r"(of )?(my |the )?(website|site|app|page|project)|"
+            r"edit (my |the )?(local )?(website|site|app|html|css)|"
+            r"customize (my |the )?(local )?(website|site|app)|"
+            r"open (my )?local (project|site|app) in (cursor|code|ide))\b",
+            t,
+        ):
+            brief = t
+            brief = re.sub(
+                r"^(jarvis[, ]*)?(please\s+)?", "", brief, flags=re.I
+            ).strip()
+            self.habits.log("local_customize", brief[:40])
+            if re.search(r"\bopen (my )?local\b", t):
+                return self._flavor("ok", self.local_code.open_ide())
+
+            def _job() -> None:
+                try:
+                    self._emit("code_ui", {"building": True, "hint": brief[:80]})
+                    msg = self.local_code.apply_layout_tweak(brief)
+                    self._emit("code_ui", False)
+                    self.say(msg)
+                except Exception as e:
+                    self._emit("code_ui", False)
+                    self.say(f"Local customize failed: {e}")
+
+            threading.Thread(target=_job, daemon=True, name="local-customize").start()
+            return self._flavor(
+                "ok",
+                "Understood — editing files on this machine only. "
+                "I will not touch live public websites.",
+            )
+
         if re.search(
             r"\b((show|put|move) (stats|ops|operations|command center|pdtester|devlog|digests?)"
             r"( on (the )?(other|second) (monitor|screen|display))?|"
@@ -5919,6 +9175,76 @@ class Brain:
                 "ok",
                 "PDTester is on your other monitor — six digests and the live feed.",
             )
+        if re.search(
+            r"\b(engage triple( monitors?)?|triple (monitor |screen )?layout|"
+            r"three monitor( layout)?|command deck layout|"
+            r"setup (my )?monitors|multi[- ]monitor( layout)?)\b",
+            t,
+        ):
+            self._emit("triple_layout", True)
+            return self._flavor(
+                "ok",
+                "Triple layout: Screen 1 control hub, Screen 2 tools stream, "
+                "Screen 3 command deck.",
+            )
+        if re.search(
+            r"\b(gaze (workspace )?(on|enable|start)|enable gaze|"
+            r"start (eye|gaze) tracking|look.?up (mode|deck))\b",
+            t,
+        ):
+            gw = getattr(self, "gaze_ws", None)
+            if gw is None:
+                return self._flavor("ok", "Gaze workspace is not loaded.")
+            try:
+                self.settings.gaze_workspace_enabled = True
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", gw.set_enabled(True))
+        if re.search(
+            r"\b(gaze (workspace )?(off|disable|stop)|disable gaze|"
+            r"stop (eye|gaze) tracking)\b",
+            t,
+        ):
+            gw = getattr(self, "gaze_ws", None)
+            if gw is None:
+                return self._flavor("ok", "Gaze workspace is not loaded.")
+            try:
+                self.settings.gaze_workspace_enabled = False
+                self.settings.save()
+            except Exception:
+                pass
+            return self._flavor("ok", gw.set_enabled(False))
+        if re.search(r"\b(gaze (workspace )?status|gaze zone)\b", t):
+            gw = getattr(self, "gaze_ws", None)
+            if gw is None:
+                return self._flavor("ok", "Gaze workspace is not loaded.")
+            return self._flavor("ok", gw.status())
+        if re.search(
+            r"\b(throw (up|to (the )?top)|move (window|app) (to )?(the )?top|"
+            r"send (to )?(the )?(deck|top (screen|monitor)))\b",
+            t,
+        ):
+            from jarvis.core.gaze_workspace import move_foreground_to_monitor
+
+            return self._flavor("ok", move_foreground_to_monitor("top"))
+        if re.search(
+            r"\b((show|open|put) (the )?tools?( (panel|stream|monitor))?|"
+            r"tools on (the )?left|screen ?2|xrw)\b",
+            t,
+        ):
+            self._emit("show_tools", True)
+            self._emit("place_tools", "left")
+            return self._flavor("ok", "Tools stream on Screen 2 — left panel.")
+        if re.search(
+            r"\b((show|open|put) (the )?(command )?deck|"
+            r"holographic (dashboard|canvas)|screen ?3|"
+            r"deck on (the )?top)\b",
+            t,
+        ):
+            self._emit("show_deck", True)
+            self._emit("place_deck", "top")
+            return self._flavor("ok", "Command deck on Screen 3 — top canvas.")
         if re.search(
             r"\b((put|move) (jarvis|hud|yourself) on (the )?(other|second) (monitor|screen|display)|"
             r"jarvis on (the )?other (monitor|screen))\b",
@@ -5948,6 +9274,15 @@ class Brain:
 
             return self._flavor("ok", displays.describe())
         if re.search(
+            r"\b(cast (to )?(the )?(tv|fire ?tv|insignia)|"
+            r"project (to )?(the )?(tv|fire ?tv|insignia)|"
+            r"mirror (to )?(the )?(tv|fire ?tv)|"
+            r"jarvis on (the )?tv|put (jarvis|hud) on (the )?tv|"
+            r"fire tv (cast|mirror|project))\b",
+            t,
+        ):
+            return self._flavor("ok", self.system.cast_to_fire_tv())
+        if re.search(
             r"\b(open (apps|things|windows) on (the )?(other|second) (monitor|screen)|"
             r"use (the )?other monitor)\b",
             t,
@@ -5976,17 +9311,35 @@ class Brain:
             self._emit("show_ops", True)
             return self._flavor("ok", packet["speak"])
 
-        # Time / date — East Coast (Philadelphia) timezone
-        if re.search(r"\b(what time|current time|tell me the time)\b", t):
+        # Time / date — local (settings tz) or remote ("what time in Cali")
+        if re.search(
+            r"\b(what time|current time|tell me the time|time is it|"
+            r"time in |what's the time|whats the time)\b",
+            t,
+        ) or re.search(
+            r"\btime (in|for|over in)\b",
+            t,
+        ):
             try:
-                if getattr(self, "live", None):
+                from jarvis.core.reminders import speak_time_in
+
+                home = getattr(self.settings, "timezone", None) or "America/New_York"
+                line = speak_time_in(t, default_tz=home)
+                return self._flavor("time", line)
+            except Exception:
+                pass
+            try:
+                if getattr(self, "live", None) and not re.search(
+                    r"\b(cali|california|pacific|london|tokyo|in )\b", t
+                ):
                     d = self.live.snapshot()
                     return self._flavor("time", f"It's {d['time_12']} on {d['date']}.")
             except Exception:
                 pass
             from zoneinfo import ZoneInfo
 
-            now = datetime.now(ZoneInfo("America/New_York"))
+            home = getattr(self.settings, "timezone", None) or "America/New_York"
+            now = datetime.now(ZoneInfo(home))
             return self._flavor(
                 "time",
                 "It's "
@@ -6005,7 +9358,8 @@ class Brain:
                 pass
             from zoneinfo import ZoneInfo
 
-            now = datetime.now(ZoneInfo("America/New_York"))
+            home = getattr(self.settings, "timezone", None) or "America/New_York"
+            now = datetime.now(ZoneInfo(home))
             return self._flavor("time", now.strftime("Today is %A, %B %d, %Y."))
 
         # Weather
@@ -6200,6 +9554,15 @@ class Brain:
             )
         m = re.search(r"\b(?:remember|remind me(?: to)?)\s+(.+)$", t)
         if m and not re.search(r"\bremember (this|that)\b", t):
+            # Timed reminders (California / at 10pm / when it turns 8) take priority
+            if re.search(
+                r"\b(at\s+\d|when\s+it|turns?\s+\d|\d{1,2}\s*(:\d{2})?\s*(a\.?m\.?|p\.?m\.?)|"
+                r"california|cali|pacific|tonight)\b",
+                t,
+            ):
+                rem = getattr(self, "reminders", None)
+                if rem is not None:
+                    return self._flavor("ok", rem.add_from_utterance(t))
             note = m.group(1).strip()
             self.habits.log("note")
             try:
@@ -6329,8 +9692,16 @@ class Brain:
         if re.search(r"\b(empty recycle|clear recycle bin)\b", t):
             try:
                 subprocess.Popen(
-                    ["powershell", "-NoProfile", "-Command", "Clear-RecycleBin -Force -ErrorAction SilentlyContinue"],
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-WindowStyle",
+                        "Hidden",
+                        "-Command",
+                        "Clear-RecycleBin -Force -ErrorAction SilentlyContinue",
+                    ],
                     shell=False,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
                 )
                 return self._flavor("ok", "Recycle Bin cleared.")
             except Exception as e:
@@ -6352,12 +9723,13 @@ class Brain:
             "put on music",
         ):
             self._emit("fetching", True)
-            self._emit("track", "Now playing")
+            self._emit("track", "Shoot to Thrill · AC/DC")
             self.habits.log("music")
-            return self._flavor("music", self.music.play_music())
+            return self._flavor("music", self.music.press_play())
         # Ignore echo of old "press play" phrasing — just start music
         if t in ("press play", "pressed play"):
-            return self._flavor("music", self.music.play_music())
+            self._emit("track", "Shoot to Thrill · AC/DC")
+            return self._flavor("music", self.music.press_play())
         if re.search(r"\b(play (my )?focus( playlist)?|focus playlist)\b", t):
             self._emit("track", "Focus playlist")
             self._emit("fetching", True)
@@ -6907,6 +10279,49 @@ class Brain:
         if re.search(r"\b(lamp status|light status|alexa lamp)\b", t):
             return self._flavor("ok", self.lamp.status())
 
+        # Keyboard / mouse RGB (OpenRGB)
+        if re.search(r"\b(rgb status|openrgb status|keyboard rgb status)\b", t):
+            return self._flavor("ok", self.rgb.status())
+        if re.search(
+            r"\b(rgb off|turn off (keyboard|mouse) (rgb|lights?)|"
+            r"(keyboard|mouse) (rgb )?off)\b",
+            t,
+        ):
+            tgt = "keyboard" if "keyboard" in t else ("mouse" if "mouse" in t else "all")
+            return self._flavor("ok", self.rgb.off(tgt))
+        if re.search(r"\b(sync rgb|rgb sync|rgb jarvis|jarvis rgb)\b", t):
+            return self._flavor("ok", self.rgb.sync_jarvis())
+        m = re.search(
+            r"\b(?:set\s+)?(?:the\s+)?(keyboard|mouse|rgb|peripherals?)\s+"
+            r"(?:(?:rgb|lights?|color|colour)\s+)?(?:to\s+)?([#\w][\w,# ]{0,40})$",
+            t,
+            re.I,
+        )
+        if m and not re.search(r"\b(shortcut|layout|language)\b", t):
+            wh = m.group(1).lower()
+            col = m.group(2).strip()
+            tgt = "all"
+            if wh == "keyboard":
+                tgt = "keyboard"
+            elif wh == "mouse":
+                tgt = "mouse"
+            return self._flavor("ok", self.rgb.set_color(col, target=tgt))
+        m = re.search(
+            r"\b(?:keyboard|mouse)\s+(?:to\s+)?(cyan|jarvis|red|blue|green|magenta|pink|"
+            r"purple|orange|gold|amber|white|warm|cool|off|arwes)\b",
+            t,
+        )
+        if m:
+            tgt = "keyboard" if "keyboard" in t else "mouse"
+            return self._flavor("ok", self.rgb.set_color(m.group(1), target=tgt))
+        m = re.search(
+            r"\brgb\s+(?:to\s+)?(cyan|jarvis|red|blue|green|magenta|pink|purple|"
+            r"orange|gold|amber|white|warm|cool|off|arwes|#[0-9a-fA-F]{6})\b",
+            t,
+        )
+        if m:
+            return self._flavor("ok", self.rgb.set_color(m.group(1), target="all"))
+
         # RLHF preference feedback
         if re.search(r"\b(rlhf status|feedback status)\b", t):
             return self._flavor("ok", self.rlhf.status())
@@ -7083,6 +10498,18 @@ class Brain:
         ):
             return self._set_performance_mode(True)
         if re.search(
+            r"\b(optimize\s+jarvis|jarvis\s+optimize|lean\s+mode|"
+            r"speed\s+up\s+jarvis|make\s+jarvis\s+faster)\b",
+            t,
+        ):
+            return self._flavor("ok", self.optimize_jarvis())
+        if re.search(
+            r"\b(upgrade everything|fix everything|make (it |everything )?better|"
+            r"upgrade (jarvis|ar|all)|optimize ar|full (upgrade|polish))\b",
+            t,
+        ):
+            return self._flavor("ok", self.upgrade_everything())
+        if re.search(
             r"\b("
             r"cancel panic|end panic|panic off|clear panic|stand down|"
             r"turn off panic|stop panic|exit panic|disable panic|"
@@ -7249,6 +10676,10 @@ class Brain:
 
         # Workspace quick setup (from suggestion chip)
         if re.search(r"\b(set up (my )?(morning )?workspace|morning setup)\b", t):
+            try:
+                self._morning_launch_tabs()
+            except Exception:
+                pass
             return self._flavor("ok", self.work.start_work())
 
         # Help
@@ -7285,21 +10716,21 @@ class Brain:
         if re.search(r"\b(help|what can you do|commands|list commands)\b", t):
             return (
                 f"At your service, {self.settings.user_name}. "
-                "Smart: quiet mode · smooth mode · desk ready · full status · summarize my day · "
-                "wake word only · always listen · suggestions off · upgrade status · upgrade check · recent errors. "
+                "Morning: good morning — greet + YouTube + research tabs. "
+                "AR: open aerospatial · cinematic ar · upgrade everything · scan room · web shooter. "
+                "Reminders: remind me at 10 pm California to … · list reminders. "
+                "Home ops: net watch · trust network · run backup · arm deadman · "
+                "space weather · iss · grab voice · list voice clones · scan processes · edge setup · translate to Spanish …. "
+                "Snap / phone: snapchat setup · test snapchat call · live comms setup · "
+                "ping my phone · setup phone link. "
+                "Smart: quiet mode · desk ready · full status · optimize jarvis · upgrade everything. "
                 "Travis: park · tactical · peer review. "
                 "Workflows: morning · night · focus · secure. "
                 "Security: enroll · intruder alerts off · secure desk. "
-                "Phone: companion · ping my phone. "
-                "Manus: ask manus · manus review. "
-                "Computer use: computer use … · browser agent … · operator … · "
-                "stop computer use · set anthropic/openai key. "
-                "Cloud: integrations status · stripe status · notion search … · "
-                "buffer channels · gmail inbox · link stripe / notion / buffer / gmail. "
-                "Agents: ask sarah · ask tom · ask admin · hub status. "
-                "Desk: camera · lock · screenshot · music · weather. "
-                "Build: site · vibe · map · news · away. "
-                "Say upgrade for hot reload. Full list stays punchy — ask for a category."
+                "Cloud: integrations status · stripe · notion · buffer · gmail. "
+                "Agents: ask sarah · ask tom · hub status. "
+                "Desk: camera · lock · music · weather. "
+                "Say upgrade for hot reload."
             )
 
         # Contextual "do that" via thought stream
@@ -7350,6 +10781,18 @@ class Brain:
                 bits.append(self.phone.status())
             except Exception:
                 pass
+        try:
+            snap = getattr(self, "snapchat", None)
+            if snap is not None:
+                bits.append(snap.status())
+        except Exception:
+            pass
+        try:
+            comms = getattr(self, "comms_live", None)
+            if comms is not None:
+                bits.append(comms.status())
+        except Exception:
+            pass
         try:
             manus = getattr(self, "manus", None)
             if manus is not None:
@@ -7406,6 +10849,38 @@ class Brain:
         if not parts:
             return "Nothing queued for today yet. Say good morning for a standup."
         return " ".join(parts)[:480]
+
+    def _morning_launch_tabs(self) -> str:
+        """Good-morning ritual: YouTube + research tabs, then click/focus them."""
+        urls = [
+            "https://www.youtube.com",
+            "https://www.perplexity.ai",
+            "https://news.google.com",
+            "https://scholar.google.com",
+            "https://www.google.com/search?q=AI+research+news+today",
+        ]
+        prefer: str | int = "primary"
+        try:
+            from jarvis.core.displays import displays
+
+            screens = displays.refresh()
+            if len(screens) > 1:
+                prefer = "secondary"
+        except Exception:
+            prefer = "primary"
+
+        def _job() -> None:
+            try:
+                from jarvis.core.displays import displays
+
+                msg = displays.open_urls(urls, prefer, activate=True)
+                self._emit("hud_alert", "Morning tabs ready")
+                self.feed.push("morning", msg)
+            except Exception as e:
+                print(f"[morning] launch: {e}")
+
+        threading.Thread(target=_job, daemon=True, name="morning-tabs").start()
+        return "Opening YouTube and research tabs now."
 
     def _desk_ready(self) -> str:
         """Light focus prep — coding lights + mic live + short status."""

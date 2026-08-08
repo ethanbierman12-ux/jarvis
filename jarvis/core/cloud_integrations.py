@@ -23,12 +23,14 @@ def _http_json(
     timeout: float = 25.0,
 ) -> dict[str, Any]:
     raw = None
+    hdrs = dict(headers or {})
     if body is not None:
         raw = json.dumps(body).encode("utf-8")
+        hdrs.setdefault("Content-Type", "application/json")
     req = urllib.request.Request(
         url,
         data=raw,
-        headers=headers or {},
+        headers=hdrs,
         method=method.upper(),
     )
     try:
@@ -50,12 +52,38 @@ def _http_json(
     return data if isinstance(data, dict) else {"data": data}
 
 
+# Re-export OAuth helpers (real Desktop client preferred over Playground)
+from jarvis.core.gmail_oauth import (  # noqa: E402
+    GMAIL_OAUTH_PLAYGROUND_CLIENT_ID,
+    GMAIL_REDIRECT_URI,
+    GMAIL_SETUP_STEPS,
+    has_gmail_oauth_client,
+    refresh_gmail_access_token,
+    run_gmail_oauth_loopback,
+    vault_refresh_gmail_access,
+)
+
+__all__ = [
+    "CloudIntegrations",
+    "GMAIL_OAUTH_PLAYGROUND_CLIENT_ID",
+    "GMAIL_REDIRECT_URI",
+    "GMAIL_SETUP_STEPS",
+    "has_gmail_oauth_client",
+    "refresh_gmail_access_token",
+    "run_gmail_oauth_loopback",
+    "vault_refresh_gmail_access",
+]
+
+
 @dataclass
 class CloudIntegrations:
     stripe_secret_key: str = ""
     notion_token: str = ""
     buffer_access_token: str = ""
     gmail_access_token: str = ""
+    gmail_refresh_token: str = ""
+    gmail_client_id: str = ""
+    gmail_client_secret: str = ""
 
     def status(self) -> str:
         bits = [
@@ -308,25 +336,94 @@ class CloudIntegrations:
             return f"Buffer channels failed: {e}"
 
     # --- Gmail ---
+    def ensure_fresh_token(self, *, force: bool = False) -> dict[str, Any]:
+        """Ensure an access_token is present; refresh when forced or token missing.
+
+        Persists the new access_token to the DPAPI vault. Never returns secrets.
+        Callers that hit HTTP 401 should retry via ``_gmail_http`` (force refresh).
+        """
+        if self.gmail_access_token and not force:
+            return {"ok": True, "refreshed": False}
+        if not self.gmail_refresh_token:
+            if self.gmail_access_token:
+                return {"ok": True, "refreshed": False}
+            return {"ok": False, "error": "missing refresh_token"}
+        if not (self.gmail_client_secret or "").strip():
+            if self.gmail_access_token:
+                return {"ok": True, "refreshed": False}
+            return {
+                "ok": False,
+                "error": "missing gmail_client_secret — say link gmail",
+            }
+        result = vault_refresh_gmail_access(
+            client_id=self.gmail_client_id,
+            client_secret=self.gmail_client_secret,
+        )
+        if result.get("ok"):
+            try:
+                from jarvis.core.secrets_vault import get_vault
+
+                vault = get_vault()
+                access = (vault.get("gmail_access_token", "") or "").strip()
+                if access:
+                    self.gmail_access_token = access
+                rt = (vault.get("gmail_refresh_token", "") or "").strip()
+                if rt:
+                    self.gmail_refresh_token = rt
+            except Exception:
+                pass
+            return {
+                "ok": True,
+                "refreshed": True,
+                "expires_in": result.get("expires_in"),
+            }
+        return {"ok": False, "error": result.get("error") or "refresh failed"}
+
+    def _gmail_http(
+        self,
+        method: str,
+        url: str,
+        *,
+        body: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Gmail REST call with one auto-refresh + retry on HTTP 401."""
+        headers = {**self._gmail_headers(), **(extra_headers or {})}
+        try:
+            return _http_json(method, url, headers=headers, body=body)
+        except RuntimeError as e:
+            err = str(e)
+            if "HTTP 401" not in err and "401" not in err[:20]:
+                raise
+            refreshed = self.ensure_fresh_token(force=True)
+            if not refreshed.get("ok"):
+                raise RuntimeError(
+                    f"Gmail auth expired and refresh failed: "
+                    f"{refreshed.get('error') or 'unknown'}"
+                ) from e
+            headers = {**self._gmail_headers(), **(extra_headers or {})}
+            return _http_json(method, url, headers=headers, body=body)
+
     def gmail_status(self) -> str:
+        self.ensure_fresh_token()
         if not self.gmail_access_token:
             return (
-                "Gmail not linked for Jarvis yet. Prefer Cursor Gmail MCP for OAuth, "
-                "or say set gmail token to a Google OAuth access token "
-                "(gmail.readonly). Then: gmail inbox."
+                "Gmail not linked for Jarvis yet. Say link gmail — create a Google "
+                "Cloud Desktop OAuth client, then set gmail client id / secret, "
+                "or paste tokens. Then: gmail inbox · clear email."
             )
         try:
-            data = _http_json(
+            data = self._gmail_http(
                 "GET",
                 "https://gmail.googleapis.com/gmail/v1/users/me/profile",
-                headers=self._gmail_headers(),
             )
             email = data.get("emailAddress") or "account"
-            return f"Gmail linked ({email})."
+            return f"Gmail linked ({email}). Say clear email to empty the inbox."
         except Exception as e:
             return f"Gmail status failed: {e}"
 
     def gmail_inbox(self, limit: int = 5) -> str:
+        self.ensure_fresh_token()
         if not self.gmail_access_token:
             return self.gmail_status()
         lim = max(1, min(10, int(limit)))
@@ -343,6 +440,263 @@ class CloudIntegrations:
         except Exception as e:
             return f"Gmail inbox failed: {e}"
 
+    def gmail_list_inbox(
+        self,
+        *,
+        max_total: int = 500,
+        on_page: Any = None,
+    ) -> list[dict[str, Any]]:
+        """Paginate every INBOX message (id + subject + from)."""
+        self.ensure_fresh_token()
+        if not self.gmail_access_token:
+            raise RuntimeError(self.gmail_status())
+        out: list[dict[str, Any]] = []
+        page: str | None = None
+        while len(out) < max_total:
+            params: dict[str, str] = {
+                "maxResults": str(min(100, max_total - len(out))),
+                "labelIds": "INBOX",
+            }
+            if page:
+                params["pageToken"] = page
+            listing = self._gmail_http(
+                "GET",
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages?"
+                + urllib.parse.urlencode(params),
+            )
+            batch = listing.get("messages") or []
+            if not batch:
+                break
+            for m in batch:
+                mid = m.get("id")
+                if not mid:
+                    continue
+                try:
+                    detail = self._gmail_http(
+                        "GET",
+                        f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{mid}"
+                        f"?format=metadata&metadataHeaders=Subject&metadataHeaders=From",
+                    )
+                    headers = {
+                        h.get("name", "").lower(): h.get("value", "")
+                        for h in ((detail.get("payload") or {}).get("headers") or [])
+                        if isinstance(h, dict)
+                    }
+                    row = {
+                        "id": mid,
+                        "subject": headers.get("subject") or "(no subject)",
+                        "from": headers.get("from") or "",
+                        "snippet": detail.get("snippet") or "",
+                    }
+                except Exception:
+                    row = {"id": mid, "subject": "(loading…)", "from": "", "snippet": ""}
+                out.append(row)
+                if on_page:
+                    try:
+                        on_page(row, len(out))
+                    except Exception:
+                        pass
+                if len(out) >= max_total:
+                    break
+            page = listing.get("nextPageToken")
+            if not page:
+                break
+        return out
+
+    def gmail_list_inbox_ids(
+        self,
+        *,
+        max_total: int = 500,
+        on_page: Any = None,
+    ) -> list[str]:
+        """Fast ID-only pagination of INBOX (no per-message metadata)."""
+        self.ensure_fresh_token()
+        if not self.gmail_access_token:
+            raise RuntimeError(self.gmail_status())
+        out: list[str] = []
+        page: str | None = None
+        while len(out) < max_total:
+            params: dict[str, str] = {
+                "maxResults": str(min(100, max_total - len(out))),
+                "labelIds": "INBOX",
+            }
+            if page:
+                params["pageToken"] = page
+            listing = self._gmail_http(
+                "GET",
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages?"
+                + urllib.parse.urlencode(params),
+            )
+            batch = listing.get("messages") or []
+            if not batch:
+                break
+            for m in batch:
+                mid = m.get("id")
+                if not mid:
+                    continue
+                out.append(mid)
+                if on_page:
+                    try:
+                        on_page(mid, len(out))
+                    except Exception:
+                        pass
+                if len(out) >= max_total:
+                    break
+            page = listing.get("nextPageToken")
+            if not page:
+                break
+        return out
+
+    def _gmail_subject(self, mid: str) -> str:
+        try:
+            detail = self._gmail_http(
+                "GET",
+                f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{mid}"
+                f"?format=metadata&metadataHeaders=Subject&metadataHeaders=From",
+            )
+            headers = {
+                h.get("name", "").lower(): h.get("value", "")
+                for h in ((detail.get("payload") or {}).get("headers") or [])
+                if isinstance(h, dict)
+            }
+            subj = headers.get("subject") or "(no subject)"
+            fr = headers.get("from") or ""
+            return f"{subj}" + (f" — {fr}" if fr else "")
+        except Exception:
+            return mid
+
+    def gmail_clear_inbox(
+        self,
+        *,
+        mode: str = "archive",
+        max_total: int = 2000,
+        on_event: Any = None,
+    ) -> dict[str, Any]:
+        """Empty the Gmail INBOX with live progress events.
+
+        mode:
+          · archive — remove INBOX (+ UNREAD) so Primary shows no mail (recoverable)
+          · trash — move to Trash
+
+        Re-scans until empty or max_total messages processed (default 2000).
+        """
+        self.ensure_fresh_token()
+        if not self.gmail_access_token:
+            raise RuntimeError(self.gmail_status())
+
+        def _evt(kind: str, text: str, **meta: Any) -> None:
+            if on_event:
+                try:
+                    on_event(kind, text, meta)
+                except Exception:
+                    pass
+
+        mode_l = (mode or "archive").strip().lower()
+        if mode_l not in ("archive", "trash"):
+            mode_l = "archive"
+
+        cleared = 0
+        errors: list[str] = []
+        chunk = 40
+        page_cap = 100
+        fatal = False
+
+        while cleared < max_total and not fatal:
+            _evt("scan", f"Scanning Gmail INBOX… ({cleared} cleared so far)")
+            ids = self.gmail_list_inbox_ids(
+                max_total=min(page_cap, max_total - cleared)
+            )
+            if not ids:
+                break
+
+            _evt(
+                "plan",
+                f"Found {len(ids)} more in inbox — clearing via {mode_l} "
+                f"(total cleared {cleared}/{max_total})…",
+            )
+
+            for i in range(0, len(ids), chunk):
+                batch = ids[i : i + chunk]
+                samples = [self._gmail_subject(mid) for mid in batch[:3]]
+                try:
+                    if mode_l == "trash":
+                        for mid in batch:
+                            label = (
+                                self._gmail_subject(mid) if mid in batch[:3] else mid
+                            )
+                            self._gmail_http(
+                                "POST",
+                                f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{mid}/trash",
+                                body={},
+                            )
+                            cleared += 1
+                            if mid in batch[:3]:
+                                _evt("trash", f"Trashed · {label}", id=mid)
+                        _evt(
+                            "trash",
+                            f"Trashed batch · {cleared} total",
+                        )
+                    else:
+                        self._gmail_http(
+                            "POST",
+                            "https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify",
+                            body={
+                                "ids": batch,
+                                "removeLabelIds": ["INBOX", "UNREAD"],
+                            },
+                            extra_headers={"Content-Type": "application/json"},
+                        )
+                        cleared += len(batch)
+                        for s in samples:
+                            _evt("archive", f"Archived · {s}")
+                        _evt(
+                            "archive",
+                            f"Archived batch · {cleared} total",
+                        )
+                except Exception as e:
+                    err = str(e)
+                    errors.append(err[:160])
+                    _evt("error", f"Batch failed: {err[:120]}")
+                    if (
+                        "403" in err
+                        or "Insufficient" in err
+                        or "insufficient" in err.lower()
+                    ):
+                        fatal = True
+                        break
+            if fatal:
+                break
+            # If we got a full page, loop to pick up more; else inbox should be done
+            if len(ids) < page_cap:
+                break
+
+        remaining = 0
+        try:
+            left = self.gmail_list_inbox_ids(max_total=5)
+            remaining = len(left)
+        except Exception:
+            try:
+                left = self.gmail_search_messages("", 5, inbox_only=True)
+                remaining = len(left)
+            except Exception:
+                pass
+
+        summary = (
+            f"Cleared {cleared} via {mode_l}. "
+            + ("Inbox now empty." if remaining == 0 else f"{remaining}+ still in inbox.")
+        )
+        if errors:
+            summary += f" Errors: {errors[0]}"
+        _evt("done", summary, cleared=cleared, remaining=remaining, mode=mode_l)
+        return {
+            "ok": remaining == 0 and not errors,
+            "cleared": cleared,
+            "remaining": remaining,
+            "mode": mode_l,
+            "errors": errors,
+            "summary": summary,
+        }
+
     def gmail_search_messages(
         self,
         query: str,
@@ -351,6 +705,7 @@ class CloudIntegrations:
         inbox_only: bool = False,
     ) -> list[dict[str, Any]]:
         """Return message dicts: id, subject, from, snippet, internalDate."""
+        self.ensure_fresh_token()
         if not self.gmail_access_token:
             raise RuntimeError(self.gmail_status())
         lim = max(1, min(40, int(limit)))
@@ -359,22 +714,20 @@ class CloudIntegrations:
             params["labelIds"] = "INBOX"
         if (query or "").strip():
             params["q"] = query.strip()
-        listing = _http_json(
+        listing = self._gmail_http(
             "GET",
             "https://gmail.googleapis.com/gmail/v1/users/me/messages?"
             + urllib.parse.urlencode(params),
-            headers=self._gmail_headers(),
         )
         out: list[dict[str, Any]] = []
         for m in listing.get("messages") or []:
             mid = m.get("id")
             if not mid:
                 continue
-            detail = _http_json(
+            detail = self._gmail_http(
                 "GET",
                 f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{mid}"
                 f"?format=metadata&metadataHeaders=Subject&metadataHeaders=From",
-                headers=self._gmail_headers(),
             )
             headers = {
                 h.get("name", "").lower(): h.get("value", "")

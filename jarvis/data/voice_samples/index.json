@@ -1,0 +1,17 @@
+{
+  "active_id": "407d32b007",
+  "engine": "auto",
+  "samples": [
+    {
+      "id": "407d32b007",
+      "name": "clone_134928",
+      "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\voice_samples\\clone_134928_684ec1.wav",
+      "seconds": 10.0,
+      "sr": 16000,
+      "source": "mic",
+      "engine": "auto",
+      "created": 1786081808.4887874,
+      "notes": "room grab + denoise"
+    }
+  ]
+}

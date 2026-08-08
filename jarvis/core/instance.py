@@ -153,30 +153,66 @@ def focus_existing_window() -> bool:
         return False
     try:
         import ctypes
+        from ctypes import wintypes
 
         user32 = ctypes.windll.user32
-        found = []
+        found: list[tuple[int, int]] = []  # (score, hwnd)
+        want_pid = jarvis_pid()
 
-        @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
-        def _enum(hwnd, _lparam):
-            if not user32.IsWindowVisible(hwnd):
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def _enum(hwnd, _lparam):  # type: ignore[misc]
+            # Include minimized windows
+            if not user32.IsWindowVisible(hwnd) and not user32.IsIconic(hwnd):
                 return True
             length = user32.GetWindowTextLengthW(hwnd)
-            if length < 4:
+            title = ""
+            if length > 0:
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                title = (buf.value or "").lower()
+
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            same_pid = want_pid > 0 and int(pid.value) == int(want_pid)
+
+            # Skip tiny tool windows
+            rect = wintypes.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            w = max(0, rect.right - rect.left)
+            h = max(0, rect.bottom - rect.top)
+            if w < 200 or h < 120:
                 return True
-            buf = ctypes.create_unicode_buffer(length + 1)
-            user32.GetWindowTextW(hwnd, buf, length + 1)
-            title = buf.value.lower()
-            if "jarvis" in title:
-                found.append(hwnd)
+
+            score = 0
+            if same_pid:
+                score += 50
+            if "jarvis" in title or "j.a.r.v.i.s" in title:
+                score += 40
+            if title.strip() in ("jarvis", "j.a.r.v.i.s"):
+                score += 20
+            if score > 0:
+                # Prefer larger windows (main HUD over tiny helpers)
+                score += min(30, (w * h) // 200_000)
+                found.append((score, int(hwnd)))
             return True
 
         user32.EnumWindows(_enum, 0)
         if not found:
             return False
-        hwnd = found[0]
+        found.sort(key=lambda t: t[0], reverse=True)
+        hwnd = found[0][1]
         user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-        user32.SetForegroundWindow(hwnd)
+        # Allow SetForegroundWindow across processes
+        try:
+            foreground = user32.GetForegroundWindow()
+            fg_tid = user32.GetWindowThreadProcessId(foreground, None)
+            our_tid = user32.GetWindowThreadProcessId(hwnd, None)
+            user32.AttachThreadInput(fg_tid, our_tid, True)
+            user32.SetForegroundWindow(hwnd)
+            user32.BringWindowToTop(hwnd)
+            user32.AttachThreadInput(fg_tid, our_tid, False)
+        except Exception:
+            user32.SetForegroundWindow(hwnd)
         return True
     except Exception:
         return False

@@ -1,0 +1,30 @@
+{
+  "reminders": [
+    {
+      "id": "e25455",
+      "message": "check on her",
+      "fire_at": 1786078800.0,
+      "timezone": "America/Los_Angeles",
+      "label_time": "10:00 PM Pacific (your time 1:00 AM ET)",
+      "enabled": true,
+      "fired": true,
+      "created": 1786037549.822024,
+      "meta": {
+        "raw": "remind me at 10 pm California to check on her"
+      }
+    },
+    {
+      "id": "44d4bb",
+      "message": "California is 8:00 PM",
+      "fire_at": 1786071600.0,
+      "timezone": "America/Los_Angeles",
+      "label_time": "8:00 PM Pacific (your time 11:00 PM ET)",
+      "enabled": true,
+      "fired": true,
+      "created": 1786037758.236554,
+      "meta": {
+        "raw": "remind me when it turns 8 pm in cali"
+      }
+    }
+  ]
+}

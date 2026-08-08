@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Parallax Codex — Motion</title>
+<link rel="stylesheet" href="styles.css"/>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+</head>
+<body>
+<div id="app">
+  <header>
+    <p class="brand">Parallax Codex</p>
+    <p class="pitch">multi-layer parallax story scroll with GSAP scrub</p>
+  </header>
+  <canvas id="c" width="960" height="540"></canvas>
+  <div class="type" id="title">Parallax Codex</div>
+  <div class="controls">
+    <button type="button" id="play">Play</button>
+    <button type="button" id="pause">Pause</button>
+    <button type="button" id="restart">Restart</button>
+    <button type="button" id="export">Export frame</button>
+    <label>Speed <input id="speed" type="range" min="0.25" max="2" step="0.25" value="1"/></label>
+  </div>
+  <p class="hint">SPACE play/pause · R restart · kinetic type + vector cascade</p>
+</div>
+<script src="anim.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>

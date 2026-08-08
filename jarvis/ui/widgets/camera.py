@@ -57,19 +57,14 @@ def list_dshow_devices() -> list[str]:
     """Real USB cameras only (filters virtual/OBS/mics)."""
     names: list[str] = []
     try:
-        import subprocess
+        from jarvis.core.win_process import powershell_hidden
 
         ps = (
             "Get-CimInstance Win32_PnPEntity | "
             "Where-Object { $_.PNPClass -eq 'Camera' -or $_.Name -match 'Cam|EMEET|Webcam' } | "
             "Select-Object -ExpandProperty Name"
         )
-        out = subprocess.check_output(
-            ["powershell", "-NoProfile", "-Command", ps],
-            text=True,
-            timeout=8,
-            stderr=subprocess.DEVNULL,
-        )
+        out = powershell_hidden(ps, text=True, timeout=8)
         for line in out.splitlines():
             n = line.strip()
             if not n or n in names:

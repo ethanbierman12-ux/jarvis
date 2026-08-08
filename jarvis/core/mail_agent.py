@@ -286,12 +286,9 @@ try {{
 }}
 """
         try:
-            raw = subprocess.check_output(
-                ["powershell", "-NoProfile", "-Command", ps],
-                text=True,
-                timeout=25,
-                stderr=subprocess.DEVNULL,
-            ).strip()
+            from jarvis.core.win_process import powershell_hidden
+
+            raw = powershell_hidden(ps, text=True, timeout=25).strip()
             if raw == "NULL" or not raw:
                 return None
             data = json.loads(raw)
@@ -332,12 +329,9 @@ try {{
 }}
 """
         try:
-            out = subprocess.check_output(
-                ["powershell", "-NoProfile", "-Command", ps],
-                text=True,
-                timeout=30,
-                stderr=subprocess.DEVNULL,
-            ).strip()
+            from jarvis.core.win_process import powershell_hidden
+
+            out = powershell_hidden(ps, text=True, timeout=30).strip()
             return out.endswith("OK")
         except Exception:
             return False

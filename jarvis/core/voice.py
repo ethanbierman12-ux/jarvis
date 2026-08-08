@@ -41,8 +41,8 @@ class VoiceEngine:
         self,
         on_heard: Callable[[str], None],
         voice: str = "en-GB-ThomasNeural",
-        rate: str = "-8%",
-        pitch: str = "-4Hz",
+        rate: str = "+0%",
+        pitch: str = "-2Hz",
         volume: str = "+0%",
         noise_reduce: bool = True,
         mic_prefer: str = "EMEET",
@@ -56,6 +56,7 @@ class VoiceEngine:
         deepgram_api_key: str = "",
         deepgram_model: str = "nova-2",
         duplex_enabled: bool = True,
+        chunk_sentences: bool = True,
     ) -> None:
         self.on_heard = on_heard
         self.on_level = on_level
@@ -67,9 +68,10 @@ class VoiceEngine:
             if v.lower().startswith("en-us") or "guy" in v.lower() or "aria" in v.lower():
                 v = "en-GB-ThomasNeural"
         self.voice = v if v else "en-GB-ThomasNeural"
-        self.rate = rate or "-8%"
-        self.pitch = pitch or "-4Hz"
+        self.rate = rate or "+0%"
+        self.pitch = pitch or "-2Hz"
         self.volume = volume or "+0%"
+        self.chunk_sentences = bool(chunk_sentences)
         self._whisper_mode = False
         self._whisper_volume = "-20%"
         self.noise_reduce = noise_reduce
@@ -87,6 +89,7 @@ class VoiceEngine:
         self._duplex = None
         self.stream = ThoughtStream(5.0)
         self._running = False
+        self._shutting_down = False
         self._mute = False
         self._speaking = False
         self._speak_until = 0.0
@@ -103,6 +106,7 @@ class VoiceEngine:
         self._last_heard_at = 0.0
         self._last_spoken = ""
         self._last_spoken_at = 0.0
+        self._last_ack_at = 0.0
         self._busy = False  # processing a command — ignore new speech
         self._level = 0.0
         self._barge_armed = True
@@ -112,6 +116,7 @@ class VoiceEngine:
     def start(self) -> None:
         if self._running:
             return
+        self._shutting_down = False
         self._running = True
         self._thread = threading.Thread(
             target=self._listen_loop, daemon=True, name="jarvis-voice"
@@ -134,7 +139,12 @@ class VoiceEngine:
         self._level_thread.start()
 
     def stop(self) -> None:
+        # Mark first so in-flight Edge TTS / asyncio bail instead of scheduling
+        # futures during interpreter shutdown (soft-reload race).
+        self._shutting_down = True
         self._running = False
+        self._speaking = False
+        self._mute = False
         self._stop_playback()
         duplex = getattr(self, "_duplex", None)
         if duplex is not None:
@@ -142,6 +152,18 @@ class VoiceEngine:
                 duplex.stop()
             except Exception:
                 pass
+
+    def _tts_allowed(self) -> bool:
+        return not bool(getattr(self, "_shutting_down", False))
+
+    def _is_shutdown_noise(self, err: BaseException) -> bool:
+        msg = str(err or "").lower()
+        return (
+            "interpreter shutdown" in msg
+            or "cannot schedule new futures" in msg
+            or "event loop is closed" in msg
+            or "no running event loop" in msg
+        )
 
     def mute_mic(self, muted: bool) -> None:
         self._mute = muted
@@ -200,12 +222,14 @@ class VoiceEngine:
         return float(self._level)
 
     def say(self, text: str) -> None:
+        if not self._tts_allowed():
+            return
         text = self._jarvis_delivery(" ".join((text or "").split()))
         if not text:
             return
-        # Drop identical / near-identical TTS spam within 12s
+        # Drop identical / near-identical TTS spam within 8s
         now = time.time()
-        if self._last_spoken and now - self._last_spoken_at < 12.0:
+        if self._last_spoken and now - self._last_spoken_at < 8.0:
             if text.lower() == self._last_spoken.lower():
                 return
             if difflib.SequenceMatcher(
@@ -216,13 +240,95 @@ class VoiceEngine:
             target=self._tts_with_duck, args=(text,), daemon=True, name="jarvis-tts"
         ).start()
 
-    def _tts_with_duck(self, text: str) -> None:
-        """Duck ambience/Spotify while speaking, then restore."""
+    def say_ack(self, phrase: str = "On it.") -> None:
+        """Ultra-short instant ack — does not block the full reply path."""
+        if not self._tts_allowed():
+            return
+        phrase = " ".join((phrase or "On it.").split())
+        if not phrase:
+            return
+        # Don't stack acks on top of each other
+        now = time.time()
+        if now - float(getattr(self, "_last_ack_at", 0) or 0) < 0.35:
+            return
+        self._last_ack_at = now
+        threading.Thread(
+            target=self._tts_ack_ducked, args=(phrase,), daemon=True, name="jarvis-ack"
+        ).start()
+
+    def _tts_ack_ducked(self, text: str) -> None:
         before = getattr(self, "on_before_tts", None)
         after = getattr(self, "on_after_tts", None)
         try:
             if callable(before):
                 before()
+        except Exception:
+            pass
+        try:
+            self._tts_ack(text)
+        finally:
+            try:
+                if callable(after):
+                    after()
+            except Exception:
+                pass
+
+    def _tts_ack(self, text: str) -> None:
+        """Play a short cue with minimal setup — prefer cached wav."""
+        if not self._tts_allowed():
+            return
+        # Don't fight a full reply already mid-flight
+        if self._speaking or self._speak_lock.locked():
+            return
+        acquired = self._speak_lock.acquire(blocking=False)
+        if not acquired:
+            return
+        try:
+            cache = self._tts_dir / "ack_cache"
+            cache.mkdir(parents=True, exist_ok=True)
+            key = re.sub(r"[^a-z0-9]+", "_", text.lower())[:40] or "ack"
+            path = cache / f"{key}.mp3"
+            if not path.exists() or path.stat().st_size < 200:
+                self._tts_edge(text, path)
+            if not self._tts_allowed():
+                return
+            self._speaking = True
+            self._mute = True
+            self._emit_speaking(True)
+            try:
+                self._play_once(path)
+            finally:
+                self._speaking = False
+                self._mute = False
+                self._speak_until = time.time() + 0.08
+                self._emit_speaking(False)
+        except Exception as e:
+            if not self._is_shutdown_noise(e):
+                print(f"[tts-ack] {e}")
+        finally:
+            try:
+                self._speak_lock.release()
+            except Exception:
+                pass
+
+    def say_wait(self, text: str, *, polish: bool = False) -> None:
+        """Block until TTS finishes — used for Alexa Echo voice relay."""
+        if not self._tts_allowed():
+            return
+        raw = " ".join((text or "").split())
+        if not raw:
+            return
+        spoken = self._jarvis_delivery(raw) if polish else raw
+        self._tts(spoken)
+
+    def _tts_with_duck(self, text: str) -> None:
+        """Duck Spotify/media while speaking, then restore."""
+        before = getattr(self, "on_before_tts", None)
+        after = getattr(self, "on_after_tts", None)
+        try:
+            if callable(before):
+                before()
+                time.sleep(0.02)  # let mixer apply before TTS starts
         except Exception:
             pass
         try:
@@ -234,14 +340,165 @@ class VoiceEngine:
             except Exception:
                 pass
 
-    def say_wait(self, text: str, *, polish: bool = False) -> None:
-        """Block until TTS finishes — used for Alexa Echo voice relay."""
-        raw = " ".join((text or "").split())
-        if not raw:
-            return
-        spoken = self._jarvis_delivery(raw) if polish else raw
-        self._tts(spoken)
+    def _split_chunks(self, text: str) -> list[str]:
+        """First playable clause ASAP, then the rest in sentence chunks."""
+        t = " ".join((text or "").split())
+        if not t:
+            return []
+        if not getattr(self, "chunk_sentences", True) or len(t) < 90:
+            return [t]
+        parts = re.split(r"(?<=[.!?])\s+", t)
+        parts = [p.strip() for p in parts if p.strip()]
+        if len(parts) <= 1:
+            # Comma/semicolon split for long single sentences
+            if len(t) > 140 and "," in t:
+                head, _, tail = t.partition(",")
+                head = (head + ",").strip()
+                tail = tail.strip()
+                return [head, tail] if tail else [t]
+            return [t]
+        # First chunk = first sentence (instant), rest grouped lightly
+        out = [parts[0]]
+        buf = ""
+        for p in parts[1:]:
+            if not buf:
+                buf = p
+            elif len(buf) + len(p) < 160:
+                buf = f"{buf} {p}"
+            else:
+                out.append(buf)
+                buf = p
+        if buf:
+            out.append(buf)
+        return out
 
+    def _tts(self, text: str) -> None:
+        with self._speak_lock:
+            # Mute BEFORE generating so we never hear our own voice
+            self._speaking = True
+            self._mute = True
+            self._barge_hits = 0
+            self._interim_barge_hits = 0
+            self._interim_barge_text = ""
+            # Shorter grace — start listening for barge sooner
+            self._barge_after = time.time() + 1.1
+            self._last_spoken = text
+            self._last_spoken_at = time.time()
+            self._emit_speaking(True)
+            try:
+                self._stop_playback()
+                chunks = self._split_chunks(text)
+                for i, chunk in enumerate(chunks):
+                    if not self._speaking:
+                        break  # barge-in
+                    out = self._tts_dir / f"speak_{uuid.uuid4().hex}.mp3"
+                    try:
+                        use_eleven = (
+                            bool(self.prefer_elevenlabs)
+                            and bool(self.elevenlabs_api_key)
+                            and len(chunk) >= 160
+                            and i > 0  # first chunk always Edge = lower latency
+                        )
+                        if use_eleven:
+                            if not self._tts_elevenlabs(chunk, out):
+                                self._tts_edge(chunk, out)
+                        else:
+                            self._tts_edge(chunk, out)
+                        if out.exists() and out.stat().st_size > 0 and self._speaking:
+                            self._play(out)
+                    except Exception as e:
+                        print(f"[tts] chunk: {e}")
+                    finally:
+                        try:
+                            if out.exists():
+                                out.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+            except Exception as e:
+                print(f"[tts] {e}")
+            finally:
+                # Tight echo-guard so the next command feels instant
+                self._speak_until = time.time() + 0.55
+                self._speaking = False
+                self._mute = False
+                self._barge_hits = 0
+                self._interim_barge_hits = 0
+                self._emit_speaking(False)
+                if self.on_level:
+                    try:
+                        self.on_level(0.0)
+                    except Exception:
+                        pass
+                try:
+                    for old in self._tts_dir.glob("speak_*.mp3"):
+                        if time.time() - old.stat().st_mtime > 20:
+                            old.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+    def _play_once(self, path: Path) -> None:
+        """Play a short clip without the long idle spin of full replies."""
+        try:
+            import pygame
+
+            if not pygame.mixer.get_init():
+                pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+            pygame.mixer.music.set_volume(1.0)
+            pygame.mixer.music.load(str(path))
+            pygame.mixer.music.play()
+            idle = 0
+            while idle < 4:
+                if pygame.mixer.music.get_busy():
+                    idle = 0
+                else:
+                    idle += 1
+                time.sleep(0.02)
+            try:
+                pygame.mixer.music.unload()
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[audio-ack] {e}")
+
+    def _play(self, path: Path) -> None:
+        try:
+            import pygame
+
+            if not pygame.mixer.get_init():
+                # Smaller buffer = lower start latency
+                pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+            self._stop_playback()
+            pygame.mixer.music.load(str(path))
+            pygame.mixer.music.play()
+            idle = 0
+            while self._running:
+                if not self._speaking:
+                    break
+                if pygame.mixer.music.get_busy():
+                    idle = 0
+                    env = 0.35 + 0.55 * abs(math.sin(time.time() * 9.5))
+                    env *= 0.55 + 0.45 * abs(math.sin(time.time() * 3.1))
+                    if self.on_level:
+                        try:
+                            self.on_level(float(env))
+                        except Exception:
+                            pass
+                else:
+                    idle += 1
+                    if idle >= 4:  # ~80ms idle = done
+                        break
+                time.sleep(0.02)
+            if self.on_level:
+                try:
+                    self.on_level(0.0)
+                except Exception:
+                    pass
+            try:
+                pygame.mixer.music.unload()
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[audio] {e}")
     def _jarvis_delivery(self, text: str) -> str:
         """Polish wording so TTS lands closer to film JARVIS cadence."""
         if not text:
@@ -290,7 +547,11 @@ class VoiceEngine:
             pass
 
     def _tts(self, text: str) -> None:
+        if not self._tts_allowed():
+            return
         with self._speak_lock:
+            if not self._tts_allowed():
+                return
             out: Path | None = None
             # Mute BEFORE generating so we never hear our own voice
             self._speaking = True
@@ -317,10 +578,15 @@ class VoiceEngine:
                         self._tts_edge(text, out)
                 else:
                     self._tts_edge(text, out)
-                if out.exists() and out.stat().st_size > 0:
+                if (
+                    self._tts_allowed()
+                    and out.exists()
+                    and out.stat().st_size > 0
+                ):
                     self._play(out)
             except Exception as e:
-                print(f"[tts] {e}")
+                if not self._is_shutdown_noise(e):
+                    print(f"[tts] {e}")
             finally:
                 # Echo-guard mute so mic doesn't eat the end of the sentence
                 self._speak_until = time.time() + 1.5
@@ -329,7 +595,7 @@ class VoiceEngine:
                 self._barge_hits = 0
                 self._interim_barge_hits = 0
                 self._emit_speaking(False)
-                if out and out.exists():
+                if out and out.exists() and self._tts_allowed():
 
                     def _cleanup(path: Path) -> None:
                         time.sleep(0.5)
@@ -384,10 +650,14 @@ class VoiceEngine:
             return False
 
     def _tts_edge(self, text: str, out: Path) -> None:
+        if not self._tts_allowed():
+            return
         import asyncio
         import edge_tts
 
         async def _gen():
+            if not self._tts_allowed():
+                return
             communicate = edge_tts.Communicate(
                 text,
                 self.voice,
@@ -401,9 +671,21 @@ class VoiceEngine:
             )
             await communicate.save(str(out))
 
-        asyncio.run(_gen())
+        try:
+            asyncio.run(_gen())
+        except RuntimeError as e:
+            # Soft-reload / process exit while Edge TTS holds aiohttp executors
+            if self._is_shutdown_noise(e):
+                return
+            raise
+        except Exception as e:
+            if self._is_shutdown_noise(e):
+                return
+            raise
 
     def _play(self, path: Path) -> None:
+        if not self._tts_allowed():
+            return
         try:
             import pygame
 
@@ -411,12 +693,13 @@ class VoiceEngine:
                 # Larger buffer + 44.1k avoids choppy / early-stop with Edge MP3
                 pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
             self._stop_playback()
+            pygame.mixer.music.set_volume(1.0)
             pygame.mixer.music.load(str(path))
             pygame.mixer.music.play()
             # get_busy() can flicker False on MP3 — require sustained idle
             idle = 0
             t0 = time.time()
-            while self._running:
+            while self._running and self._tts_allowed():
                 if not self._speaking:
                     break  # barge-in cleared speaking
                 if pygame.mixer.music.get_busy():
@@ -446,7 +729,8 @@ class VoiceEngine:
             except Exception:
                 pass
         except Exception as e:
-            print(f"[audio] {e}")
+            if not self._is_shutdown_noise(e):
+                print(f"[audio] {e}")
 
     def _pick_mic_index(self) -> int | None:
         """Prefer physical mics; never bind STT to desktop loopback / Voicemeeter outs."""
@@ -587,10 +871,10 @@ class VoiceEngine:
         # Sensitive enough for headset boom mics
         recognizer.dynamic_energy_threshold = True
         recognizer.energy_threshold = 110
-        recognizer.dynamic_energy_adjustment_damping = 0.15
-        recognizer.dynamic_energy_ratio = 1.3
-        recognizer.pause_threshold = 0.55
-        recognizer.non_speaking_duration = 0.35
+        recognizer.dynamic_energy_adjustment_damping = 0.12
+        recognizer.dynamic_energy_ratio = 1.25
+        recognizer.pause_threshold = 0.38  # end utterance faster
+        recognizer.non_speaking_duration = 0.22
         recognizer.phrase_threshold = 0.2
 
         # Self-healing: if USB mic unplugged mid-session, reopen after backoff
@@ -627,8 +911,8 @@ class VoiceEngine:
             if self._busy and not self._speaking:
                 if busy_since <= 0:
                     busy_since = time.time()
-                elif time.time() - busy_since > 12.0:
-                    print("[voice] busy watchdog — clearing stuck busy flag")
+                elif time.time() - busy_since > 8.0:
+                    print("[voice] busy watchdog - clearing stuck busy flag")
                     self._busy = False
                     busy_since = 0.0
                 else:
@@ -638,19 +922,19 @@ class VoiceEngine:
                 busy_since = 0.0
             # While Jarvis is talking, still listen for barge-in
             if self._mute and not self._speaking:
-                time.sleep(0.05)
+                time.sleep(0.02)
                 continue
             if time.time() < self._speak_until and not self._speaking:
-                time.sleep(0.05)
+                time.sleep(0.02)
                 continue
             # During TTS: never STT — speaker echo on EMEET caused mid-sentence cuts
             if self._speaking:
-                time.sleep(0.08)
+                time.sleep(0.04)
                 continue
             try:
                 with mic as source:
                     audio = recognizer.listen(
-                        source, timeout=3.0, phrase_time_limit=6
+                        source, timeout=2.0, phrase_time_limit=5
                     )
                 consecutive_hw_errors = 0
                 if self._speaking:
@@ -764,12 +1048,12 @@ class VoiceEngine:
         busy_since = 0.0
         try:
             while self._running and duplex.is_alive():
-                # Stuck-busy watchdog — mirrors the classic loop's protection
+                # Stuck-busy watchdog - mirrors the classic loop's protection
                 if self._busy and not self._speaking:
                     if busy_since <= 0:
                         busy_since = time.time()
-                    elif time.time() - busy_since > 12.0:
-                        print("[voice] busy watchdog — clearing stuck busy flag")
+                    elif time.time() - busy_since > 8.0:
+                        print("[voice] busy watchdog - clearing stuck busy flag")
                         self._busy = False
                         busy_since = 0.0
                 else:

@@ -16,6 +16,10 @@ class BioSnapshot:
     heart_rate_bpm: float = 0.0
     looking_at_screen: bool = True
     face_present: bool = False
+    gaze_zone: str = "away"  # center | up | left | right | down | away
+    face_cx: float = 0.5
+    face_cy: float = 0.5
+    brightness: float = 0.0  # 0..1 mean face luma
 
 
 class Biometrics:
@@ -47,25 +51,58 @@ class Biometrics:
                 face_box = max(faces, key=lambda r: r[2] * r[3])
 
         roi = None
+        gaze_zone = "away"
+        fcx = fcy = 0.5
+        brightness = 0.0
         if face_box is not None:
             face_present = True
             x, y, fw, fh = [int(v) for v in face_box]
             cx = (x + fw / 2) / w
             cy = (y + fh / 2) / h
-            # Looking away: face near edge or small / high in frame oddly
-            looking = 0.18 < cx < 0.82 and cy < 0.72 and (fw * fh) / (w * h) > 0.02
-            # Slouch: face lower in frame than typical upright desk pose
-            if cy > 0.62:
+            fcx, fcy = cx, cy
+            # Looking at any of the three monitors (allow higher cy for top-deck glance)
+            looking = 0.12 < cx < 0.88 and cy < 0.88 and (fw * fh) / (w * h) > 0.012
+            # Webcam on center-monitor bezel:
+            # look UP (top deck) → head tilts back → face center drops (higher cy)
+            # look DOWN (desk) → chin tucks → face rises (lower cy)
+            # look LEFT/RIGHT → face shifts on X (non-mirrored capture)
+            face_area = (fw * fh) / float(w * h)
+            if not looking:
+                gaze_zone = "away"
+            elif cy > 0.55 and face_area < 0.14:
+                # Looking up at top monitor (face lower + not a close lean-in)
+                gaze_zone = "up"
+            elif cy < 0.34:
+                gaze_zone = "down"
+            elif cx < 0.34:
+                gaze_zone = "left"
+            elif cx > 0.66:
+                gaze_zone = "right"
+            else:
+                gaze_zone = "center"
+            # Slouch: lean toward center screen — face low AND large in frame
+            if cy > 0.62 and face_area > 0.06:
                 slouch = min(1.0, (cy - 0.55) / 0.35)
                 posture_ok = slouch < 0.45
-            # Forehead ROI for rPPG
+            elif cy > 0.70:
+                slouch = min(1.0, (cy - 0.55) / 0.35)
+                posture_ok = slouch < 0.45
+            # Forehead ROI for rPPG + brightness
             fy0 = max(0, y)
             fy1 = max(fy0 + 1, y + int(fh * 0.25))
             fx0 = max(0, x + int(fw * 0.25))
             fx1 = min(w, x + int(fw * 0.75))
             roi = frame[fy0:fy1, fx0:fx1]
+            try:
+                face_crop = frame[y : y + fh, x : x + fw]
+                if face_crop.size:
+                    gray_f = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
+                    brightness = float(np.mean(gray_f)) / 255.0
+            except Exception:
+                brightness = 0.0
         else:
             looking = False
+            gaze_zone = "away"
 
         hr = 0.0
         now = time.time()
@@ -81,6 +118,10 @@ class Biometrics:
             heart_rate_bpm=hr,
             looking_at_screen=looking,
             face_present=face_present,
+            gaze_zone=gaze_zone,
+            face_cx=fcx,
+            face_cy=fcy,
+            brightness=brightness,
         )
         self.last = snap
         return snap

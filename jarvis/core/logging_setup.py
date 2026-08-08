@@ -113,6 +113,13 @@ class PrintLogger:
             return 0
         try:
             n = self._stream.write(s)
+        except UnicodeEncodeError:
+            # Windows cp1252 consoles choke on arrows/em-dashes — scrub then write
+            safe = s.encode("ascii", errors="replace").decode("ascii")
+            try:
+                n = self._stream.write(safe)
+            except Exception:
+                n = len(s)
         except Exception:
             n = len(s)
         try:

@@ -188,12 +188,9 @@ try {
 }
 """
         try:
-            out = subprocess.check_output(
-                ["powershell", "-NoProfile", "-Command", ps],
-                text=True,
-                timeout=12,
-                stderr=subprocess.DEVNULL,
-            )
+            from jarvis.core.win_process import powershell_hidden
+
+            out = powershell_hidden(ps, text=True, timeout=12)
             return (out or "").strip()
         except Exception:
             return ""

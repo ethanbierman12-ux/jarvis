@@ -1,0 +1,28 @@
+You are Jarvis, an autonomous vibe-coding agent.
+Product: Crystal Forge
+Stack hint: 3d
+Brief: Build Crystal Forge: a 3d app — crystal mesh with bloom-like additive materials.
+
+Design prompts from research:
+- Build a zero-npm 3d experience called Crystal Forge — crystal mesh with bloom-like additive materials.
+- Full-bleed WebGL/canvas stage, dark void, cyan/teal accents.
+- Orbit/drag controls, resize handler, pause on visibilitychange.
+- HUD with Pause / Reset / Quality toggles and keyboard shortcuts.
+- CDN only: three.js + addons, optional gsap — no npm install.
+
+Image URLs to embed in the UI (use as <img src> when relevant):
+- https://picsum.photos/seed/crystal-forge-hero-0/960/540
+- https://loremflickr.com/960/540/3d%2CCrystal%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/crystal-forge-gallery-1-1/960/540
+- https://loremflickr.com/960/540/3d%2CCrystal%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/crystal-forge-gallery-2-2/960/540
+
+Web references:
+- (none)
+
+ZERO-NPM advanced visual app. Prefer CDN ES modules only.
+Allowed: three@0.160 (importmap), three/addons OrbitControls, gsap, canvas API.
+Forbidden: npm install, vite scaffolding, create-react-app, node_modules, webpack.
+Deliver AT LEAST: index.html, styles.css, scene.js (or anim.js), ui.js, preview.html, research.md, README.md.
+Must run under http://127.0.0.1 with requestAnimationFrame.
+Include: PerspectiveCamera or orthographic stage, lights, resize handler, pause on visibilitychange, HUD (Pause/Reset), keyboard shortcuts, substantial JS (300+ lines total). Zero stubs.

@@ -1,425 +1,1136 @@
 {
   "results": [
     {
-      "id": "j1784407725102",
-      "kind": "weather_cache",
-      "label": "Refresh weather cache",
-      "result": "Weather cached: 33\u00b0 Smoke",
-      "ts": "2026-07-19T04:48:45"
-    },
-    {
-      "id": "j1784407725109",
-      "kind": "prep_brief",
-      "label": "Prep morning brief",
-      "result": "Morning brief prepared for wake.",
-      "ts": "2026-07-19T04:48:47"
-    },
-    {
-      "id": "j1784407746547",
-      "kind": "heartbeat",
-      "label": "Steward online",
-      "result": "Heartbeat ok at 04:49",
-      "ts": "2026-07-19T04:49:06"
-    },
-    {
-      "id": "j1784408288685",
-      "kind": "heartbeat",
-      "label": "Away heartbeat",
-      "result": "Heartbeat ok at 04:58",
-      "ts": "2026-07-19T04:58:08"
-    },
-    {
-      "id": "j1784408288692",
-      "kind": "weather_cache",
-      "label": "Refresh weather cache",
-      "result": "Weather cache skipped: Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)",
-      "ts": "2026-07-19T04:58:08"
-    },
-    {
-      "id": "j1784408288700",
-      "kind": "system_pulse",
-      "label": "System pulse",
-      "result": "PC pulse CPU 65% RAM 44%",
-      "ts": "2026-07-19T04:58:09"
-    },
-    {
-      "id": "j1784408288708",
-      "kind": "prep_brief",
-      "label": "Prep brief",
-      "result": "Morning brief prepared for wake.",
-      "ts": "2026-07-19T04:58:56"
-    },
-    {
-      "id": "j1784408288716",
-      "kind": "spend_digest",
-      "label": "Spend digest",
-      "result": "Today you've spent USD 4.50. Top: coffee USD 4.50.",
-      "ts": "2026-07-19T04:58:56"
-    },
-    {
-      "id": "auto1784408381",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 8% RAM 47%",
-      "ts": "2026-07-19T04:59:41"
-    },
-    {
-      "id": "auto1784408426",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 12% RAM 45%",
-      "ts": "2026-07-19T05:00:27"
-    },
-    {
-      "id": "auto1784408472",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 4% RAM 46%",
-      "ts": "2026-07-19T05:01:12"
-    },
-    {
-      "id": "j1784408489664",
-      "kind": "heartbeat",
-      "label": "Away heartbeat",
-      "result": "Heartbeat ok at 05:01",
-      "ts": "2026-07-19T05:01:57"
-    },
-    {
-      "id": "j1784408489672",
-      "kind": "quiet_hours",
-      "label": "Enable quiet hours",
-      "result": "Skipped unknown job quiet_hours",
-      "ts": "2026-07-19T05:01:57"
-    },
-    {
-      "id": "j1784408489680",
-      "kind": "weather_cache",
-      "label": "Refresh weather cache",
-      "result": "Weather cache skipped: Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)",
-      "ts": "2026-07-19T05:01:57"
-    },
-    {
-      "id": "j1784408489688",
-      "kind": "system_pulse",
-      "label": "System pulse",
-      "result": "PC pulse CPU 41% RAM 48%",
-      "ts": "2026-07-19T05:02:42"
-    },
-    {
-      "id": "j1784408489696",
-      "kind": "prep_brief",
-      "label": "Prep brief",
-      "result": "Morning brief prepared for wake.",
-      "ts": "2026-07-19T05:02:44"
-    },
-    {
-      "id": "j1784408489704",
-      "kind": "spend_digest",
-      "label": "Spend digest",
-      "result": "Today you've spent USD 4.50. Top: coffee USD 4.50.",
-      "ts": "2026-07-19T05:02:44"
-    },
-    {
-      "id": "j1784408489712",
-      "kind": "calendar_watch",
-      "label": "Calendar watch",
-      "result": "Skipped unknown job calendar_watch",
-      "ts": "2026-07-19T05:03:29"
-    },
-    {
-      "id": "j1784408489719",
+      "id": "mail1786122187",
       "kind": "mail_watch",
-      "label": "Answer email (ack)",
-      "result": "Skipped unknown job mail_watch",
-      "ts": "2026-07-19T05:03:29"
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:03:08"
     },
     {
-      "id": "j1784408615885",
-      "kind": "heartbeat",
-      "label": "Away heartbeat",
-      "result": "Heartbeat ok at 05:04",
-      "ts": "2026-07-19T05:04:14"
-    },
-    {
-      "id": "j1784408615893",
-      "kind": "quiet_hours",
-      "label": "Enable quiet hours",
-      "result": "Skipped unknown job quiet_hours",
-      "ts": "2026-07-19T05:04:14"
-    },
-    {
-      "id": "j1784408615901",
-      "kind": "weather_cache",
-      "label": "Refresh weather cache",
-      "result": "Weather cache skipped: Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)",
-      "ts": "2026-07-19T05:04:14"
-    },
-    {
-      "id": "j1784408615909",
-      "kind": "system_pulse",
-      "label": "System pulse",
-      "result": "PC pulse CPU 55% RAM 42%",
-      "ts": "2026-07-19T05:05:00"
-    },
-    {
-      "id": "j1784408615917",
-      "kind": "prep_brief",
-      "label": "Prep brief",
-      "result": "Morning brief prepared for wake.",
-      "ts": "2026-07-19T05:05:01"
-    },
-    {
-      "id": "j1784408615925",
-      "kind": "spend_digest",
-      "label": "Spend digest",
-      "result": "Today you've spent USD 4.50. Top: coffee USD 4.50.",
-      "ts": "2026-07-19T05:05:01"
-    },
-    {
-      "id": "j1784408615932",
-      "kind": "calendar_watch",
-      "label": "Calendar watch",
-      "result": "Skipped unknown job calendar_watch",
-      "ts": "2026-07-19T05:05:46"
-    },
-    {
-      "id": "j1784408615940",
+      "id": "mail1786122208",
       "kind": "mail_watch",
-      "label": "Answer email (ack)",
-      "result": "Skipped unknown job mail_watch",
-      "ts": "2026-07-19T05:05:46"
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:03:28"
     },
     {
-      "id": "auto1784408791",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 56% RAM 46%",
-      "ts": "2026-07-19T05:06:32"
+      "id": "mail1786122228",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:03:48"
     },
     {
-      "id": "auto1784408837",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 68% RAM 46%",
-      "ts": "2026-07-19T05:07:17"
+      "id": "mail1786122248",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:04:09"
     },
     {
-      "id": "auto1784408882",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 72% RAM 46%",
-      "ts": "2026-07-19T05:08:02"
+      "id": "mail1786122269",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:04:29"
     },
     {
-      "id": "auto1784408927",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 44% RAM 46%",
-      "ts": "2026-07-19T05:08:48"
+      "id": "mail1786122289",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:04:49"
     },
     {
-      "id": "auto1784408973",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 64% RAM 46%",
-      "ts": "2026-07-19T05:09:33"
+      "id": "mail1786122309",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:05:10"
     },
     {
-      "id": "auto1784409018",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 14% RAM 42%",
-      "ts": "2026-07-19T05:10:18"
+      "id": "mail1786122330",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:05:30"
     },
     {
-      "id": "auto1784409063",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 2% RAM 40%",
-      "ts": "2026-07-19T05:11:04"
+      "id": "mail1786122350",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:05:50"
     },
     {
-      "id": "auto1784409109",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 38% RAM 41%",
-      "ts": "2026-07-19T05:11:49"
+      "id": "mail1786122370",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:06:10"
     },
     {
-      "id": "auto1784409154",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 10% RAM 41%",
-      "ts": "2026-07-19T05:12:34"
+      "id": "mail1786122390",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:06:31"
     },
     {
-      "id": "auto1784409199",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 5% RAM 40%",
-      "ts": "2026-07-19T05:13:20"
+      "id": "mail1786122411",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:06:51"
     },
     {
-      "id": "auto1784409245",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 63% RAM 41%",
-      "ts": "2026-07-19T05:14:05"
+      "id": "mail1786122431",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:07:11"
     },
     {
-      "id": "auto1784409290",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 10% RAM 41%",
-      "ts": "2026-07-19T05:14:50"
+      "id": "mail1786122451",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:07:31"
     },
     {
-      "id": "auto1784409335",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 56% RAM 41%",
-      "ts": "2026-07-19T05:15:36"
+      "id": "mail1786122471",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:07:52"
     },
     {
-      "id": "auto1784409381",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 0% RAM 41%",
-      "ts": "2026-07-19T05:16:21"
+      "id": "mail1786122492",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:08:12"
     },
     {
-      "id": "auto1784409426",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 0% RAM 41%",
-      "ts": "2026-07-19T05:17:06"
+      "id": "mail1786122512",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:08:33"
     },
     {
-      "id": "auto1784409471",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 69% RAM 42%",
-      "ts": "2026-07-19T05:17:52"
+      "id": "mail1786122533",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:08:53"
     },
     {
-      "id": "auto1784409517",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 3% RAM 42%",
-      "ts": "2026-07-19T05:18:37"
+      "id": "mail1786122553",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:09:13"
     },
     {
-      "id": "auto1784409562",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 4% RAM 41%",
-      "ts": "2026-07-19T05:19:22"
+      "id": "mail1786122573",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:09:34"
     },
     {
-      "id": "auto1784409607",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 2% RAM 42%",
-      "ts": "2026-07-19T05:20:07"
+      "id": "mail1786122594",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:09:54"
     },
     {
-      "id": "auto1784409652",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 2% RAM 43%",
-      "ts": "2026-07-19T05:20:53"
+      "id": "mail1786122614",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:10:14"
     },
     {
-      "id": "auto1784409698",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 28% RAM 43%",
-      "ts": "2026-07-19T05:21:38"
+      "id": "mail1786122634",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:10:34"
     },
     {
-      "id": "auto1784409743",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 3% RAM 42%",
-      "ts": "2026-07-19T05:22:23"
+      "id": "mail1786122654",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:10:55"
     },
     {
-      "id": "auto1784409788",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 89% RAM 44%",
-      "ts": "2026-07-19T05:23:09"
+      "id": "mail1786122675",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:11:15"
     },
     {
-      "id": "auto1784409834",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 0% RAM 40%",
-      "ts": "2026-07-19T05:23:54"
+      "id": "mail1786122695",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:11:35"
     },
     {
-      "id": "auto1784409879",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 0% RAM 42%",
-      "ts": "2026-07-19T05:24:39"
+      "id": "mail1786122715",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:11:56"
     },
     {
-      "id": "auto1784409924",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 45% RAM 43%",
-      "ts": "2026-07-19T05:25:25"
+      "id": "mail1786122736",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:12:16"
     },
     {
-      "id": "auto1784409970",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 100% RAM 52%",
-      "ts": "2026-07-19T05:26:11"
+      "id": "mail1786122756",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:12:36"
     },
     {
-      "id": "auto1784410016",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 65% RAM 43%",
-      "ts": "2026-07-19T05:26:57"
+      "id": "mail1786122776",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:12:57"
     },
     {
-      "id": "auto1784410062",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 16% RAM 43%",
-      "ts": "2026-07-19T05:27:42"
+      "id": "mail1786122797",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:13:17"
     },
     {
-      "id": "auto1784410107",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 7% RAM 41%",
-      "ts": "2026-07-19T05:28:27"
+      "id": "mail1786122817",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:13:37"
     },
     {
-      "id": "auto1784410152",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 2% RAM 40%",
-      "ts": "2026-07-19T05:29:12"
+      "id": "mail1786122837",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:13:57"
     },
     {
-      "id": "auto1784410197",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 0% RAM 42%",
-      "ts": "2026-07-19T05:29:58"
+      "id": "mail1786122857",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:14:18"
     },
     {
-      "id": "auto1784410243",
-      "kind": "system_pulse",
-      "label": "Auto pulse",
-      "result": "PC pulse CPU 53% RAM 44%",
-      "ts": "2026-07-19T05:30:43"
+      "id": "mail1786122878",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:14:38"
+    },
+    {
+      "id": "mail1786122898",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:14:58"
+    },
+    {
+      "id": "mail1786122918",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:15:19"
+    },
+    {
+      "id": "mail1786122939",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:15:39"
+    },
+    {
+      "id": "mail1786122959",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:15:59"
+    },
+    {
+      "id": "mail1786122979",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:16:19"
+    },
+    {
+      "id": "mail1786122999",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:16:40"
+    },
+    {
+      "id": "mail1786123020",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:17:00"
+    },
+    {
+      "id": "mail1786123040",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:17:20"
+    },
+    {
+      "id": "mail1786123060",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:17:41"
+    },
+    {
+      "id": "mail1786123081",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:18:01"
+    },
+    {
+      "id": "mail1786123101",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:18:21"
+    },
+    {
+      "id": "mail1786123121",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:18:42"
+    },
+    {
+      "id": "mail1786123142",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:19:02"
+    },
+    {
+      "id": "mail1786123162",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:19:22"
+    },
+    {
+      "id": "mail1786123182",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:19:43"
+    },
+    {
+      "id": "mail1786123203",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:20:03"
+    },
+    {
+      "id": "mail1786123223",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:20:23"
+    },
+    {
+      "id": "mail1786123243",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:20:44"
+    },
+    {
+      "id": "mail1786123264",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:21:04"
+    },
+    {
+      "id": "mail1786123284",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:21:24"
+    },
+    {
+      "id": "mail1786123304",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:21:44"
+    },
+    {
+      "id": "mail1786123324",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:22:05"
+    },
+    {
+      "id": "mail1786123345",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:22:25"
+    },
+    {
+      "id": "mail1786123365",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:22:45"
+    },
+    {
+      "id": "mail1786123385",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:23:06"
+    },
+    {
+      "id": "mail1786123406",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:23:26"
+    },
+    {
+      "id": "mail1786123426",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:23:46"
+    },
+    {
+      "id": "mail1786123446",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:24:07"
+    },
+    {
+      "id": "mail1786123467",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:24:27"
+    },
+    {
+      "id": "mail1786123487",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:24:47"
+    },
+    {
+      "id": "mail1786123507",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:25:08"
+    },
+    {
+      "id": "mail1786123528",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:25:28"
+    },
+    {
+      "id": "mail1786123548",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:25:48"
+    },
+    {
+      "id": "mail1786123568",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:26:09"
+    },
+    {
+      "id": "mail1786123589",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:26:29"
+    },
+    {
+      "id": "mail1786123609",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:26:49"
+    },
+    {
+      "id": "mail1786123629",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:27:09"
+    },
+    {
+      "id": "mail1786123649",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:27:30"
+    },
+    {
+      "id": "mail1786123670",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:27:50"
+    },
+    {
+      "id": "mail1786123690",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:28:10"
+    },
+    {
+      "id": "mail1786123710",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:28:30"
+    },
+    {
+      "id": "mail1786123730",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:28:51"
+    },
+    {
+      "id": "mail1786123751",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:29:11"
+    },
+    {
+      "id": "mail1786123771",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:29:31"
+    },
+    {
+      "id": "mail1786123791",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:29:52"
     }
   ],
-  "pending_wake": []
+  "pending_wake": [
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T00:58:03"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T00:58:23"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T00:58:43"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T00:59:04"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T00:59:24"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T00:59:45"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:00:05"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:00:25"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:00:46"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:01:06"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:01:26"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:01:47"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:02:07"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:02:27"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:02:47"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:03:08"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:03:28"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:03:48"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:04:09"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:04:29"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:04:49"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:05:10"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:05:30"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:05:50"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:06:10"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:06:31"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:06:51"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:07:11"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:07:31"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:07:52"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:08:12"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:08:33"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:08:53"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:09:13"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:09:34"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:09:54"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:10:14"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:10:34"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:10:55"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:11:15"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:11:35"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:11:56"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:12:16"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:12:36"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:12:57"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:13:17"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:13:37"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:13:57"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:14:18"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:14:38"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:14:58"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:15:19"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:15:39"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:15:59"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:16:19"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:16:40"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:17:00"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:17:20"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:17:41"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:18:01"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:18:21"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:18:42"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:19:02"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:19:22"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:19:43"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:20:03"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:20:23"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:20:44"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:21:04"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:21:24"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:21:44"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:22:05"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:22:25"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:22:45"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:23:06"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:23:26"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:23:46"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:24:07"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:24:27"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:24:47"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:25:08"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:25:28"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:25:48"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:26:09"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:26:29"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:26:49"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:27:09"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:27:30"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:27:50"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:28:10"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:28:30"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:28:51"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:29:11"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:29:31"
+    },
+    {
+      "type": "feed",
+      "kind": "mail_watch",
+      "text": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time.",
+      "ts": "2026-08-08T01:29:52"
+    }
+  ]
 }

@@ -29,7 +29,7 @@ class WeatherPanel(QFrame):
         self.temp = QLabel("—°")
         self.temp.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.temp.setStyleSheet(
-            "color:#00e8ff; font-size:48px; font-weight:700; letter-spacing:2px;"
+            "color:#00f0ff; font-size:48px; font-weight:700; letter-spacing:2px;"
             " font-family: Bahnschrift, 'Segoe UI';"
         )
         lay.addWidget(self.temp)
@@ -60,6 +60,14 @@ class WeatherPanel(QFrame):
             " line-height: 1.35;"
         )
         lay.addWidget(self.forecast)
+
+        self.orbital = QLabel("SAT · syncing…")
+        self.orbital.setWordWrap(True)
+        self.orbital.setStyleSheet(
+            "color:#7eb6ff; font-family:'Cascadia Mono', Consolas; font-size:10px;"
+            " letter-spacing:0.5px;"
+        )
+        lay.addWidget(self.orbital)
         lay.addStretch(1)
 
     def set_context(self, data: dict) -> None:
@@ -88,9 +96,15 @@ class WeatherPanel(QFrame):
                 f"{day.get('min', '—')}–{day.get('max', '—')}{unit_sym}  "
                 f"{(day.get('desc') or '')[:18]}"
             )
-        self.forecast.setText("\n".join(lines[:5]) if lines else "Forecast standing by.")
+        self.forecast.setText("\n".join(lines[:4]) if lines else "Forecast standing by.")
+        if data.get("orbital"):
+            self.set_orbital(str(data["orbital"]))
 
-    def set_mood(self, mood: str, accent: str = "#00e8ff") -> None:
+    def set_orbital(self, summary: str) -> None:
+        text = (summary or "").strip() or "SAT · standing by"
+        self.orbital.setText(f"SAT · {text}" if not text.upper().startswith("ISS") else text)
+
+    def set_mood(self, mood: str, accent: str = "#00f0ff") -> None:
         self.temp.setStyleSheet(
             f"color:{accent}; font-size:48px; font-weight:700; letter-spacing:2px;"
             " font-family: Bahnschrift, 'Segoe UI';"

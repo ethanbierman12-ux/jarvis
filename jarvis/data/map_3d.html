@@ -46,14 +46,14 @@
   <h1>TACTICAL MAP · 3D</h1>
   <p id="place">Philadelphia, United States</p>
 </div>
-<div id="scan" class="on">SCANNING SECTOR…</div>
+<div id="scan" class=""></div>
 <div id="map"></div>
 <script>
 const center = [-75.1635262, 39.9527237];
 const markers = [];
 const placeName = "Philadelphia, United States";
-const animateIntro = true;
-const startScanning = true;
+const animateIntro = false;
+const startScanning = false;
 let markerObjs = [];
 
 const map = new maplibregl.Map({

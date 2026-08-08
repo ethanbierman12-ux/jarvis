@@ -48,6 +48,12 @@ class FeatureRegistry:
             "health check",
             "recent errors",
             "setup computer use",
+            "snapchat setup",
+            "test snapchat call",
+            "answer snapchat",
+            "phone status",
+            "link my phone",
+            "doorbell setup",
         }
     )
 
@@ -62,8 +68,14 @@ class FeatureRegistry:
             ("travis_modes", "1.1", "Park / Tactical / Peer Review"),
             ("map_3d_zoom", "1.3", "Open-then-fly cinematic city/country zoom"),
             ("hot_upgrade", "1.4", "Loading UI + plugin/core refresh"),
-            ("phone_bridge", "1.0", "ntfy iPhone push"),
+            ("phone_bridge", "1.1", "ntfy iPhone push + custom tags"),
+            ("snapchat_calls", "1.0", "Snapchat/Phone Link call notify + auto-answer"),
+            ("comms_live", "1.0", "Live Snap/IG/iMessage read + translate"),
+            ("phone_link_setup", "1.0", "Install/open Phone Link + iPhone pairing"),
+            ("zero_latency", "1.1", "Snappy TTS + deferred crew + lean HUD"),
+            ("reminders", "1.0", "Timed reminders w/ California / Pacific zones"),
             ("companion_pwa", "1.0", "iPhone Tailscale PWA chat"),
+            ("doorbell_bridge", "1.0", "Alexa/IFTTT → ntfy → announce"),
             ("manus_bridge", "1.1", "Manus AI agent tasks + code assist"),
             ("cloud_integrations", "1.0", "Stripe / Notion / Buffer / Gmail voice"),
             ("macro_gateway", "1.0", "Silent HTTP pad"),

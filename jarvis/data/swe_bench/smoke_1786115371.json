@@ -1,0 +1,20 @@
+{
+  "task_id": "smoke",
+  "passed": true,
+  "exit_code": 0,
+  "duration_s": 6.586568125999975,
+  "stdout": ".                                                                        [100%]\n1 passed in 0.03s\n",
+  "stderr": "",
+  "tests_run": 1,
+  "tests_failed": 0,
+  "engine": "local_sandbox",
+  "meta": {
+    "command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "--tb=line"
+    ]
+  }
+}

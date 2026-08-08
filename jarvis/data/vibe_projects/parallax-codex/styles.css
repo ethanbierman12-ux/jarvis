@@ -1,0 +1,15 @@
+
+html,body{margin:0;min-height:100%;background:#02060c;color:#e8f7ff;font-family:Bahnschrift,Segoe UI,sans-serif}
+#app{max-width:1000px;margin:0 auto;padding:24px 16px 40px;display:grid;gap:14px;justify-items:center}
+.brand{margin:0;letter-spacing:.28em;color:#00f0ff;text-transform:uppercase;font-size:13px;text-align:center}
+.pitch{margin:8px 0 0;color:#8aa0b3;text-align:center;max-width:52ch;font-size:13px}
+canvas{width:min(960px,100%);height:auto;border:1px solid rgba(0,240,255,.35);background:#030a12;
+  box-shadow:0 0 50px rgba(0,240,255,.08)}
+.type{position:relative;margin-top:-72px;font-size:clamp(22px,4vw,42px);letter-spacing:.18em;text-transform:uppercase;
+  color:#e8f7ff;text-shadow:0 0 24px rgba(0,240,255,.45);pointer-events:none}
+.controls{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}
+button,label{background:rgba(0,20,30,.75);border:1px solid rgba(0,240,255,.4);color:#00f0ff;
+  padding:8px 12px;letter-spacing:.12em;text-transform:uppercase;font:inherit;font-size:11px;cursor:pointer}
+button:hover{background:rgba(0,240,255,.14)}
+input[type=range]{vertical-align:middle;width:90px}
+.hint{color:#6f879a;font-size:11px;letter-spacing:.08em;text-align:center}

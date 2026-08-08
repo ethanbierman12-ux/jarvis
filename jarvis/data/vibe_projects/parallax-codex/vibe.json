@@ -1,0 +1,22 @@
+{
+  "name": "Parallax Codex",
+  "stack": "animation",
+  "pitch": "multi-layer parallax story scroll with GSAP scrub",
+  "engine": "template+agents",
+  "files": [
+    "index.html",
+    "styles.css",
+    "anim.js",
+    "ui.js",
+    "preview.html",
+    "research.md",
+    "README.md",
+    "features.md",
+    "images.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\parallax-codex",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\parallax-codex\\index.html",
+  "zero_setup": true,
+  "preview_url": "http://127.0.0.1:55363/index.html",
+  "app_url": "http://127.0.0.1:55363/index.html"
+}

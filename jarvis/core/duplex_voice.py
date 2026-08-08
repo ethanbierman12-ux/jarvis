@@ -16,14 +16,17 @@ import asyncio
 import json
 import threading
 import time
+from collections import deque
 from typing import Callable
 
 from jarvis.core.audio_isolation import pick_isolated_mic_index
 
 SAMPLE_RATE = 16000
 BLOCK_MS = 100  # 100ms frames — low latency without hammering the socket
-KEEPALIVE_SEC = 5.0
-RECONNECT_MAX = 6
+KEEPALIVE_SEC = 3.0
+RECONNECT_MAX = 8
+# Keep ~14s of PCM for voice-clone grabs without opening a second mic stream
+RING_SEC = 14.0
 
 
 def duplex_deps_ok() -> tuple[bool, str]:
@@ -101,6 +104,13 @@ class DeepgramDuplex:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._audio_q: asyncio.Queue[bytes] | None = None
         self._segment_parts: list[str] = []
+        # Ring buffer of int16 mono PCM chunks (for voice clone / room grab)
+        bytes_per_sec = SAMPLE_RATE * 2  # int16 mono
+        self._ring_max_chunks = max(
+            8, int((RING_SEC * bytes_per_sec) / (SAMPLE_RATE * BLOCK_MS // 1000 * 2)) + 4
+        )
+        self._ring: deque[bytes] = deque(maxlen=self._ring_max_chunks)
+        self._ring_lock = threading.Lock()
 
     # ---------------------------------------------------------------- public
 
@@ -125,6 +135,15 @@ class DeepgramDuplex:
     def is_alive(self) -> bool:
         return self._running and not self._fatal
 
+    def dump_recent_pcm(self, seconds: float = 10.0) -> tuple[bytes, int]:
+        """Return (int16_mono_pcm, sample_rate) from the live ring buffer."""
+        want = max(0.5, min(float(seconds), RING_SEC))
+        need = int(want * SAMPLE_RATE * 2)
+        with self._ring_lock:
+            blob = b"".join(self._ring)
+        if len(blob) > need:
+            blob = blob[-need:]
+        return blob, SAMPLE_RATE
     # -------------------------------------------------------------- internals
 
     def _run(self) -> None:
@@ -213,6 +232,11 @@ class DeepgramDuplex:
                 except Exception:
                     pass
             data = pcm.tobytes()
+            try:
+                with self._ring_lock:
+                    self._ring.append(data)
+            except Exception:
+                pass
 
             def _put() -> None:
                 try:
@@ -296,7 +320,7 @@ class DeepgramDuplex:
         last_sent = time.time()
         while self._running:
             try:
-                chunk = await asyncio.wait_for(self._audio_q.get(), timeout=1.0)
+                chunk = await asyncio.wait_for(self._audio_q.get(), timeout=0.8)
             except asyncio.TimeoutError:
                 chunk = b""
             gate_open = True
@@ -304,12 +328,17 @@ class DeepgramDuplex:
                 gate_open = bool(self.should_send())
             except Exception:
                 pass
-            if chunk and gate_open:
-                await ws.send(chunk)
-                last_sent = time.time()
-            elif time.time() - last_sent > KEEPALIVE_SEC:
-                await ws.send(json.dumps({"type": "KeepAlive"}))
-                last_sent = time.time()
+            try:
+                if chunk and gate_open:
+                    await ws.send(chunk)
+                    last_sent = time.time()
+                elif time.time() - last_sent > KEEPALIVE_SEC:
+                    # KeepAlive even while TTS ducks the mic gate — prevents Deepgram 1011 idle drops
+                    await ws.send(json.dumps({"type": "KeepAlive"}))
+                    last_sent = time.time()
+            except Exception:
+                # Let session reconnect loop recover
+                raise
 
     async def _receive(self, ws) -> None:
         async for raw in ws:

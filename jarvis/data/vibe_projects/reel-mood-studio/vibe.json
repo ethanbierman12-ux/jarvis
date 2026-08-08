@@ -1,0 +1,17 @@
+{
+  "name": "Reel Mood Studio",
+  "stack": "video",
+  "pitch": "slideshow video reel from research images",
+  "engine": "template",
+  "files": [
+    "index.html",
+    "video.js",
+    "preview.html",
+    "README.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\reel-mood-studio",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\reel-mood-studio\\index.html",
+  "zero_setup": true,
+  "preview_url": "http://127.0.0.1:54682/index.html",
+  "app_url": "http://127.0.0.1:54682/index.html"
+}

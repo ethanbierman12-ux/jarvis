@@ -48,3 +48,9 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+
+# Local voice-clone toolchains (large; do not commit)
+tools/xtts_env/
+tools/sovits_env/
+tools/GPT-SoVITS/
+tools/*.zip

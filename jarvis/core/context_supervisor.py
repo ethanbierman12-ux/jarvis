@@ -46,6 +46,7 @@ class ContextSupervisor:
         self._was_present = True
         self._session_start = time.time()
         self._last_bio = 0.0
+        self.gaze = None  # optional GazeWorkspace set by brain
 
     def start(self) -> None:
         self.clip.start()
@@ -67,6 +68,13 @@ class ContextSupervisor:
         self._last_bio = now
         snap = self.bio.analyze(frame)
 
+        # Multi-monitor gaze dwell (look-up deck / look-left scroll)
+        try:
+            if self.gaze is not None:
+                self.gaze.tick(snap)
+        except Exception:
+            pass
+
         # Gaze-based lock is OFF unless gaze_lock_minutes > 0 AND no face + no motion
         # for the full duration. Looking slightly away must NOT lock.
         mins = float(getattr(self.settings, "gaze_lock_minutes", 0) or 0)
@@ -85,17 +93,17 @@ class ContextSupervisor:
                     # Do NOT auto-lock from gaze — too many false positives.
                     # User can enable lock_on_absence for departure locking only.
 
-        # Posture
+        # Posture — 5 minutes of slouch before quiet nudge (cooldown 20 min)
         if self.settings.posture_nudge:
             if not snap.posture_ok:
                 if self._slouch_since is None:
                     self._slouch_since = now
-                elif now - self._slouch_since >= 50 and now - self._last_posture_nudge > 1800:
+                elif now - self._slouch_since >= 300 and now - self._last_posture_nudge > 1200:
                     self._last_posture_nudge = now
                     self._slouch_since = None
                     name = self.settings.user_name or "there"
                     self.on_say(
-                        f"{name}, take a moment to straighten up and stretch."
+                        f"{name}, sit back a moment — you've been leaning toward the center screen."
                     )
             else:
                 self._slouch_since = None

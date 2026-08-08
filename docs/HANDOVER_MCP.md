@@ -116,10 +116,14 @@ Cursor MCP OAuth does **not** share tokens with Jarvis. Desk voice uses vaulted 
 | `notion search …` | Workspace search |
 | `link buffer` / `set buffer token to …` | Buffer access token |
 | `buffer channels` | List profiles |
-| `link gmail` / `set gmail token to …` | Google OAuth access token |
-| `gmail inbox` | Recent inbox subjects |
+| `link gmail` / `setup gmail oauth` | Desktop OAuth loopback → vault tokens + auto-refresh |
+| `set gmail client id to …` / `set gmail client secret to …` | Google Cloud OAuth Desktop client |
+| `set gmail token to …` / `set gmail refresh token to …` | Optional manual paste |
+| `gmail inbox` / `gmail status` / `clear email` | Inbox ops (401 → refresh once + retry) |
 
-Module: `jarvis/core/cloud_integrations.py`. Keys live in DPAPI vault (`stripe_secret_key`, `notion_token`, `buffer_access_token`, `gmail_access_token`).
+Redirect URI: `http://127.0.0.1:8753/` (register on the Desktop OAuth client).
+
+Module: `jarvis/core/gmail_oauth.py` + `jarvis/core/cloud_integrations.py`. Keys live in DPAPI vault (`gmail_client_id`, `gmail_client_secret`, `gmail_access_token`, `gmail_refresh_token`).
 
 **Never paste secrets in chat** — say the set-key phrases to Jarvis, or edit vault via settings save.
 

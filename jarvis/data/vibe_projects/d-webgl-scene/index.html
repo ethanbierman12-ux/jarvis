@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>D Webgl Scene — 3D</title>
+<link rel="stylesheet" href="styles.css"/>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="stage">
+  <canvas id="c"></canvas>
+  <header class="hud">
+    <div>
+      <p class="brand">D Webgl Scene</p>
+      <p class="pitch">3d webgl scene with orbit controls lighting and animation</p>
+    </div>
+    <div class="stats">
+      <span id="fps">60 FPS</span>
+      <span id="mode">CINEMATIC</span>
+    </div>
+  </header>
+  <aside class="panel">
+    <button type="button" id="btnPause" data-key="P">Pause</button>
+    <button type="button" id="btnReset" data-key="R">Reset</button>
+    <button type="button" id="btnAuto" class="active" data-key="A">Auto orbit</button>
+    <button type="button" id="btnFx" data-key="F">FX denser</button>
+    <p class="hint">DRAG orbit · SCROLL zoom · SPACE pause</p>
+  </aside>
+  <div id="boot">Loading WebGL scene…</div>
+</div>
+<script type="module" src="scene.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>

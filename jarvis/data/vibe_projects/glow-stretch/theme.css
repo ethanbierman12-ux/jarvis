@@ -1,0 +1,16 @@
+:root {
+  --cyan:#00E5FF; --cyan-hot:#00F0FF; --amber:#FF9500; --warn:#FF3B30; --ok:#39FF14;
+  --void:#020813; --panel:rgba(10,15,29,.82); --text:#e8f4ff; --dim:#708090;
+  --line:rgba(0,229,255,.28); --pad:22px; --radius:8px;
+  --ease:cubic-bezier(0.25, 1, 0.5, 1);
+}
+[data-theme="warm"] {
+  --cyan:#FF9500; --cyan-hot:#ffb347; --void:#120a06; --panel:rgba(28,14,8,.92);
+  --line:rgba(255,149,0,.35);
+}
+[data-theme="neon"] {
+  --cyan:#39FF14; --cyan-hot:#00E5FF; --void:#030a08; --panel:rgba(4,22,16,.92);
+  --line:rgba(57,255,20,.35);
+}
+[data-density="compact"] { --pad:14px; }
+[data-reduce-motion="1"] * { animation:none !important; transition:none !important; }

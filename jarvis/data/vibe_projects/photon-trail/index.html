@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Photon Trail — 3D</title>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+<div id="stage">
+  <canvas id="c"></canvas>
+  <header class="hud">
+    <div>
+      <p class="brand">Photon Trail</p>
+      <p class="pitch">camera fly-through of glowing ribbon geometry</p>
+    </div>
+    <div class="stats">
+      <span id="fps">60 FPS</span>
+      <span id="mode">CINEMATIC</span>
+    </div>
+  </header>
+  <aside class="panel">
+    <button type="button" id="btnPause" data-key="P">Pause</button>
+    <button type="button" id="btnReset" data-key="R">Reset</button>
+    <button type="button" id="btnAuto" class="active" data-key="A">Auto orbit</button>
+    <button type="button" id="btnFx" data-key="F">FX denser</button>
+    <p class="hint">DRAG orbit · SCROLL zoom · SPACE pause</p>
+  </aside>
+  <div id="boot">Loading WebGL scene…</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="scene.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>

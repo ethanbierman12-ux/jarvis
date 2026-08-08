@@ -1,4 +1,4 @@
-"""Central holographic JARVIS core — amber mesh sphere with command-reactive motion."""
+"""Central holographic JARVIS core — cyan mesh sphere matching secure boot."""
 
 from __future__ import annotations
 
@@ -19,15 +19,15 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QWidget
 
 
-# Amber / gold palette from the reference core
-_GOLD = QColor(255, 196, 72)
-_AMBER = QColor(255, 158, 42)
-_HOT = QColor(255, 230, 140)
-_DIM = QColor(120, 70, 22)
+# Cyan / ice palette — Stark lab (#00E5FF / #00F0FF)
+_CYAN = QColor(0, 229, 255)
+_TEAL = QColor(0, 180, 210)
+_HOT = QColor(0, 240, 255)
+_DIM = QColor(0, 60, 80)
 
-# Panic / threat palette
-_PANIC_GOLD = QColor(255, 48, 48)
-_PANIC_AMBER = QColor(220, 24, 24)
+# Panic / threat palette (#FF3B30)
+_PANIC_GOLD = QColor(255, 59, 48)
+_PANIC_AMBER = QColor(255, 149, 0)
 _PANIC_HOT = QColor(255, 120, 100)
 _PANIC_DIM = QColor(90, 12, 12)
 
@@ -43,7 +43,7 @@ _TRAVIS_ACCENTS = {
 class ArcReactor(QWidget):
     """
     Living holographic core:
-      - multi-layer rotating mesh sphere (amber/gold)
+      - multi-layer rotating mesh sphere (cyan / secure-boot match)
       - HUD frame bars + corner gauge
       - intensifies on speak / build / fetch / away
       - turns crimson in panic mode
@@ -58,22 +58,24 @@ class ArcReactor(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self._a = self._a2 = self._a3 = 0.0
         self._pulse = 0.0
+        self._breath = 0.0  # 4.5s ambient opacity cycle
         self._speak = 0.0
         self._flare = 0.0
         self._amp = 0.0
+        self._cpu_boost = 0.0  # live telemetry → ring speed
         self._activity = "idle"  # idle|listen|speak|build|fetch|away|panic
         self._activity_boost = 0.0
         self._speaking_locked = False
         self._parallax = (0.0, 0.0)
         self._hover: Optional[str] = None
         self._hits: list[tuple[str, QRectF]] = []
-        self._fps = 66  # ~15 FPS paint (was 28ms ≈ 36 FPS)
-        self._accent = QColor(0, 240, 255)  # spokes / weather tint
+        self._fps = 80  # ~12.5 FPS paint — smoother system, less lag
+        self._accent = QColor(0, 240, 255)  # boot cyan — matches secure login
         self._panic = False
         self._travis_mode = ""  # park | tactical | peer | ""
         self._seed = random.Random(42)
-        self._particles = self._make_particles(64)  # was 220
-        self._spikes = self._make_spikes(24)  # was 48
+        self._particles = self._make_particles(48)  # lighter mesh
+        self._spikes = self._make_spikes(18)
         self._nodes = [
             {"label": "Images", "angle": 200, "cmd": "open pictures", "side": "L"},
             {"label": "Documents", "angle": 225, "cmd": "open documents", "side": "L"},
@@ -97,7 +99,14 @@ class ArcReactor(QWidget):
         self._timer.setInterval(self._fps)
 
     def set_amplitude(self, amp: float) -> None:
+        prev = self._amp
         self._amp = max(0.0, min(1.0, float(amp)))
+        # Don't force a full repaint on tiny mic noise while idle
+        if self._speaking_locked or self._activity != "idle":
+            if abs(self._amp - prev) > 0.02:
+                self.update()
+        elif self._amp > 0.08 and abs(self._amp - prev) > 0.05:
+            self.update()
 
     def set_weather_accent(self, hex_color: str) -> None:
         c = QColor(hex_color)
@@ -170,8 +179,13 @@ class ArcReactor(QWidget):
         self._flare = max(self._flare, min(1.0, float(strength)))
 
     def set_activity(self, mode: str) -> None:
-        """idle | listen | speak | build | fetch | away | panic | park | tactical | peer"""
+        """idle | listen | speak | build | fetch | away | panic | thinking | compiling"""
         mode = (mode or "idle").lower()
+        # Alias cinematic states from the design brief
+        if mode in ("thinking", "process", "processing"):
+            mode = "fetch"
+        elif mode in ("compiling", "compile", "coding", "code"):
+            mode = "build"
         if self._panic and mode != "panic":
             # Stay in panic visuals until cleared
             self._activity = "panic"
@@ -201,8 +215,17 @@ class ArcReactor(QWidget):
     def set_parallax(self, x: float, y: float) -> None:
         self._parallax = ((x - 0.5) * 16.0, (y - 0.5) * 12.0)
 
+    def set_cpu_load(self, pct: float) -> None:
+        """Map live CPU % into ring spin — idle calm, heavy load furious."""
+        n = max(0.0, min(100.0, float(pct))) / 100.0
+        # Ease toward target so telemetry ticks don't stutter the core
+        target = n * 1.35
+        cur = float(getattr(self, "_cpu_boost", 0.0) or 0.0)
+        self._cpu_boost = cur + (target - cur) * 0.25
+        # Never force paint from telemetry — _tick owns repaints
+
     def _c(self, r: int, g: int, b: int, a: int = 255) -> QColor:
-        """Map amber/gold → crimson while panic; tint toward Travis accent."""
+        """Map legacy warm RGB → cyan (boot); crimson in panic; Travis accents."""
         if self._panic:
             # Keep heat, crush green/blue into red threat tone
             return QColor(
@@ -229,11 +252,20 @@ class ArcReactor(QWidget):
                 a,
             )
         if tm == "park":
-            # Warm bright gold (default core, slightly hotter)
+            # Warm bright gold (persona only)
             return QColor(
                 min(255, max(r, 220)),
                 min(255, max(g, 170)),
                 max(0, min(90, b // 2)),
+                a,
+            )
+        # Default: remap amber/gold paint values → secure-boot cyan/ice
+        if r > 100 and b < 120 and r >= g:
+            bright = max(r, g) / 255.0
+            return QColor(
+                int(0 + 35 * (1.0 - bright)),
+                int(min(255, 150 + int(90 * bright))),
+                int(min(255, 200 + int(55 * bright))),
                 a,
             )
         return QColor(r, g, b, a)
@@ -267,14 +299,33 @@ class ArcReactor(QWidget):
             out.append((ang, elev, length))
         return out
 
+    def _is_idle_calm(self) -> bool:
+        return (
+            self._activity == "idle"
+            and not self._speaking_locked
+            and not self._panic
+            and self._amp < 0.04
+            and self._flare < 0.08
+            and self._activity_boost < 0.06
+        )
+
     def _tick(self) -> None:
-        boost = 1.0 + self._activity_boost * 1.8 + self._speak * 0.9 + self._flare * 0.6
+        cpu = float(getattr(self, "_cpu_boost", 0.0) or 0.0)
+        boost = 1.0 + self._activity_boost * 1.8 + self._speak * 0.9 + self._flare * 0.6 + cpu
         if self._speaking_locked:
             boost += 0.85
-        self._a = (self._a + 0.42 * boost) % 360
-        self._a2 = (self._a2 - 0.28 * boost) % 360
-        self._a3 = (self._a3 + 0.18 * boost) % 360
-        self._pulse = (self._pulse + 0.045 + 0.03 * self._activity_boost) % (2 * math.pi)
+        idle = self._is_idle_calm()
+        # Idle: slow spin so the breath glow is the main motion
+        spin = 0.22 if idle else 0.42
+        self._a = (self._a + spin * boost) % 360
+        self._a2 = (self._a2 - 0.18 * boost) % 360
+        self._a3 = (self._a3 + 0.12 * boost) % 360
+        # Activity pulse + slow ambient breath (~4.5s)
+        self._pulse = (self._pulse + (0.028 if idle else 0.045) + 0.03 * self._activity_boost + 0.02 * cpu) % (
+            2 * math.pi
+        )
+        # Breath step scaled so period stays ~4.5s at either idle or active rate
+        self._breath = (self._breath + (0.09 if idle else 0.112)) % (2 * math.pi)
         if self._speaking_locked:
             # Hold speech energy — amp comes from TTS envelope via set_amplitude
             self._speak = max(0.75, self._speak)
@@ -304,28 +355,19 @@ class ArcReactor(QWidget):
             self._activity_boost *= 0.985
         # Soften amplitude so waves ease down when quiet
         if self._speaking_locked:
-            # Light smoothing only — keep the talk pulse alive
             if self._amp > 0.01:
                 self._amp = self._amp * 0.82 + 0.18 * self._amp
         elif self._amp > 0.01:
             self._amp *= 0.92
         else:
             self._amp = 0.0
-        # Idle: paint every other tick (~7–8 FPS) — still alive, less GPU thrash
-        idle = (
-            self._activity == "idle"
-            and not self._speaking_locked
-            and not self._panic
-            and self._amp < 0.03
-            and self._flare < 0.08
-            and self._activity_boost < 0.05
-        )
-        if idle:
-            self._idle_skip = getattr(self, "_idle_skip", 0) + 1
-            if self._idle_skip % 2:
-                return
-        else:
-            self._idle_skip = 0
+
+        # Idle: cheap paint at ~15 FPS (smooth glow). Active: configured interval.
+        # Keep interval sticky — thrashing setInterval every tick caused stutter.
+        want = 66 if idle else int(getattr(self, "_fps", 80) or 80)
+        cur = self._timer.interval()
+        if abs(cur - want) >= 8:
+            self._timer.setInterval(want)
         self.update()
 
     def mouseMoveEvent(self, e) -> None:
@@ -346,6 +388,12 @@ class ArcReactor(QWidget):
                 for n in self._nodes:
                     if n["label"] == lab:
                         self.pulse_speak()
+                        try:
+                            from jarvis.ui.hud_sfx import play_click
+
+                            play_click()
+                        except Exception:
+                            pass
                         self._hover = lab
                         self.update()
                         self.node_activated.emit(n["cmd"])
@@ -354,11 +402,11 @@ class ArcReactor(QWidget):
     # ── paint ───────────────────────────────────────────────────
     def paintEvent(self, _e) -> None:
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         w, h = self.width(), self.height()
         cx = w / 2 + self._parallax[0]
         cy = h / 2 + self._parallax[1]
+        idle = self._is_idle_calm()
         energy = (
             1.0
             + 0.04 * math.sin(self._pulse)
@@ -378,34 +426,113 @@ class ArcReactor(QWidget):
         p.setBrush(QBrush(bloom))
         p.drawEllipse(QPointF(cx, cy), base * 2.0, base * 2.0)
 
-        self._draw_hud_frame(p, w, h, cx, cy, base)
-        self._draw_mesh_sphere(p, cx, cy, base)
-        self._draw_spikes(p, cx, cy, base)
-        self._draw_arcs(p, cx, cy, base)
-        self._draw_core(p, cx, cy, base)
-        self._draw_title(p, cx, cy, base)
-        self._draw_spokes(p, cx, cy, base)
-        # Mic-reactive mathematical waves (synced to audio level)
-        if self._amp > 0.02 or getattr(self, "_panic", False):
-            p.setPen(QPen(self._c(255, 190, 70, int(50 + 140 * self._amp)), 1.4))
-            path = QPainterPath()
-            wave_w = base * 2.2
-            x0 = cx - wave_w / 2
-            y0 = cy + base * 1.72
-            steps = 48
-            for i in range(steps + 1):
-                t = i / steps
-                x = x0 + t * wave_w
-                y = y0 + math.sin(t * math.pi * 6 + self._pulse * 3) * (
-                    4 + 18 * self._amp
-                ) * math.sin(math.pi * t)
-                if i == 0:
-                    path.moveTo(x, y)
-                else:
-                    path.lineTo(x, y)
-            p.drawPath(path)
+        if idle:
+            # Light idle path — glow + rings + core only (no mesh sort / spikes)
+            self._draw_voice_rings(p, cx, cy, base, light=True)
+            self._draw_core(p, cx, cy, base)
+            self._draw_title(p, cx, cy, base)
+            self._draw_spokes(p, cx, cy, base)
+        else:
+            self._draw_hud_frame(p, w, h, cx, cy, base)
+            self._draw_voice_rings(p, cx, cy, base, light=False)
+            self._draw_mesh_sphere(p, cx, cy, base)
+            self._draw_spikes(p, cx, cy, base)
+            self._draw_arcs(p, cx, cy, base)
+            self._draw_core(p, cx, cy, base)
+            self._draw_title(p, cx, cy, base)
+            self._draw_spokes(p, cx, cy, base)
+            if self._amp > 0.02 or getattr(self, "_panic", False):
+                p.setPen(QPen(self._c(255, 190, 70, int(50 + 140 * self._amp)), 1.4))
+                path = QPainterPath()
+                wave_w = base * 2.2
+                x0 = cx - wave_w / 2
+                y0 = cy + base * 1.72
+                steps = 48
+                for i in range(steps + 1):
+                    t = i / steps
+                    x = x0 + t * wave_w
+                    y = y0 + math.sin(t * math.pi * 6 + self._pulse * 3) * (
+                        4 + 18 * self._amp
+                    ) * math.sin(math.pi * t)
+                    if i == 0:
+                        path.moveTo(x, y)
+                    else:
+                        path.lineTo(x, y)
+                p.drawPath(path)
 
         p.end()
+
+    def _draw_voice_rings(
+        self, p: QPainter, cx: float, cy: float, base: float, *, light: bool = False
+    ) -> None:
+        """Middle ring — concentric voice-reactive wireframes (Arwes / Marvel core)."""
+        talk = 1.0 if self._speaking_locked else self._speak
+        amp = max(self._amp, 0.12 * talk)
+        energy = 0.35 + 0.65 * amp + 0.4 * talk + 0.25 * self._flare
+        # Cyan-only voice rings — match secure boot, no pink
+        cyan = QColor(0, 240, 255)
+        teal = QColor(0, 180, 210)
+        if self._panic:
+            cyan = QColor(255, 60, 60)
+            teal = QColor(255, 140, 40)
+
+        layers = (
+            (
+                (0.78, 2.0, cyan, 0.75),
+                (1.15, 1.5, teal, 0.45),
+                (1.45, 1.1, cyan, 0.28),
+            )
+            if light
+            else (
+                (0.55, 1.6, cyan, 0.55),
+                (0.78, 2.2, cyan, 0.85),
+                (1.02, 2.8, teal, 0.65),
+                (1.28, 1.8, cyan, 0.45),
+                (1.55, 1.2, teal, 0.30),
+            )
+        )
+        for i, (scale, width, color, alpha_base) in enumerate(layers):
+            # Expand with amplitude; outer rings lag slightly
+            beat = math.sin(self._pulse * (2.4 + i * 0.35) + i)
+            expand = 1.0 + 0.08 * energy * beat + 0.14 * amp + 0.10 * talk
+            r = base * scale * expand
+            a = int(255 * min(1.0, alpha_base * (0.45 + 0.55 * energy)))
+            c = QColor(color)
+            c.setAlpha(a)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(c, width))
+            p.drawEllipse(QPointF(cx, cy), r, r)
+
+            # Arc segments that spin opposite directions when speaking
+            if not light and (talk > 0.2 or amp > 0.15):
+                spin = self._a if i % 2 == 0 else -self._a2
+                seg = QColor(color)
+                seg.setAlpha(min(255, a + 40))
+                p.setPen(QPen(seg, width + 0.8))
+                span = int((40 + 50 * amp) * 16)
+                start = int((spin * 16) + i * 400)
+                p.drawArc(QRectF(cx - r, cy - r, r * 2, r * 2), start, span)
+                p.drawArc(
+                    QRectF(cx - r, cy - r, r * 2, r * 2),
+                    start + 180 * 16,
+                    span,
+                )
+
+        # Inner glowing core disc — ambient breath (60%→100%) + speech flash
+        breath = 0.6 + 0.4 * (0.5 + 0.5 * math.sin(getattr(self, "_breath", self._pulse)))
+        core_r = base * (0.22 + 0.10 * amp + 0.08 * talk)
+        glow = QRadialGradient(cx, cy, core_r * 2.2)
+        g0 = QColor(0, 229, 255, int((70 + 110 * energy) * breath))
+        g1 = QColor(0, 140, 180, int((35 + 55 * talk) * breath))
+        if self._panic:
+            g0 = QColor(255, 59, 48, 160)
+            g1 = QColor(255, 149, 0, 40)
+        glow.setColorAt(0.0, g0)
+        glow.setColorAt(0.45, g1)
+        glow.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(glow))
+        p.drawEllipse(QPointF(cx, cy), core_r * 2.0, core_r * 2.0)
 
     def _draw_hud_frame(
         self, p: QPainter, w: float, h: float, cx: float, cy: float, base: float
@@ -554,7 +681,7 @@ class ArcReactor(QWidget):
         p.save()
         p.translate(cx, cy)
         p.rotate(self._a2)
-        p.setPen(QPen(self._c(255, 150, 40, 110), 1.6))
+        p.setPen(QPen(self._c(0, 200, 230, 110), 1.6))
         rect = QRectF(-base * 0.48, -base * 0.48, base * 0.96, base * 0.96)
         for i in range(20):
             if i % 3 == 0:
@@ -563,10 +690,11 @@ class ArcReactor(QWidget):
         p.restore()
 
     def _draw_core(self, p: QPainter, cx: float, cy: float, base: float) -> None:
+        # Cyan core — same look as secure boot hologram
         cr = base * (0.16 + 0.04 * self._speak + 0.05 * self._flare)
         g0 = QRadialGradient(cx, cy, cr * 3.2)
-        g0.setColorAt(0.0, self._c(255, 220, 120, int(90 + 80 * self._flare)))
-        g0.setColorAt(0.4, self._c(255, 160, 40, 40))
+        g0.setColorAt(0.0, self._c(80, 230, 255, int(90 + 80 * self._flare)))
+        g0.setColorAt(0.4, self._c(0, 140, 190, 40))
         g0.setColorAt(1.0, QColor(0, 0, 0, 0))
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QBrush(g0))
@@ -579,20 +707,21 @@ class ArcReactor(QWidget):
             core.setColorAt(0.55, QColor(255, 40, 40))
             core.setColorAt(1.0, QColor(120, 0, 0))
         else:
-            core.setColorAt(0.0, QColor(255, 255, 240))
-            core.setColorAt(0.25, QColor(255, 230, 140))
-            core.setColorAt(0.55, QColor(255, 170, 50))
-            core.setColorAt(1.0, QColor(180, 80, 10))
+            core.setColorAt(0.0, QColor(230, 255, 255))
+            core.setColorAt(0.25, QColor(80, 230, 255))
+            core.setColorAt(0.55, QColor(0, 140, 190))
+            core.setColorAt(1.0, QColor(0, 40, 60))
         p.setBrush(QBrush(core))
         p.drawEllipse(QPointF(cx, cy), cr, cr)
 
         if self._activity_boost > 0.05 or self._speak > 0.05 or self._panic:
             p.setBrush(Qt.BrushStyle.NoBrush)
-            p.setPen(QPen(self._c(255, 210, 90, int(100 + 120 * self._activity_boost)), 2))
+            p.setPen(QPen(self._c(0, 240, 255, int(100 + 120 * self._activity_boost)), 2))
             pulse_r = cr * (1.55 + 0.15 * math.sin(self._pulse * 2))
             p.drawEllipse(QPointF(cx, cy), pulse_r, pulse_r)
 
     def _draw_title(self, p: QPainter, cx: float, cy: float, base: float) -> None:
+        # Title ABOVE the core — never stacked on the hologram
         font = QFont("Bahnschrift", max(11, int(base * 0.1)))
         font.setBold(True)
         font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 5)
@@ -600,10 +729,10 @@ class ArcReactor(QWidget):
         title = "J.A.R.V.I.S"
         tw = p.fontMetrics().horizontalAdvance(title)
         x = int(cx - tw / 2)
-        y = int(cy + p.fontMetrics().ascent() / 2 - 2)
-        p.setPen(self._c(255, 160, 40, 70))
+        y = int(cy - base * 0.92)
+        p.setPen(self._c(0, 180, 210, 70))
         p.drawText(x + 1, y + 1, title)
-        p.setPen(self._c(255, 235, 190, 245) if not self._panic else QColor(255, 210, 210, 245))
+        p.setPen(self._c(232, 244, 255, 245) if not self._panic else QColor(255, 210, 210, 245))
         p.drawText(x, y, title)
 
         if self._panic or self._activity != "idle" or self._speak > 0.1:
@@ -613,13 +742,15 @@ class ArcReactor(QWidget):
             if not self._panic and self._flare > 0.5 and self._activity in ("build", "site", "vibe"):
                 mode = "PROCESSING"
             p.setFont(QFont("Bahnschrift", max(8, int(base * 0.055))))
-            p.setPen(self._c(255, 180, 70, 200))
+            p.setPen(self._c(0, 210, 230, 200))
             mw = p.fontMetrics().horizontalAdvance(mode)
-            p.drawText(int(cx - mw / 2), int(cy + base * 0.28), mode)
+            # Mode BELOW the core — clear strip under rings
+            p.drawText(int(cx - mw / 2), int(cy + base * 0.78), mode)
 
     def _draw_spokes(self, p: QPainter, cx: float, cy: float, base: float) -> None:
         self._hits.clear()
-        orbit = base * 1.22
+        # Wider orbit so labels never collide with title / mode
+        orbit = base * 1.38
         a = self._accent if not self._panic else QColor(255, 40, 40)
         spoke = QColor(
             min(255, (a.red() + 255) // 2),
@@ -637,12 +768,12 @@ class ArcReactor(QWidget):
             p.setPen(QPen(QColor(spoke.red(), spoke.green(), spoke.blue(), 190 if hot else 70), 1))
             p.drawLine(QPointF(cx, cy), QPointF(nx, ny))
             p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(self._c(255, 180, 60, 230 if hot else 150))
+            p.setBrush(self._c(0, 210, 230, 230 if hot else 150))
             p.drawEllipse(QPointF(nx, ny), 5.5 if hot else 3.5, 5.5 if hot else 3.5)
             text = node["label"].upper()
             fm = p.fontMetrics()
-            lx = nx + (14 if node["side"] == "R" else -14 - fm.horizontalAdvance(text))
-            p.setPen(self._c(255, 230, 190, 255 if hot else 170))
+            lx = nx + (16 if node["side"] == "R" else -16 - fm.horizontalAdvance(text))
+            p.setPen(self._c(200, 240, 255, 255 if hot else 170))
             p.drawText(int(lx), int(ny + 3), text)
             self._hits.append(
                 (

@@ -32,3 +32,100 @@
 {"event": "ask", "id": "89ef86e5f585", "kind": "clarify", "action": "clarify", "agent": "healer"}
 {"event": "resolve", "id": "89ef86e5f585", "approve": true, "answer": "Terminate MsMpEng.exe"}
 {"event": "ask", "id": "f1aba49e292d", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "e7bcc72347e1", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "e7bcc72347e1", "approve": true, "answer": "Terminate MsMpEng.exe"}
+{"event": "ask", "id": "5e95ec462df3", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "81d3917eea8f", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "e95bf8b1be86", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "d9a547d580af", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "678dc3052bcd", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "2546cb31e79e", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "aeb5be114892", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "b82cc2ac29cd", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "0f78d07d1af9", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "7aa53a233bff", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "76f8ba025556", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "f55124ba6308", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "679083e8f3af", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "8971a3a9d5f4", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "e32690191c89", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "0a4ab786e683", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "a0a32a8671e4", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "0358153ceb61", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "1bd944c085b5", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "34b03bd2c09c", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "8ff4c5e65448", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "453ea36b4492", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "879e4e6f443b", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "ba0568a4b521", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "0a1ac66a1610", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "0dd003a996c9", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "ae5139399560", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "f73526be31e0", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "56c781ffd9e5", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "914e6b95d7f6", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "70e1bccff3e1", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "df8ca7465cc7", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "4a6796ddcd84", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "c78f5de90bf2", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "cd2580a97887", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "da62024d1c16", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "975784f55b24", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "9de6bfa9090f", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "0207726d5662", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "3ac07d128e46", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "457a021fa8de", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "787d93ae5a73", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "1feeb555b36a", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "424d6583ec00", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "1bfc47725d6e", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "fec40c78ec6c", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "3ec2b570323f", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "e9ea1898cef6", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "0bcedbd376c4", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "2077dd3b25f5", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "d8e62b5916e8", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "d9512ffc7ce1", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "330e71de7a8f", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "1d7cd4931a92", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "d56e787700d5", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "ac59e19325f4", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "bf3a7568c9ac", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "91449d72fc5c", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "1ff45f73c7e8", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "12484f75b6e6", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "75b2435c2d21", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "855f490de702", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "fc1ed3084873", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "0458419f1025", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "0458419f1025", "approve": true, "answer": "Terminate RazerCortex.exe"}
+{"event": "ask", "id": "77c30ef63648", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "d44defd56ff3", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "d44defd56ff3", "approve": true, "answer": "Terminate MsMpEng.exe"}
+{"event": "ask", "id": "585bc1162ebe", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "90f0d82dc712", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "38693b8d1eb3", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "8147f4f21ac9", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "2ac76eddc2ce", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "2bf5c6a87094", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "8eba648408c9", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "8eba648408c9", "approve": true, "answer": "Terminate RobloxPlayerBeta.exe"}
+{"event": "ask", "id": "8ed19692b07e", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "72bf924a8d98", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "72bf924a8d98", "approve": true, "answer": "Terminate RazerCortex.exe"}
+{"event": "ask", "id": "ebf06d0ef489", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "ebf06d0ef489", "approve": true, "answer": "Terminate RazerCortex.exe"}
+{"event": "ask", "id": "4e37bf1a4ab4", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "e4ef3f6935dc", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "95e5130eafa5", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "95e5130eafa5", "approve": true, "answer": "Terminate MsMpEng.exe"}
+{"event": "ask", "id": "74804d746d49", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "74804d746d49", "approve": true, "answer": "Terminate MsMpEng.exe"}
+{"event": "ask", "id": "c8006759ecac", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "c8006759ecac", "approve": true, "answer": "Terminate msedge.exe"}
+{"event": "ask", "id": "beb303ea2714", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "beb303ea2714", "approve": true, "answer": "Terminate MsMpEng.exe"}
+{"event": "ask", "id": "bfd6cd368ff8", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "d3845106bf83", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "ask", "id": "1f636bccb4af", "kind": "clarify", "action": "clarify", "agent": "healer"}
+{"event": "resolve", "id": "1f636bccb4af", "approve": true, "answer": "Terminate MsMpEng.exe"}

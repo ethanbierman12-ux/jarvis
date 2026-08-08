@@ -239,6 +239,24 @@ class CameraTheater(QFrame):
         self.dock.scan.connect(lambda: self.scan_clicked.emit(True))
         self.dock.unlock_gestures.connect(self._unlock_gestures)
 
+        from jarvis.ui.widgets.stark_fabricator import StarkFabricator
+
+        self.fabricator = StarkFabricator(self)
+        self.fabricator.hide()
+        self.fabricator.closed.connect(lambda: self._set_lab_mode(False))
+        self.fabricator.status.connect(lambda s: self.dock.status.setText(s[:80]) if hasattr(self.dock, "status") else None)
+        self._lab_mode = False
+
+        from jarvis.ui.widgets.aerospatial_overlay import AerospatialOverlay
+
+        self.aerospatial = AerospatialOverlay(self)
+        self.aerospatial.hide()
+        self.aerospatial.closed.connect(lambda: self._set_ar_mode(False))
+        self.aerospatial.status.connect(
+            lambda s: self.dock.status.setText(s[:80]) if hasattr(self.dock, "status") else None
+        )
+        self._ar_mode = False
+
         self._cap = None
         self._index = -1
         self._backend = ""
@@ -324,6 +342,14 @@ class CameraTheater(QFrame):
 
     def hide_feed(self, emit: bool = True) -> None:
         self._timer.stop()
+        try:
+            self.close_aerospatial()
+        except Exception:
+            pass
+        try:
+            self.close_fabricator()
+        except Exception:
+            pass
         if self._cap is not None:
             try:
                 self._cap.release()
@@ -571,9 +597,16 @@ class CameraTheater(QFrame):
             import cv2
             from jarvis.ui.widgets.night_vision import apply_night_vision
 
-            # Night vision (green phosphor) or light boost in dark rooms
+            # Night vision only during night hours; otherwise day feed
             mean = float(np.mean(frame[::8, ::8]))  # subsample mean
-            if self._night_vision:
+            night_ok = False
+            try:
+                from jarvis.core.boot_biometrics import is_night_hours
+
+                night_ok = is_night_hours()
+            except Exception:
+                night_ok = False
+            if self._night_vision and night_ok:
                 draw = apply_night_vision(frame)
                 cv2.putText(
                     draw,
@@ -616,16 +649,31 @@ class CameraTheater(QFrame):
                             sx * 0.6 + cx * 0.4,
                             sy * 0.6 + cy * 0.4,
                         )
-                        if state.pinch:
-                            self.gesture_drag.emit(*self._smooth_cursor)
-                            self._apply_gesture_drag(*self._smooth_cursor)
-                        if state.swipe:
-                            self.gesture_swipe.emit(state.swipe)
-                            self._apply_swipe(state.swipe)
+                        # Stark fabricator lab owns gestures when open
+                        if getattr(self, "_lab_mode", False) and getattr(
+                            self, "fabricator", None
+                        ) is not None and self.fabricator.is_lab_open():
+                            self.fabricator.on_gesture(state)
+                        elif getattr(self, "_ar_mode", False) and getattr(
+                            self, "aerospatial", None
+                        ) is not None and self.aerospatial.is_ar_open():
+                            self.aerospatial.on_gesture(state)
+                        else:
+                            if state.pinch:
+                                self.gesture_drag.emit(*self._smooth_cursor)
+                                self._apply_gesture_drag(*self._smooth_cursor)
+                            if state.swipe:
+                                self.gesture_swipe.emit(state.swipe)
+                                self._apply_swipe(state.swipe)
                     self._refresh_gesture_label(state)
 
                 if not self._gesture_locked and self._last_gesture.active:
-                    draw = draw_gestures(draw, self._last_gesture, clean=True)
+                    # Lab / AR mode: show fuller landmark mesh
+                    clean = not (
+                        getattr(self, "_lab_mode", False)
+                        or getattr(self, "_ar_mode", False)
+                    )
+                    draw = draw_gestures(draw, self._last_gesture, clean=clean)
 
             # Downscale to window size before Qt convert (big lag win)
             tw = max(1, self.width())
@@ -647,11 +695,71 @@ class CameraTheater(QFrame):
             self.view.setPixmap(QPixmap.fromImage(img))
             self.view.setGeometry(self.rect())
             self.view.lower()
+            if getattr(self, "fabricator", None) is not None and self.fabricator.isVisible():
+                self.fabricator.setGeometry(self.rect())
+                self.fabricator.raise_()
+            if getattr(self, "aerospatial", None) is not None and self.aerospatial.isVisible():
+                try:
+                    # Mesh from pre-mirror frame for stabler geometry
+                    self.aerospatial.ingest_frame(frame)
+                except Exception:
+                    pass
+                self.aerospatial.setGeometry(self.rect())
+                self.aerospatial.raise_()
             if self.news.isVisible():
                 self.news.raise_()
             self.dock.raise_()
         except Exception as e:
             self.view.setText(str(e))
+
+    def _set_lab_mode(self, on: bool) -> None:
+        self._lab_mode = bool(on)
+        if not on and getattr(self, "fabricator", None) is not None:
+            try:
+                if self.fabricator.isVisible():
+                    self.fabricator.close_lab()
+            except Exception:
+                pass
+
+    def _set_ar_mode(self, on: bool) -> None:
+        self._ar_mode = bool(on)
+        if not on and getattr(self, "aerospatial", None) is not None:
+            try:
+                if self.aerospatial.isVisible():
+                    self.aerospatial.close_ar()
+            except Exception:
+                pass
+
+    def open_fabricator(self) -> None:
+        """Open Stark jet hologram lab over the live camera feed."""
+        if not self.isVisible():
+            self.open_feed(self._preferred_index, prefer=self._prefer)
+        self.set_gestures_enabled(True)
+        self._lab_mode = True
+        if getattr(self, "fabricator", None) is not None:
+            self.fabricator.setGeometry(self.rect())
+            self.fabricator.open_lab()
+            self.fabricator.raise_()
+        self.dock.raise_()
+
+    def close_fabricator(self) -> None:
+        self._set_lab_mode(False)
+
+    def open_aerospatial(self) -> None:
+        """Open AR aerospatial mapping overlay on the live room camera."""
+        if not self.isVisible():
+            self.open_feed(self._preferred_index, prefer=self._prefer)
+        self.set_gestures_enabled(True)
+        self._ar_mode = True
+        if getattr(self, "aerospatial", None) is not None:
+            self.aerospatial.setGeometry(self.rect())
+            self.aerospatial.open_ar()
+            self.aerospatial.raise_()
+        self.dock.set_status("AR AEROSPATIAL · mapping room")
+        self.dock.raise_()
+
+    def close_aerospatial(self) -> None:
+        self._set_ar_mode(False)
 
     def _update_gesture_lock(self, state: GestureState) -> None:
         if not state.active:

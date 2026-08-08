@@ -216,7 +216,11 @@ class HumanInTheLoop:
             return True
 
     def resolve_voice(self, text: str) -> str | None:
-        """Parse natural language approval. Returns status string or None if not HITL."""
+        """Parse natural language approval. Returns status string or None if not HITL.
+
+        Unrelated commands (e.g. "snapchat setup") must NOT be swallowed while a
+        gate is open — only explicit yes/no or a matching option label/number.
+        """
         t = (text or "").strip().lower()
         if not self._pending:
             return None
@@ -226,7 +230,7 @@ class HumanInTheLoop:
         if t in ("yes", "y", "ok", "okay", "sure", "proceed", "approve", "approved", "allow"):
             self.resolve(req.id, approve=True)
             return "HITL approved — continuing."
-        if t in ("no", "nah", "nope", "deny", "denied", "cancel", "abort"):
+        if t in ("no", "nah", "nope", "deny", "denied", "cancel", "abort", "skip"):
             self.resolve(req.id, approve=False)
             return "HITL denied — staying in sandbox."
 
@@ -262,8 +266,38 @@ class HumanInTheLoop:
             return "HITL denied — staying in sandbox."
 
         if req.kind == HitlKind.CLARIFY and len(t) > 1:
-            self.resolve(req.id, approve=None, answer=text.strip())
-            return f"HITL noted: {text.strip()[:120]}"
+            matched = self._match_clarify_option(req, t, text.strip())
+            if matched is None:
+                # Leave the gate open; let the brain route the real command.
+                return None
+            self.resolve(req.id, approve=None, answer=matched)
+            return f"HITL noted: {matched[:120]}"
+        return None
+
+    @staticmethod
+    def _match_clarify_option(
+        req: HitlRequest, low: str, original: str
+    ) -> str | None:
+        """Return the option label if voice/text clearly picks one; else None."""
+        opts = [str(o).strip() for o in (req.options or []) if str(o).strip()]
+        if not opts:
+            # Freeform clarify — only accept short answers, not full commands
+            if len(low.split()) <= 6 and len(low) <= 48:
+                return original
+            return None
+        for i, opt in enumerate(opts, start=1):
+            ol = opt.lower()
+            if low == str(i) or low == f"option {i}" or low == ol:
+                return opt
+            if low in ol or ol in low:
+                return opt
+            # "terminate razer…" vs "Terminate RazerCortex.exe"
+            if low.startswith("terminate") and ol.startswith("terminate"):
+                return opt
+            if low.startswith("leave") and ol.lower().startswith("leave"):
+                return opt
+            if ("show" in low and "top" in low) and "show" in ol.lower():
+                return opt
         return None
 
     def _ask(

@@ -153,7 +153,7 @@ class ClockPanel(QFrame):
 
         self.power = QLabel("POWER  —")
         self.power.setStyleSheet(
-            "color:#00e8ff; font-family:'Cascadia Mono', Consolas; font-size:11px; letter-spacing:1px;"
+            "color:#00f0ff; font-family:'Cascadia Mono', Consolas; font-size:11px; letter-spacing:1px;"
         )
         self.power.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lay.addWidget(self.power)

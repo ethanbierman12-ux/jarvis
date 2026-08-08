@@ -1,0 +1,22 @@
+{
+  "name": "Photon Trail",
+  "stack": "3d",
+  "pitch": "camera fly-through of glowing ribbon geometry",
+  "engine": "template+agents",
+  "files": [
+    "index.html",
+    "styles.css",
+    "scene.js",
+    "ui.js",
+    "preview.html",
+    "research.md",
+    "features.md",
+    "README.md",
+    "images.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\photon-trail",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\photon-trail\\index.html",
+  "zero_setup": true,
+  "preview_url": "http://127.0.0.1:60157/index.html",
+  "app_url": "http://127.0.0.1:60157/index.html"
+}

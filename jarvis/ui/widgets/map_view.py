@@ -658,7 +658,20 @@ class MapView(QFrame):
             "color:#8aa4b8; font-size:14px; background:#02050a; padding:40px;"
         )
         self._host_lay.addWidget(self._fallback)
+        self._map_loaded = False
+        self._web_error = ""
+        self._ensure_web()
 
+    def _ensure_web(self) -> bool:
+        """Create (or recreate) the MapLibre WebEngine host if needed."""
+        if self._web is not None:
+            try:
+                # Stale/deleted QObject after soft-reload → treat as missing
+                _ = self._web.page()
+                return True
+            except Exception:
+                self._web = None
+                self._map_loaded = False
         try:
             from PyQt6.QtWebEngineWidgets import QWebEngineView
             from PyQt6.QtWebEngineCore import QWebEngineSettings
@@ -671,13 +684,25 @@ class MapView(QFrame):
             settings.setAttribute(
                 QWebEngineSettings.WebAttribute.JavascriptEnabled, True
             )
+            settings.setAttribute(
+                QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True
+            )
             self._host_lay.addWidget(self._web, 1)
             self._fallback.hide()
+            self._web_error = ""
+            return True
         except Exception as e:
+            self._web = None
+            self._web_error = str(e)
             self._fallback.setText(
                 f"3D map needs PyQt6-WebEngine.\n{e}\n"
                 "Run: pip install PyQt6-WebEngine"
             )
+            self._fallback.show()
+            return False
+
+    def engine_ready(self) -> bool:
+        return self._ensure_web()
 
     def open_map(
         self,
@@ -695,6 +720,7 @@ class MapView(QFrame):
         label: str | None = None,
         brief: str | None = None,
     ) -> str:
+        self._ensure_web()
         target = (label or place or city or "Philadelphia").strip()
         self._city = city
         if lat is not None and lon is not None:
@@ -738,8 +764,9 @@ class MapView(QFrame):
             self.set_options(options, query=query)
         self.show()
 
-        if self._web is not None:
+        if self._ensure_web() and self._web is not None:
             self._web.load(QUrl.fromLocalFile(str(path.resolve())))
+            self._map_loaded = True
             verb = "scanning" if scanning else "focused on"
             return f"3D map online — {verb} {target}."
 
@@ -868,8 +895,29 @@ class MapView(QFrame):
     def zoom_by(self, delta: float) -> str:
         """Relative cinematic zoom in (+) / out (−) on the live map."""
         d = float(delta or 0)
-        if self._web is not None:
-            js = f"""
+        # Recover WebEngine after soft-reload / failed first init
+        if not self._ensure_web() or self._web is None:
+            # Last resort: (re)open map HTML then zoom once engine is up
+            try:
+                self.open_map(city=self._city or "Philadelphia", animate=False)
+            except Exception:
+                pass
+            if not self._ensure_web() or self._web is None:
+                err = self._web_error or "PyQt6-WebEngine missing"
+                return f"Map engine offline ({err})."
+        # If the panel is showing but tiles never loaded, bootstrap HTML
+        if not self._map_loaded:
+            try:
+                path = write_map_html(
+                    place=self._city or "Philadelphia",
+                    animate_intro=False,
+                    scanning=False,
+                )
+                self._web.load(QUrl.fromLocalFile(str(path.resolve())))
+                self._map_loaded = True
+            except Exception as e:
+                print(f"[map] reload html for zoom: {e}")
+        js = f"""
 (function tryZoom(n) {{
   try {{
     if (window.jarvisZoomBy && (window.map || window._jarvisMapReady)) {{
@@ -877,15 +925,14 @@ class MapView(QFrame):
       return;
     }}
   }} catch (e) {{}}
-  if (n < 25) setTimeout(function() {{ tryZoom(n + 1); }}, 200);
+  if (n < 40) setTimeout(function() {{ tryZoom(n + 1); }}, 250);
 }})(0);
 """
-            try:
-                self._web.page().runJavaScript(js)
-            except Exception:
-                pass
-            return "Zooming in." if d >= 0 else "Pulling back."
-        return "Map engine offline."
+        try:
+            self._web.page().runJavaScript(js)
+        except Exception as e:
+            return f"Zoom failed: {e}"
+        return "Zooming in." if d >= 0 else "Pulling back."
 
     def lookup_brief(self, place: str) -> tuple[str, dict[str, Any] | None]:
         """Geocode + brief without flying (for brain when opening map cold)."""

@@ -199,6 +199,8 @@ class AudioRouter:
                     [
                         "powershell",
                         "-NoProfile",
+                        "-WindowStyle",
+                        "Hidden",
                         "-Command",
                         (
                             "if (Get-Module -ListAvailable -Name AudioDeviceCmdlets) {"
@@ -209,6 +211,7 @@ class AudioRouter:
                     capture_output=True,
                     text=True,
                     timeout=12,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
                 )
                 if r.returncode == 0:
                     return True
@@ -217,6 +220,8 @@ class AudioRouter:
                 [
                     "powershell",
                     "-NoProfile",
+                    "-WindowStyle",
+                    "Hidden",
                     "-Command",
                     (
                         "if (Get-Module -ListAvailable -Name AudioDeviceCmdlets) {"
@@ -228,6 +233,7 @@ class AudioRouter:
                 capture_output=True,
                 text=True,
                 timeout=12,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
             )
             if r.returncode == 0:
                 return True

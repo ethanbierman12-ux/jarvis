@@ -50,16 +50,16 @@ class SystemGovernor:
             self.VISION_HOT = max(1, self.VISION_COOL)
         if self._perf:
             self.VISION_COOL = min(self.VISION_COOL, 2)
-            self.UI_COOL = 10
-            self.UI_HOT = 8
+            self.UI_COOL = 8
+            self.UI_HOT = 6
         psutil.cpu_percent(interval=None)  # prime non-blocking
 
     def set_performance_mode(self, on: bool) -> None:
         """Smooth / eco HUD — lower UI + vision caps without waiting for thermal."""
         self._perf = bool(on)
         if self._perf:
-            self.UI_COOL = 10
-            self.UI_HOT = 8
+            self.UI_COOL = 8
+            self.UI_HOT = 6
             self.VISION_COOL = min(self.VISION_COOL, 2)
         else:
             self.UI_COOL = 15

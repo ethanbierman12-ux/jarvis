@@ -77,8 +77,8 @@ class Personality:
         )
 
     def boot_welcome(self) -> str:
-        """Spoken once when boot loading finishes."""
-        return f"Welcome, {self.user_name}."
+        """Spoken once when boot loading finishes (non-Stark-arrival path)."""
+        return "Welcome home, Sir. All systems are online."
 
     def wrap(self, kind: str, core: str) -> str:
         """Frame factual replies — keep punchy for voice."""
@@ -109,9 +109,10 @@ class Personality:
                 "Why do AIs prefer the dark? Light attracts bugs — regrettably apt.",
             ],
             "fallback": [
-                f"Say open camera, enroll, weather, or help — I'm listening, {self.user_name}.",
-                f"I didn't catch that, {self.user_name}. Try: lock, music, stats, or lamp on.",
-                f"Ready, {self.user_name}. Try camera, enroll, router, secure, or sarah.",
+                f"I didn't catch that, {self.user_name}. Try: good morning, open aerospatial, "
+                f"remind me at 10 pm California, snapchat setup, or help.",
+                f"Ready, {self.user_name}. Try: weather, lock, music, list reminders, or scan room.",
+                f"Say help for the menu — or try open aerospatial, test snapchat call, or open youtube.",
             ],
             "opinion": [""],
             "compliment": [""],

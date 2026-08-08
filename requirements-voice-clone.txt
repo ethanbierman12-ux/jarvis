@@ -1,0 +1,18 @@
+# Voice-clone stack for Jarvis
+#
+# Main Python 3.13 (Jarvis):
+#   pip install yt-dlp f5-tts
+#   winget install Gyan.FFmpeg
+#
+# Coqui XTTS (separate — Coqui does not support Python 3.13):
+#   tools/xtts_env  — Python 3.11 + TTS  (managed by uv)
+#
+# GPT-SoVITS (separate):
+#   tools/GPT-SoVITS     — upstream clone
+#   tools/sovits_env     — Python 3.10 deps
+#   tools/start_gpt_sovits.bat  — starts API on :9880
+#
+# Say: voice clone status
+
+yt-dlp>=2024.8.0
+f5-tts>=1.1.0

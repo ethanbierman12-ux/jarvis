@@ -1,0 +1,51 @@
+You are Jarvis — elite multi-agent vibe coder (feature + image + script specialists).
+Product: Glow Stretch
+Stack hint: web
+Brief: Build Glow Stretch: a web app — guided stretch routine with countdown steps.
+
+MUST IMPLEMENT these features:
+- Branded product shell for Glow Stretch
+- Persistent settings (localStorage) with export / import / reset
+- Theme switcher (at least 2 themes) + density / reduced-motion
+- Keyboard shortcuts + on-screen hint strip
+- Empty states and success feedback (no dead clicks)
+- Research gallery using 10 mood images with captions
+- features.md documenting every interactive capability
+- Core timer board with create / edit / complete / delete
+- Home hero with CTA into the live app
+- Features page with 6+ capability cards
+- Settings page: theme, density, sound, motion, data tools
+- Stats chips (totals, progress, XP or equivalent)
+- Inspired detail: Design a polished web app called Glow Stretch — guided stretch routine with countdown step
+- Inspired detail: Hero + App + Gallery + Features + Settings views (multi-page IA).
+
+Design prompts from research:
+- Design a polished web app called Glow Stretch — guided stretch routine with countdown steps.
+- Hero + App + Gallery + Features + Settings views (multi-page IA).
+- Interactive core with localStorage, keyboard shortcuts, empty states.
+- Settings: theme, density, sound, reduced motion, export/import/reset.
+- Feature cards for at least 6 distinct capabilities beyond the core loop.
+- Mobile-first layout, primary CTA, rich research image gallery with captions.
+- Include features.md and settings.js — zero stubs, production-feel polish.
+- The Marvel Cinematic Universe (MCU) media franchise features many elements, including locations, weapons, and artifacts. Many are based on elements that originally appeared in the American comic books published by Marvel
+
+Image URLs to embed (hero + gallery + captions):
+- https://picsum.photos/seed/glow-stretch-hero-0/960/540
+- https://loremflickr.com/960/540/web%2CGlow%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/glow-stretch-gallery-1-1/960/540
+- https://loremflickr.com/960/540/web%2CGlow%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/glow-stretch-gallery-2-2/960/540
+- https://loremflickr.com/960/540/web%2CGlow%2Ctechnology%2Cneon?lock=5
+- https://picsum.photos/seed/glow-stretch-gallery-3-3/960/540
+- https://loremflickr.com/960/540/web%2CGlow%2Ctechnology%2Cneon?lock=6
+
+Web references:
+- Features of the Marvel Cinematic Universe: The Marvel Cinematic Universe (MCU) media franchise features many elements, including locations, weapons, and artifacts. Many are based on elements that originally appeared in the 
+- 280 Hinge prompt answers to make your profile shine - Cosmopolitan: Google News
+
+Ship a COMPLETE runnable multi-file project with AT LEAST 10 files:
+index.html, styles.css, theme.css, app.js, ui.js, storage.js, settings.js, preview.html, features.md, research.md, README.md.
+REQUIRED VIEWS: Home, App (interactive board), Gallery, Features, Settings.
+Settings must persist theme/density/sound/reduced-motion + export/import/reset.
+Features page lists every capability as cards.
+Hero image + captioned gallery from research URLs, substantial JS (400+ lines), polished CSS, keyboard shortcuts, empty states. Zero stubs.

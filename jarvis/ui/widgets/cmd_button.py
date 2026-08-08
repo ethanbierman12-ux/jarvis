@@ -77,18 +77,30 @@ class CmdButton(QPushButton):
         self._cmd = cmd
         self.setToolTip(cmd)
 
-    def pulse_success(self) -> None:
-        """Short cyan confirmation after a command lands."""
-        self._run_flash(peak=1.0, ms=320)
-
     def _on_click(self) -> None:
         if self._busy:
             return
         self._busy = True
+        try:
+            from jarvis.ui.hud_sfx import play_click
+
+            play_click()
+        except Exception:
+            pass
         self._run_flash(peak=1.0, ms=180)
         # Fire after the press lands so animation is visible
         QTimer.singleShot(70, lambda: self.fired.emit(self._cmd))
         QTimer.singleShot(220, self._clear_busy)
+
+    def pulse_success(self) -> None:
+        """Short cyan confirmation after a command lands."""
+        try:
+            from jarvis.ui.hud_sfx import play_confirm
+
+            play_confirm()
+        except Exception:
+            pass
+        self._run_flash(peak=1.0, ms=320)
 
     def _clear_busy(self) -> None:
         self._busy = False

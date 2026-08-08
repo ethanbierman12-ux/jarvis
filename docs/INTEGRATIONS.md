@@ -184,10 +184,15 @@ Same four services as Cursor MCP, via vaulted REST keys (OAuth tokens are **not*
 | **notion search …** | Search workspace |
 | **link buffer** / **set buffer token to …** | Buffer token |
 | **buffer channels** | List profiles |
-| **link gmail** / **set gmail token to …** | Gmail OAuth access token |
+| **link gmail** / **setup gmail oauth** | Google Cloud Desktop OAuth (auto-refresh) |
+| **set gmail client id to …** / **set gmail client secret to …** | OAuth client credentials (vaulted) |
+| **set gmail token to …** / **set gmail refresh token to …** | Manual token paste (optional) |
 | **gmail inbox** | Recent subjects |
+| **gmail status** / **clear email** | Status / archive inbox (auto-refreshes token) |
 
-Module: `jarvis/core/cloud_integrations.py`. Details: [HANDOVER_MCP.md](HANDOVER_MCP.md).
+Redirect URI for the Desktop client: `http://127.0.0.1:8753/`
+
+Module: `jarvis/core/cloud_integrations.py` + `jarvis/core/gmail_oauth.py`. Details: [HANDOVER_MCP.md](HANDOVER_MCP.md).
 
 ## Manus AI (manus.im)
 

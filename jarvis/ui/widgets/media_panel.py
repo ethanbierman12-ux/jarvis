@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QWidget, Q
 
 from jarvis.ui.widgets.cmd_button import CmdButton
 
-DEFAULT_PLAYLIST_ID = "3hMeaqVid62fywPpTBWWw9"
+DEFAULT_PLAYLIST_ID = "0wAwIuOxCyimlomGUiAGQ2"
 
 
 class MediaPanel(QFrame):
@@ -36,7 +36,7 @@ class MediaPanel(QFrame):
         head.addWidget(self._spot)
         lay.addLayout(head)
 
-        self.track = QLabel("Recommendation playlist ready")
+        self.track = QLabel("Shoot to Thrill · AC/DC ready")
         self.track.setObjectName("Dim")
         self.track.setWordWrap(True)
         lay.addWidget(self.track)
@@ -60,9 +60,9 @@ class MediaPanel(QFrame):
         row.setSpacing(8)
         self._buttons: list[CmdButton] = []
         for label, act in (
-            ("Prev", "previous"),
-            ("Play", "playpause"),
-            ("Next", "next"),
+            ("Prev", "previous track"),
+            ("Play", "play music"),
+            ("Next", "next track"),
             ("Mute", "mute"),
         ):
             b = CmdButton(label, act, kind="media")
@@ -71,7 +71,7 @@ class MediaPanel(QFrame):
             row.addWidget(b)
         lay.addLayout(row)
 
-        playlist_btn = CmdButton("Playlist", "play my focus playlist", kind="ghost", compact=True)
+        playlist_btn = CmdButton("Workshop", "play iron man workshop", kind="ghost", compact=True)
         playlist_btn.fired.connect(self.action.emit)
         lay.addWidget(playlist_btn)
 
@@ -91,7 +91,7 @@ class MediaPanel(QFrame):
 </style></head>
 <body>
 <iframe
-  title="Spotify Embed: Recommendation Playlist"
+  title="Spotify Embed: Iron Man Workshop"
   src="{src}"
   width="100%"
   height="100%"
@@ -134,6 +134,6 @@ class MediaPanel(QFrame):
     def set_track(self, name: str) -> None:
         self.track.setText(name)
         for b in self._buttons:
-            if b._cmd == "playpause":
+            if "play" in (b._cmd or "").lower():
                 b.pulse_success()
                 break

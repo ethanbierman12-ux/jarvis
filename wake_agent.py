@@ -1,8 +1,8 @@
 """
 Always-on F3 wake agent — the global START button (double-tap).
 
-Press F3 twice within 1.2s anywhere on Windows:
-  - If Jarvis is not running → launch it
+Press F3 twice within 2.5s anywhere on Windows:
+  - If Jarvis is not running → launch it (secure boot, or fast path if recently unlocked)
   - If Jarvis is already running → soft-reload core (exit 0) and ensure relaunch
 Single F3: focus only when open; when closed, arms then expires (no launch).
 
@@ -23,15 +23,20 @@ LOCK = ROOT / "jarvis" / "data" / "wake_agent.lock"
 LOG = ROOT / "jarvis" / "data" / "wake_agent.log"
 MAIN = ROOT / "main.py"
 RUNNER = ROOT / "runner.py"
+PC_BOOT = ROOT / "pc_boot.py"
 PY = Path(r"C:\Users\ethan\AppData\Local\Programs\Python\Python313\python.exe")
 PYW = Path(r"C:\Users\ethan\AppData\Local\Programs\Python\Python313\pythonw.exe")
 
 _last_wake = 0.0
 _arm_until = 0.0  # first F3 arms; second within window fires
+_action_until = 0.0  # cooldown only AFTER a launch/reload fires
 HOTKEY_ID = 0x4A46  # "JF"
-# Accidental bed/laptop F3 presses — require a deliberate double-tap
-DOUBLE_TAP_SEC = 1.2
-DEBOUNCE_SEC = 0.25
+# Deliberate double-tap — window is generous so you don't need a third press
+DOUBLE_TAP_SEC = 2.5
+# Ignore only true key-repeat duplicates (was 0.18 — that ate the 2nd tap)
+ARM_DEBOUNCE_SEC = 0.05
+CONFIRM_DEBOUNCE_SEC = 0.04
+ACTION_COOLDOWN_SEC = 0.9
 
 
 
@@ -141,7 +146,69 @@ def _creation_flags() -> int:
     return 0
 
 
+def _secure_boot_enabled() -> bool:
+    """F3 always gates through cinematic secure boot unless settings disable it."""
+    try:
+        sys.path.insert(0, str(ROOT))
+        from jarvis.config import Settings
+
+        s = Settings.load()
+        if hasattr(s, "f3_secure_boot"):
+            return bool(getattr(s, "f3_secure_boot", True))
+        # Fall back: security_enabled means F3 must unlock first
+        return bool(getattr(s, "security_enabled", True))
+    except Exception:
+        return True
+
+
+def _secure_boot_running() -> bool:
+    return _scan_python_cmd("pc_boot.py") or _scan_python_cmd("pc_poweron")
+
+
 def _launch_jarvis(*, prefer_watchdog: bool = True) -> None:
+    """Cold-start / re-auth: secure boot first, then Jarvis (unless disabled)."""
+    if _secure_boot_enabled() and PC_BOOT.exists():
+        _launch_secure_boot()
+        return
+    _launch_jarvis_direct(prefer_watchdog=prefer_watchdog)
+
+
+def _launch_secure_boot() -> None:
+    if _secure_boot_running():
+        _log("secure boot already running — focusing that flow")
+        return
+    try:
+        sys.path.insert(0, str(ROOT))
+        from jarvis.core.instance import mark_launching
+
+        mark_launching()
+    except Exception:
+        pass
+
+    log_out = open(LOG, "a", encoding="utf-8")
+    try:
+        log_out.write(
+            f"\n{time.strftime('%Y-%m-%d %H:%M:%S')} SECURE_BOOT {_python()} {PC_BOOT}\n"
+        )
+        log_out.flush()
+    except Exception:
+        pass
+
+    # Prefer python.exe so Qt secure boot has a console for diagnostics;
+    # CREATE_NO_WINDOW still hides the black console window.
+    subprocess.Popen(
+        [_python(), str(PC_BOOT)],
+        cwd=str(ROOT),
+        stdout=log_out,
+        stderr=log_out,
+        stdin=subprocess.DEVNULL,
+        creationflags=_creation_flags(),
+        close_fds=False,
+    )
+    _log("launching secure boot (PIN → birth → face/codeword)…")
+
+
+def _launch_jarvis_direct(*, prefer_watchdog: bool = True) -> None:
     try:
         sys.path.insert(0, str(ROOT))
         from jarvis.core.instance import mark_launching
@@ -263,47 +330,81 @@ def _ensure_relaunch_after_exit(*, had_watchdog: bool) -> None:
 
 
 def _on_wake() -> None:
-    """F3 wake — deliberate double-tap only (stops bed/laptop ghosts)."""
-    global _last_wake, _arm_until
+    """F3 wake — double-tap to launch/reload (single tap only arms / focuses)."""
+    global _last_wake, _arm_until, _action_until
     try:
         now = time.time()
-        if now - _last_wake < DEBOUNCE_SEC:
+        # After a successful fire, ignore spam briefly
+        if now < _action_until:
             return
-        _last_wake = now
 
-        # First tap: arm. Second tap within DOUBLE_TAP_SEC: act.
-        if now > _arm_until:
+        armed = now <= _arm_until
+
+        if not armed:
+            # First tap — arm. Tiny debounce only (key-repeat).
+            if now - _last_wake < ARM_DEBOUNCE_SEC:
+                return
+            _last_wake = now
             _arm_until = now + DOUBLE_TAP_SEC
             if _jarvis_running():
                 _focus()
-                _log("F3 armed — press F3 again to reload (single tap only focuses)")
+                _log("F3 armed — tap F3 again to soft-reload")
             else:
-                _log("F3 armed — press F3 again within 1.2s to launch")
+                _log(f"F3 armed — tap F3 again within {DOUBLE_TAP_SEC:.1f}s to start")
             return
 
+        # Second tap within window — fire (don't use the old 180ms debounce)
+        if now - _last_wake < CONFIRM_DEBOUNCE_SEC:
+            return
+        _last_wake = now
         _arm_until = 0.0
+        _action_until = now + ACTION_COOLDOWN_SEC
         _log("F3 double-tap confirmed")
 
+        # Secure boot already open → don't stack another
+        if _secure_boot_running():
+            _log("secure boot already open — waiting for unlock")
+            return
+
+        # HUD already running → FAST soft-reload (never kill + re-auth here)
         if _jarvis_running():
             had_watchdog = _watchdog_running()
             _focus()
             _request_hud_reload()
-            soft_deadline = time.time() + 5.0
+            soft_deadline = time.time() + 3.0
             while time.time() < soft_deadline and _jarvis_running():
-                time.sleep(0.2)
+                time.sleep(0.10)
             if _jarvis_running():
                 _log("soft reload timed out — force stop")
                 _force_kill_jarvis()
-                time.sleep(0.4)
+                time.sleep(0.25)
             if not _jarvis_running():
                 _ensure_relaunch_after_exit(had_watchdog=had_watchdog)
             else:
                 _log("Jarvis still running after F3 — focused only")
             return
 
+        # Cold start → secure boot (when enabled), else launch HUD
+        # Recent unlock → skip PIN gate for speed
+        if _recent_unlock_ok() and _secure_boot_enabled():
+            _log("recent unlock — fast launch (skipping secure boot gate)")
+            _launch_jarvis_direct(prefer_watchdog=True)
+            return
         _launch_jarvis(prefer_watchdog=True)
     except Exception as e:
         _log(f"F3 failed: {e}")
+
+
+def _recent_unlock_ok(max_age_sec: float = 900.0) -> bool:
+    """True if secure boot unlocked within the last N seconds (default 15 min)."""
+    stamp = ROOT / "jarvis" / "data" / "last_secure_unlock"
+    try:
+        if not stamp.exists():
+            return False
+        age = time.time() - stamp.stat().st_mtime
+        return 0 <= age <= max_age_sec
+    except Exception:
+        return False
 
 
 def _already_locked() -> bool:

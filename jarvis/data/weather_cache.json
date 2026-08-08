@@ -1,29 +1,49 @@
 {
   "city": "Philadelphia",
-  "date": "Sunday, July 19",
-  "time": "04:48:45",
-  "temp_c": 33.0,
-  "condition": "Smoke",
-  "humidity": 64,
-  "feels_like": 45.0,
+  "date": "Thursday, August 06, 2026",
+  "time": "20:03:50",
+  "time_12": "8:03 PM",
+  "weekday": "Thursday",
+  "temp_c": 31.0,
+  "temp_f": 88.0,
+  "temp_display": 88.0,
+  "units": "f",
+  "condition": "Sunny",
+  "humidity": 73,
+  "feels_like": 38.0,
+  "feels_like_f": 101.0,
   "forecast": [
     {
-      "date": "2026-07-18",
-      "max": "31",
-      "min": "21",
-      "desc": "Moderate rain at times"
+      "date": "2026-08-06",
+      "max_c": "34",
+      "min_c": "24",
+      "max_f": "93",
+      "min_f": "75",
+      "max": "93",
+      "min": "75",
+      "desc": "Partly Cloudy "
     },
     {
-      "date": "2026-07-19",
-      "max": "29",
-      "min": "21",
+      "date": "2026-08-07",
+      "max_c": "35",
+      "min_c": "24",
+      "max_f": "95",
+      "min_f": "75",
+      "max": "95",
+      "min": "75",
       "desc": "Sunny"
     },
     {
-      "date": "2026-07-20",
-      "max": "30",
-      "min": "18",
+      "date": "2026-08-08",
+      "max_c": "34",
+      "min_c": "22",
+      "max_f": "93",
+      "min_f": "72",
+      "max": "93",
+      "min": "72",
       "desc": "Sunny"
     }
-  ]
+  ],
+  "timezone": "America/New_York",
+  "unit_label": "F"
 }

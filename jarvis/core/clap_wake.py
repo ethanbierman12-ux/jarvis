@@ -133,10 +133,12 @@ def list_bluetooth_adapters() -> list[dict[str, str]]:
             "ConvertTo-Json -Compress"
         )
         out = subprocess.check_output(
-            ["powershell", "-NoProfile", "-Command", ps],
+            ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-NonInteractive", "-Command", ps],
             text=True,
             stderr=subprocess.DEVNULL,
             timeout=12,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
+            stdin=subprocess.DEVNULL,
         ).strip()
         if not out:
             return found

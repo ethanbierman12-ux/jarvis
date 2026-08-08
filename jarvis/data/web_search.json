@@ -1,13 +1,25 @@
 {
-  "ts": "2026-07-27T10:05:45",
-  "query": "prompt ideas for building a game app: Pulse Runner",
-  "answer": "Google Search is a search engine operated by Google. It allows users to search or ask for information by entering keywords or phrases on a website page or in an installed application program. Google Search uses algorithms to analyze and rank websites based on their relevance to the query and uses generative artificial intelligence to respond to queries with non-search responses. Google Search is the most-visited website in the world. As of 2025, Google Search has a 90% share of the global search",
+  "ts": "2026-08-08T01:28:38",
+  "query": "prompt ideas for building a game app: Video Slideshow Reel",
+  "answer": "Instagram is an American photo and short-form video sharing social networking service owned by Meta Platforms. It allows users to upload media that can be edited with filters, be organized by hashtags, and be associated with a location via geographical tagging. Posts can be shared publicly or with preapproved followers. Users can browse other users' content by tags and locations, view trending content, like photos, and follow other users to add their content to a personal feed. A Meta-operated i",
   "results": [
     {
-      "title": "Google Search",
-      "url": "https://en.wikipedia.org/wiki/Google_Search",
-      "snippet": "Google Search is a search engine operated by Google. It allows users to search or ask for information by entering keywords or phrases on a website page or in an installed applicati",
+      "title": "Instagram",
+      "url": "https://en.wikipedia.org/wiki/Instagram",
+      "snippet": "Instagram is an American photo and short-form video sharing social networking service owned by Meta Platforms. It allows users to upload media that can be edited with filters, be o",
       "source": "wikipedia"
+    },
+    {
+      "title": "\ufe0f 40 AI Social Media Prompts To 10x Your Content Creation - Metricool",
+      "url": "https://news.google.com/rss/articles/CBMiVkFVX3lxTE1wNmNpaUdPM201NFlXR2pRZnZxaE81U2Q3Q1RfU3F4R0tnWWlxV2VJTlNUOWV2VWV2YW1FUHhfYnBuX1JRTTdBN2xMMEYtQ3FweldoNDZB?oc=5",
+      "snippet": "Google News",
+      "source": "rss"
+    },
+    {
+      "title": "18 AI-powered content creation tools to simplify your workflow - Hootsuite Blog",
+      "url": "https://news.google.com/rss/articles/CBMiY0FVX3lxTFBvMERwMkFSbUZRQ2NNZXJKU0I1NW9wYmZlTVN6N0FTckZHX3kxb2paeFEtRWd5eHJXU0RlYnd4dngtU1BXV2Z2YlJiUXpfNWNhblg5YXVHSk1jOC1JZ2FoUDRVYw?oc=5",
+      "snippet": "Google News",
+      "source": "rss"
     }
   ]
 }

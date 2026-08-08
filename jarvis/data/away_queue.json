@@ -1,56 +1,6 @@
 {
   "jobs": [
     {
-      "id": "j1784407725102",
-      "kind": "weather_cache",
-      "label": "Refresh weather cache",
-      "payload": {},
-      "created": "2026-07-19T04:48:45",
-      "status": "done",
-      "finished": "2026-07-19T04:48:45",
-      "result": "Weather cached: 33\u00b0 Smoke"
-    },
-    {
-      "id": "j1784407725109",
-      "kind": "prep_brief",
-      "label": "Prep morning brief",
-      "payload": {},
-      "created": "2026-07-19T04:48:45",
-      "status": "done",
-      "finished": "2026-07-19T04:48:47",
-      "result": "Morning brief prepared for wake."
-    },
-    {
-      "id": "j1784407746547",
-      "kind": "heartbeat",
-      "label": "Steward online",
-      "payload": {},
-      "created": "2026-07-19T04:49:06",
-      "status": "done",
-      "finished": "2026-07-19T04:49:06",
-      "result": "Heartbeat ok at 04:49"
-    },
-    {
-      "id": "j1784408288685",
-      "kind": "heartbeat",
-      "label": "Away heartbeat",
-      "payload": {},
-      "created": "2026-07-19T04:58:08",
-      "status": "done",
-      "finished": "2026-07-19T04:58:08",
-      "result": "Heartbeat ok at 04:58"
-    },
-    {
-      "id": "j1784408288692",
-      "kind": "weather_cache",
-      "label": "Refresh weather cache",
-      "payload": {},
-      "created": "2026-07-19T04:58:08",
-      "status": "done",
-      "finished": "2026-07-19T04:58:08",
-      "result": "Weather cache skipped: Unexpected UTF-8 BOM (decode using utf-8-sig): line 1 column 1 (char 0)"
-    },
-    {
       "id": "j1784408288700",
       "kind": "system_pulse",
       "label": "System pulse",
@@ -605,62 +555,6 @@
       "result": "PC pulse CPU 53% RAM 44%"
     },
     {
-      "id": "j1784410247440",
-      "kind": "heartbeat",
-      "label": "Away heartbeat",
-      "payload": {},
-      "created": "2026-07-19T05:30:47",
-      "status": "queued"
-    },
-    {
-      "id": "j1784410247448",
-      "kind": "quiet_hours",
-      "label": "Enable quiet hours",
-      "payload": {},
-      "created": "2026-07-19T05:30:47",
-      "status": "queued"
-    },
-    {
-      "id": "j1784410247458",
-      "kind": "weather_cache",
-      "label": "Refresh weather cache",
-      "payload": {},
-      "created": "2026-07-19T05:30:47",
-      "status": "queued"
-    },
-    {
-      "id": "j1784410247467",
-      "kind": "system_pulse",
-      "label": "System pulse",
-      "payload": {},
-      "created": "2026-07-19T05:30:47",
-      "status": "queued"
-    },
-    {
-      "id": "j1784410247475",
-      "kind": "prep_brief",
-      "label": "Prep brief",
-      "payload": {},
-      "created": "2026-07-19T05:30:47",
-      "status": "queued"
-    },
-    {
-      "id": "j1784410247484",
-      "kind": "spend_digest",
-      "label": "Spend digest",
-      "payload": {},
-      "created": "2026-07-19T05:30:47",
-      "status": "queued"
-    },
-    {
-      "id": "j1784410247493",
-      "kind": "calendar_watch",
-      "label": "Calendar watch",
-      "payload": {},
-      "created": "2026-07-19T05:30:47",
-      "status": "queued"
-    },
-    {
       "id": "j1784410247501",
       "kind": "mail_watch",
       "label": "Answer email (ack)",
@@ -668,7 +562,79 @@
         "mode": "ack"
       },
       "created": "2026-07-19T05:30:47",
-      "status": "queued"
+      "status": "done",
+      "finished": "2026-08-07T08:03:07",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "j1784410247440",
+      "kind": "heartbeat",
+      "label": "Away heartbeat",
+      "payload": {},
+      "created": "2026-07-19T05:30:47",
+      "status": "done",
+      "finished": "2026-08-07T08:03:50",
+      "result": "Heartbeat ok at 08:03"
+    },
+    {
+      "id": "j1784410247448",
+      "kind": "quiet_hours",
+      "label": "Enable quiet hours",
+      "payload": {},
+      "created": "2026-07-19T05:30:47",
+      "status": "done",
+      "finished": "2026-08-07T08:03:50",
+      "result": "Quiet hours: skipped opening Windows Settings. Set Focus Assist manually if you want it."
+    },
+    {
+      "id": "j1784410247458",
+      "kind": "weather_cache",
+      "label": "Refresh weather cache",
+      "payload": {},
+      "created": "2026-07-19T05:30:47",
+      "status": "done",
+      "finished": "2026-08-07T08:03:51",
+      "result": "Weather cached: 31\u00b0 Sunny"
+    },
+    {
+      "id": "j1784410247467",
+      "kind": "system_pulse",
+      "label": "System pulse",
+      "payload": {},
+      "created": "2026-07-19T05:30:47",
+      "status": "done",
+      "finished": "2026-08-07T08:04:12",
+      "result": "PC pulse CPU 100% RAM 59%"
+    },
+    {
+      "id": "j1784410247475",
+      "kind": "prep_brief",
+      "label": "Prep brief",
+      "payload": {},
+      "created": "2026-07-19T05:30:47",
+      "status": "done",
+      "finished": "2026-08-07T08:04:12",
+      "result": "Morning brief prepared for wake."
+    },
+    {
+      "id": "j1784410247484",
+      "kind": "spend_digest",
+      "label": "Spend digest",
+      "payload": {},
+      "created": "2026-07-19T05:30:47",
+      "status": "done",
+      "finished": "2026-08-07T08:04:12",
+      "result": "No spending logged today \u2014 say 'I spent twelve on coffee' or 'Cash App 20 for gas'."
+    },
+    {
+      "id": "j1784410247493",
+      "kind": "calendar_watch",
+      "label": "Calendar watch",
+      "payload": {},
+      "created": "2026-07-19T05:30:47",
+      "status": "done",
+      "finished": "2026-08-07T08:04:33",
+      "result": "I do not see meetings for today. Add events in schedule.json, or connect Outlook."
     },
     {
       "id": "j1784414953031",
@@ -678,7 +644,9 @@
         "mode": "ack"
       },
       "created": "2026-07-19T06:49:13",
-      "status": "queued"
+      "status": "done",
+      "finished": "2026-08-07T08:03:08",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
     },
     {
       "id": "j1784415230377",
@@ -688,7 +656,9 @@
         "mode": "ack"
       },
       "created": "2026-07-19T06:53:50",
-      "status": "queued"
+      "status": "done",
+      "finished": "2026-08-07T08:03:08",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
     },
     {
       "id": "j1784416646099",
@@ -698,7 +668,9 @@
         "mode": "ack"
       },
       "created": "2026-07-19T07:17:26",
-      "status": "queued"
+      "status": "done",
+      "finished": "2026-08-07T08:03:08",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
     },
     {
       "id": "j1784420679986",
@@ -708,7 +680,9 @@
         "mode": "ack"
       },
       "created": "2026-07-19T08:24:39",
-      "status": "queued"
+      "status": "done",
+      "finished": "2026-08-07T08:03:29",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
     },
     {
       "id": "j1784423940115",
@@ -718,7 +692,9 @@
         "mode": "ack"
       },
       "created": "2026-07-19T09:19:00",
-      "status": "queued"
+      "status": "done",
+      "finished": "2026-08-07T08:03:29",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
     },
     {
       "id": "j1784428132679",
@@ -728,7 +704,9 @@
         "mode": "ack"
       },
       "created": "2026-07-19T10:28:52",
-      "status": "queued"
+      "status": "done",
+      "finished": "2026-08-07T08:03:29",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
     },
     {
       "id": "j1784494328554",
@@ -738,7 +716,9 @@
         "mode": "ack"
       },
       "created": "2026-07-20T04:52:08",
-      "status": "queued"
+      "status": "done",
+      "finished": "2026-08-07T08:03:30",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
     },
     {
       "id": "j1784744295056",
@@ -748,7 +728,587 @@
         "mode": "ack"
       },
       "created": "2026-07-23T02:18:15",
-      "status": "queued"
+      "status": "done",
+      "finished": "2026-08-07T08:03:50",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061051",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:04:11",
+      "status": "done",
+      "finished": "2026-08-07T08:04:12",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061072",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:04:32",
+      "status": "done",
+      "finished": "2026-08-07T08:04:33",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061093",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:04:53",
+      "status": "done",
+      "finished": "2026-08-07T08:04:53",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061113",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:05:13",
+      "status": "done",
+      "finished": "2026-08-07T08:05:14",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061134",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:05:34",
+      "status": "done",
+      "finished": "2026-08-07T08:05:34",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061154",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:05:54",
+      "status": "done",
+      "finished": "2026-08-07T08:05:54",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061174",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:06:14",
+      "status": "done",
+      "finished": "2026-08-07T08:06:14",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061195",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:06:35",
+      "status": "done",
+      "finished": "2026-08-07T08:06:35",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061215",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:06:55",
+      "status": "done",
+      "finished": "2026-08-07T08:06:55",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061235",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:07:15",
+      "status": "done",
+      "finished": "2026-08-07T08:07:15",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061255",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:07:35",
+      "status": "done",
+      "finished": "2026-08-07T08:07:36",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061276",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:07:56",
+      "status": "done",
+      "finished": "2026-08-07T08:07:56",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061296",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:08:16",
+      "status": "done",
+      "finished": "2026-08-07T08:08:16",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061316",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:08:36",
+      "status": "done",
+      "finished": "2026-08-07T08:08:36",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061337",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:08:57",
+      "status": "done",
+      "finished": "2026-08-07T08:08:57",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061357",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:09:17",
+      "status": "done",
+      "finished": "2026-08-07T08:09:17",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061377",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:09:37",
+      "status": "done",
+      "finished": "2026-08-07T08:09:37",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061397",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:09:57",
+      "status": "done",
+      "finished": "2026-08-07T08:09:58",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061418",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:10:18",
+      "status": "done",
+      "finished": "2026-08-07T08:10:18",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061438",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:10:38",
+      "status": "done",
+      "finished": "2026-08-07T08:10:38",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061458",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:10:58",
+      "status": "done",
+      "finished": "2026-08-07T08:10:58",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061478",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:11:18",
+      "status": "done",
+      "finished": "2026-08-07T08:11:19",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061499",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:11:39",
+      "status": "done",
+      "finished": "2026-08-07T08:11:39",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061519",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:11:59",
+      "status": "done",
+      "finished": "2026-08-07T08:11:59",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061539",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:12:19",
+      "status": "done",
+      "finished": "2026-08-07T08:12:20",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061560",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:12:40",
+      "status": "done",
+      "finished": "2026-08-07T08:12:40",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061580",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:13:00",
+      "status": "done",
+      "finished": "2026-08-07T08:13:00",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061600",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:13:20",
+      "status": "done",
+      "finished": "2026-08-07T08:13:20",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061620",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:13:40",
+      "status": "done",
+      "finished": "2026-08-07T08:13:41",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061641",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:14:01",
+      "status": "done",
+      "finished": "2026-08-07T08:14:01",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061661",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:14:21",
+      "status": "done",
+      "finished": "2026-08-07T08:14:22",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061682",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:14:42",
+      "status": "done",
+      "finished": "2026-08-07T08:14:42",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061702",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:15:02",
+      "status": "done",
+      "finished": "2026-08-07T08:15:02",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061722",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:15:22",
+      "status": "done",
+      "finished": "2026-08-07T08:15:22",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061742",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:15:42",
+      "status": "done",
+      "finished": "2026-08-07T08:15:43",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061763",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:16:03",
+      "status": "done",
+      "finished": "2026-08-07T08:16:03",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061783",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:16:23",
+      "status": "done",
+      "finished": "2026-08-07T08:16:24",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061804",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:16:44",
+      "status": "done",
+      "finished": "2026-08-07T08:16:44",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061824",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:17:04",
+      "status": "done",
+      "finished": "2026-08-07T08:17:05",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061845",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:17:25",
+      "status": "done",
+      "finished": "2026-08-07T08:17:25",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061865",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:17:45",
+      "status": "done",
+      "finished": "2026-08-07T08:17:45",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061885",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:18:05",
+      "status": "done",
+      "finished": "2026-08-07T08:18:06",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061906",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:18:26",
+      "status": "done",
+      "finished": "2026-08-07T08:18:26",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "mail1786061926",
+      "kind": "mail_watch",
+      "label": "Realtime mail",
+      "payload": {
+        "mode": "ack"
+      },
+      "created": "2026-08-07T08:18:46",
+      "status": "done",
+      "finished": "2026-08-07T08:18:46",
+      "result": "Outlook is not available. Open Outlook once and sign in \u2014 then away mode can answer mail in real time."
+    },
+    {
+      "id": "j1786062526536",
+      "kind": "heartbeat",
+      "label": "Steward online",
+      "payload": {},
+      "created": "2026-08-07T08:28:46",
+      "status": "done",
+      "finished": "2026-08-07T08:33:51",
+      "result": "Heartbeat ok at 08:33"
+    },
+    {
+      "id": "j1786064258233",
+      "kind": "heartbeat",
+      "label": "Steward online",
+      "payload": {},
+      "created": "2026-08-07T08:57:38",
+      "status": "done",
+      "finished": "2026-08-07T08:57:39",
+      "result": "Heartbeat ok at 08:57"
+    },
+    {
+      "id": "j1786064307266",
+      "kind": "heartbeat",
+      "label": "Steward online",
+      "payload": {},
+      "created": "2026-08-07T08:58:27",
+      "status": "done",
+      "finished": "2026-08-07T08:58:27",
+      "result": "Heartbeat ok at 08:58"
+    },
+    {
+      "id": "j1786069874627",
+      "kind": "heartbeat",
+      "label": "Steward online",
+      "payload": {},
+      "created": "2026-08-07T10:31:14",
+      "status": "done",
+      "finished": "2026-08-07T10:31:16",
+      "result": "Heartbeat ok at 10:31"
+    },
+    {
+      "id": "j1786113887775",
+      "kind": "heartbeat",
+      "label": "Steward online",
+      "payload": {},
+      "created": "2026-08-07T22:44:47",
+      "status": "done",
+      "finished": "2026-08-07T22:44:51",
+      "result": "Heartbeat ok at 22:44"
     }
   ]
 }

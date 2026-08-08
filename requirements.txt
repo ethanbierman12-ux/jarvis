@@ -27,13 +27,15 @@ watchdog>=4.0.0
 mediapipe>=0.10.9
 ytmusicapi>=1.3.0
 pytesseract>=0.3.10
-# Optional Spotify Web API: pip install spotipy
-# spotipy>=2.23.0
-# Optional vibe agent (set CURSOR_API_KEY): pip install cursor-sdk
-# cursor-sdk>=0.1.0
-# Optional computer-use / browser agent (imports are try/except — boot safe without these):
-# pip install playwright && playwright install chromium
-# playwright>=1.40.0
-# Optional: pip install browser-use
-# browser-use>=0.1.0
+pyserial>=3.5
+spotipy>=2.23.0
+PyJWT>=2.8.0
+playwright>=1.40.0
+browser-use>=0.1.0
+cursor-sdk>=0.1.0
 # API keys via vault: anthropic_api_key / openai_api_key (no SDKs required; uses urllib)
+# Home ops / encrypted backups
+cryptography>=42.0.0
+# Personality Forge GPU training (huge — install only if training):
+# pip install -r jarvis/data/personality_forge/requirements-training.txt
+# Home Assistant: run install_homeassistant.bat (Docker Desktop)

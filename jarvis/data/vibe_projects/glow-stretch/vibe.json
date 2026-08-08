@@ -1,0 +1,25 @@
+{
+  "name": "Glow Stretch",
+  "stack": "web",
+  "pitch": "guided stretch routine with countdown steps",
+  "engine": "template+agents",
+  "files": [
+    "index.html",
+    "theme.css",
+    "styles.css",
+    "storage.js",
+    "settings.js",
+    "ui.js",
+    "app.js",
+    "features.md",
+    "research.md",
+    "preview.html",
+    "README.md",
+    "images.md"
+  ],
+  "path": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\glow-stretch",
+  "entry": "C:\\Users\\ethan\\jarvis\\jarvis\\data\\vibe_projects\\glow-stretch\\index.html",
+  "zero_setup": true,
+  "preview_url": "http://127.0.0.1:63419/index.html",
+  "app_url": "http://127.0.0.1:63419/index.html"
+}

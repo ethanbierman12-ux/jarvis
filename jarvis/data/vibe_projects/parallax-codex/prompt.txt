@@ -1,0 +1,48 @@
+You are Jarvis — elite multi-agent vibe coder (feature + image + script specialists).
+Product: Parallax Codex
+Stack hint: animation
+Brief: Build Parallax Codex: a animation app — multi-layer parallax story scroll with GSAP scrub.
+
+MUST IMPLEMENT these features:
+- Branded product shell for Parallax Codex
+- Persistent settings (localStorage) with export / import / reset
+- Theme switcher (at least 2 themes) + density / reduced-motion
+- Keyboard shortcuts + on-screen hint strip
+- Empty states and success feedback (no dead clicks)
+- Research gallery using 10 mood images with captions
+- features.md documenting every interactive capability
+- Play / pause / restart timeline
+- Speed control + export frame PNG
+- Kinetic typography or vector cascade
+- Settings: speed default, motion reduction
+- Inspired detail: Build a zero-npm animation experience called Parallax Codex — multi-layer parallax story s
+- Inspired detail: Full-bleed WebGL/canvas stage, dark void, cyan/teal accents.
+
+Design prompts from research:
+- Build a zero-npm animation experience called Parallax Codex — multi-layer parallax story scroll with GSAP scrub.
+- Full-bleed WebGL/canvas stage, dark void, cyan/teal accents.
+- Orbit/drag controls, resize handler, pause on visibilitychange.
+- HUD with Pause / Reset / Quality / FX / Auto-orbit + keyboard shortcuts.
+- Settings: pixel ratio, fog density, auto-rotate speed, reduced motion.
+- CDN only: three.js UMD + OrbitControls, optional gsap — no npm install.
+- Ship features.md listing every interactive control and preset.
+
+Image URLs to embed (hero + gallery + captions):
+- https://picsum.photos/seed/parallax-codex-hero-0/960/540
+- https://loremflickr.com/960/540/animation%2CParallax%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/parallax-codex-gallery-1-1/960/540
+- https://loremflickr.com/960/540/animation%2CParallax%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/parallax-codex-gallery-2-2/960/540
+- https://loremflickr.com/960/540/animation%2CParallax%2Ctechnology%2Cneon?lock=5
+- https://picsum.photos/seed/parallax-codex-gallery-3-3/960/540
+- https://loremflickr.com/960/540/animation%2CParallax%2Ctechnology%2Cneon?lock=6
+
+Web references:
+- (none)
+
+ZERO-NPM advanced visual app. Prefer classic CDN script tags (UMD), not ES modules.
+Allowed: three@0.128 UMD (script tags), THREE.OrbitControls, gsap UMD, canvas API.
+Forbidden: npm install, vite scaffolding, create-react-app, node_modules, webpack.
+Deliver AT LEAST: index.html, styles.css, scene.js (or anim.js), ui.js, settings.js, preview.html, features.md, research.md, README.md.
+Must run under http://127.0.0.1 with requestAnimationFrame.
+Include: PerspectiveCamera or orthographic stage, lights, resize handler, pause on visibilitychange, HUD (Pause/Reset/Quality/FX), settings panel, keyboard shortcuts, substantial JS (450+ lines total). Zero stubs.

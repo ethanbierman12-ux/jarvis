@@ -15,25 +15,32 @@ ASSETS_DIR = ROOT / "assets"
 
 @dataclass
 class Theme:
-    cyan: str = "#00f0ff"
-    void: str = "#05060a"
+    cyan: str = "#00f0ff"  # matches secure boot
+    void: str = "#02060c"
     panel: str = "#0a121c"
     white: str = "#e8f4ff"
-    dim: str = "#4a6070"
+    dim: str = "#6a9aaa"
     orange: str = "#ff6b35"
 
 
 @dataclass
 class Settings:
-    user_name: str = "Sir"
+    user_name: str = "Ethan"
     wake_word: str = "jarvis"
     tts_voice: str = "en-GB-ThomasNeural"
-    tts_rate: str = "-8%"
-    tts_pitch: str = "-4Hz"
-    tts_volume: str = "+0%"
+    tts_rate: str = "+8%"  # snappy, realistic delivery
+    tts_pitch: str = "-2Hz"
+    tts_volume: str = "+8%"
+    tts_instant_ack: bool = True
+    tts_chunk_sentences: bool = True
+    pc_boot_pin: str = ""  # set only in settings.json — never hardcode in source
+    pc_boot_birth: str = "01/16/2012"  # step 2 — MM/DD/YYYY
+    pc_boot_codeword: str = "jarvis"  # step 3 fallback if face fails
+    pc_boot_lock_on_fail: bool = True  # lock PC only after face+codeword fail
+    f3_secure_boot: bool = True  # double-tap F3 → PIN/face boot before HUD
     presence_timeout_sec: int = 35  # lock countdown after stepping away from camera
-    presence_check_fps: int = 2
-    telemetry_interval_ms: int = 4000
+    presence_check_fps: int = 3
+    telemetry_interval_ms: int = 2000
     camera_index: int = 1
     camera_prefer: str = "EMEET"
     lock_on_absence: bool = False
@@ -58,11 +65,22 @@ class Settings:
         ]
     )
     focus_playlist: str = "focus"
-    spotify_playlist_id: str = "3hMeaqVid62fywPpTBWWw9"
+    spotify_playlist_id: str = "0wAwIuOxCyimlomGUiAGQ2"
+    # Iconic boot: "Daddy's home" → Jarvis speaks → Iron Man workshop Spotify
+    stark_arrival_boot: bool = True
+    stark_arrival_music: bool = True
+    # Public scanner listening (Broadcastify page / optional pinned feed / RTL-SDR)
+    scanner_feed_id: str = ""  # e.g. Broadcastify feed number you already chose
+    scanner_feed_url: str = ""  # full listen or cdnstream URL (optional)
+    scanner_rtl_freq: str = ""  # e.g. 154.430M when rtl_fm is installed
     # Smart home / intelligence
     hue_bridge_ip: str = ""
     hue_username: str = ""
     lifx_token: str = ""
+    # ESP32 / Arduino desk LED strip via USB serial (optional)
+    iot_serial_port: str = ""  # e.g. COM3 — empty = disabled
+    iot_serial_baud: int = 115200
+    ambient_light_sync: bool = True  # HUD state → RGB / Hue / serial LEDs
     # Alexa smart lamp (bulb in the Alexa app)
     alexa_lamp_name: str = "Lamp"
     alexa_lamp_entity: str = "light.lamp"  # Home Assistant entity if exposed
@@ -74,8 +92,11 @@ class Settings:
     alexa_voice_relay: bool = True  # best default: talk to nearby Echo via room speakers
     alexa_restore_output: str = "WG1"
     gaze_lock_minutes: float = 0.0  # 0 = disabled (looking away must not lock)
+    gaze_workspace_enabled: bool = True  # look-up deck / look-left scroll
+    gaze_up_dwell_sec: float = 3.0
+    gaze_left_dwell_sec: float = 2.0
     clipboard_wipe_sec: float = 60.0
-    posture_nudge: bool = False
+    posture_nudge: bool = True
     auto_soundscape: bool = False
     lock_immediate: bool = False  # never lock on brief face flicker
     presence_grace_sec: float = 2.0  # brief settle before 35s lock countdown starts
@@ -86,9 +107,12 @@ class Settings:
     away_mail_mode: str = "ack"  # draft | ack | auto
     away_mail_max_per_tick: int = 3
     # Multi-monitor
-    hud_monitor: str = "primary"  # primary | secondary | 0 | 1
-    ops_monitor: str = "secondary"  # where big stats board goes
+    hud_monitor: str = "primary"  # primary | secondary | left | top | 0 | 1 | 2
+    ops_monitor: str = "secondary"  # where PDTester / digests board goes
     ops_monitor_enabled: bool = False  # PDTester — say "open pdtester" to show
+    tools_monitor: str = "left"  # Screen 2 — tools / console / net
+    deck_monitor: str = "top"  # Screen 3 — command deck / holographic canvas
+    triple_layout_enabled: bool = True  # auto-engage control · tools · deck on boot
     open_on_other_monitor: bool = True  # apps/URLs Jarvis opens
     # Wake-on-LAN / clap wake (second device uses Wi-Fi and/or Bluetooth)
     wol_mac: str = ""
@@ -123,6 +147,11 @@ class Settings:
     duplex_voice: bool = True
     deepgram_api_key: str = ""  # vaulted
     deepgram_model: str = "nova-2"
+    # Local voice clone lab (F5 / XTTS / GPT-SoVITS / ElevenLabs when installed)
+    voice_clone_enabled: bool = True
+    voice_clone_seconds: float = 10.0
+    voice_clone_denoise: bool = True
+    voice_clone_engine: str = "auto"  # auto | f5_tts | xtts | gpt_sovits | elevenlabs
     # After "update software" patch, reboot via watchdog (exit 0)
     reload_after_update: bool = True
     # Audio isolation — never STT from desktop loopback / Voicemeeter outs
@@ -144,12 +173,32 @@ class Settings:
     ha_token: str = ""
     # n8n automation bridge
     n8n_url: str = "http://127.0.0.1:5678"
+    # Obsidian — local vault for Written / Research capture
+    obsidian_vault_path: str = ""  # e.g. C:/Users/you/Documents/MyVault
+    obsidian_vault_name: str = ""  # vault name for obsidian:// URI (optional)
+    # Keyboard / mouse RGB via OpenRGB
+    openrgb_enabled: bool = True
+    openrgb_host: str = "127.0.0.1"
+    openrgb_port: int = 6742
+    openrgb_path: str = ""  # optional full path to OpenRGB.exe
+    # Prefer Claude Code CLI (subscription) over Anthropic API keys for agents
+    prefer_claude_cli: bool = False  # Claude Code login is paid — use Ollama free instead
+    claude_cli_model: str = "claude-opus-4-5"
+    # Autonomous Plan/Do/Check loops
+    auto_loop_max_rounds: int = 12
+    auto_loop_max_minutes: float = 45.0
+    auto_loop_require_verify: bool = True
     n8n_api_key: str = ""
     # Cloud integrations (mirror Cursor MCP: Stripe / Notion / Buffer / Gmail)
     stripe_secret_key: str = ""
     notion_token: str = ""
     buffer_access_token: str = ""
     gmail_access_token: str = ""
+    gmail_refresh_token: str = ""  # vaulted — OAuth refresh token
+    gmail_client_id: str = ""  # Google Cloud OAuth Desktop client id
+    gmail_client_secret: str = ""  # vaulted — Desktop client secret (required for refresh)
+    gmail_email: str = ""  # IMAP account (e.g. you@gmail.com)
+    gmail_app_password: str = ""  # vaulted — Google App Password preferred
     # iCloud Mail (IMAP) — Cash App receipts often land here, not Gmail
     icloud_email: str = ""
     icloud_app_password: str = ""  # vaulted app-specific password
@@ -165,6 +214,14 @@ class Settings:
     # Agent crew — six-agent pipeline (supervisor / research / memory /
     # operator / comms / critic). Say: "crew <request>" or "crew status".
     crew_enabled: bool = True
+    # AI Systems v2 — SWE-bench / Cloud Agent / LangGraph / OpenAI Agents /
+    # Mistweb+Tick / Pydad / Agno Type-C / LlamaIndex Workflow RAG
+    systems_ai_v2_enabled: bool = True
+    systems_tick_autostart: bool = False
+    swe_bench_docker: bool = False
+    cloud_agent_model: str = "default"
+    openai_agents_sandbox_timeout: float = 15.0
+    agno_scrape_workers: int = 4
     tavily_api_key: str = ""  # vaulted — preferred research backend
     serper_api_key: str = ""  # vaulted — secondary research backend
     # Computer-use / browser agent (screenshot → LLM → mouse/keyboard)
@@ -194,6 +251,27 @@ class Settings:
     phone_ntfy_topic: str = ""  # auto-generated on first link
     phone_ntfy_server: str = "https://ntfy.sh"
     phone_shortcuts_webhook: str = ""  # optional iOS Shortcuts URL
+    # Snapchat / Phone Link incoming calls (Windows watcher + optional ntfy)
+    snapchat_calls_enabled: bool = True
+    snapchat_auto_answer: bool = True
+    snapchat_poll_sec: float = 0.55
+    snapchat_cooldown_sec: float = 12.0
+    snapchat_ntfy_topic: str = ""  # iOS Shortcut → ntfy when Snap rings on phone
+    snapchat_ntfy_server: str = "https://ntfy.sh"
+    # Live Snap / Instagram / iMessage (Phone Link) read + translate
+    comms_live_enabled: bool = True
+    comms_live_translate: bool = True
+    comms_live_target_lang: str = "en"
+    comms_live_speak: bool = True
+    comms_live_poll_sec: float = 0.55
+    comms_live_notify_phone: bool = True
+    # which apps: snapchat,instagram,imessage
+    comms_live_apps: list[str] = field(
+        default_factory=lambda: ["snapchat", "instagram", "imessage"]
+    )
+    # Cut artificial waits (voice / HUD / watchers)
+    zero_latency: bool = True
+
     # iPhone companion PWA (Tailscale-reachable chat UI)
     companion_enabled: bool = True
     companion_port: int = 8766
@@ -228,6 +306,13 @@ class Settings:
     # Smart-plug clap AC recovery (BIOS Restore AC Power → Power On)
     clap_smart_plug_entity: str = ""  # e.g. switch.pc_plug via Home Assistant
     clap_smart_plug_enabled: bool = False
+    # Home ops / edge
+    net_watch_enabled: bool = True
+    net_watch_poll_sec: float = 45.0
+    deadman_enabled: bool = False
+    deadman_phrase: str = "jarvis clear"
+    deadman_hours: float = 24.0
+    auto_backup_hours: float = 24.0
     theme: Theme = field(default_factory=Theme)
     # Never touch Windows taskbar/app light-dark unless user opts in
     theme_sync_windows: bool = False

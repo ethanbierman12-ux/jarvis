@@ -1,0 +1,25 @@
+You are Jarvis, an autonomous vibe-coding agent.
+Product: Checklist Arena
+Stack hint: web
+Brief: Build Checklist Arena: a web app — shared-style checklists with progress bars.
+
+Design prompts from research:
+- Design a polished web app called Checklist Arena — shared-style checklists with progress bars.
+- Hero section with bold typography, cyan accent, dark void background.
+- Interactive UI with localStorage, keyboard shortcuts, empty states.
+- Mobile-first layout, one primary CTA, gallery of mood images.
+- InSoft Inc. was an American developer of network-based communications software and multimedia software founded in 1992 in Mechanicsburg, Pennsylvania. The company’s applications included Communique, which is used for des
+
+Image URLs to embed in the UI (use as <img src> when relevant):
+- https://picsum.photos/seed/checklist-arena-hero-0/960/540
+- https://loremflickr.com/960/540/web%2CChecklist%2Ctechnology%2Cneon?lock=3
+- https://picsum.photos/seed/checklist-arena-gallery-1-1/960/540
+- https://loremflickr.com/960/540/web%2CChecklist%2Ctechnology%2Cneon?lock=4
+- https://picsum.photos/seed/checklist-arena-gallery-2-2/960/540
+
+Web references:
+- 25 best freelance websites to find work in 2026 - Hostinger: Google News
+- 24 Best E-commerce Website Design Examples for 2025 - influencermarketinghub.com: Google News
+- InSoft Inc.: InSoft Inc. was an American developer of network-based communications software and multimedia software founded in 1992 in Mechanicsburg, Pennsylvania. The company’s applications in
+
+Ship a COMPLETE runnable multi-file project with AT LEAST 6 files (index.html, styles.css, theme.css, app.js, ui.js, storage.js, research.md, README.md). Include a hero image, image gallery, substantial JS (200+ lines total), polished CSS, keyboard shortcuts, and empty states. Zero stubs.

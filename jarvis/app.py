@@ -114,6 +114,24 @@ def run() -> int:
                 print(f"[boot] brain.start failed: {e}")
         QTimer.singleShot(200, _show_ops)
 
+        def _auto_triple() -> None:
+            try:
+                screens = displays.refresh()
+                want = bool(getattr(settings, "triple_layout_enabled", True))
+                if len(screens) >= 3 or want:
+                    if len(screens) >= 3:
+                        settings.triple_layout_enabled = True
+                        try:
+                            settings.save()
+                        except Exception:
+                            pass
+                    window._engage_triple_layout()
+            except Exception as e:
+                print(f"[display] triple layout: {e}")
+
+        # Jarvis places Screen 1/2/3 himself after boot — no voice needed
+        QTimer.singleShot(900, _auto_triple)
+
     # Paint HUD immediately; build brain while boot animation runs
     QTimer.singleShot(80, _build_brain)
     window.boot_ready.connect(_on_boot_ready)

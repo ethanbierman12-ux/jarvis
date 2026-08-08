@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Glow Stretch</title>
+<link rel="stylesheet" href="theme.css"/>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <div class="bg"></div>
+  <header class="top">
+    <p class="eyebrow">JARVIS · VIBE · TIMER</p>
+    <nav>
+      <button type="button" data-go="home" class="nav on">Home</button>
+      <button type="button" data-go="board" class="nav">App</button>
+      <button type="button" data-go="gallery" class="nav">Gallery</button>
+      <button type="button" data-go="features" class="nav">Features</button>
+      <button type="button" data-go="settings" class="nav">Settings</button>
+      <button type="button" id="themeBtn" class="nav ghost">Theme</button>
+    </nav>
+  </header>
+  <main>
+    <section id="home" class="view on">
+      <div class="hero" style="--hero:url('https://picsum.photos/seed/glow-stretch-hero-0/960/540')">
+        <div class="hero-copy">
+          <h1>Glow Stretch</h1>
+          <p class="lead">guided stretch routine with countdown steps</p>
+          <div class="cta-row">
+            <button type="button" id="startBtn" class="primary">Open app</button>
+            <button type="button" data-go="features" class="ghost">See features</button>
+            <button type="button" data-go="gallery" class="ghost">Research images</button>
+          </div>
+          <p class="meta">Kind: timer · settings + features · researched live</p>
+        </div>
+      </div>
+      <div class="home-strip">
+        <div><b>Local-first</b><span>Data stays in your browser</span></div>
+        <div><b>Settings</b><span>Theme · density · sound · motion</span></div>
+        <div><b>Gallery</b><span>Live research mood art</span></div>
+      </div>
+    </section>
+    <section id="board" class="view">
+
+      <section class="panel">
+        <div class="panel-head"><h2>Focus timer</h2>
+          <div class="stats">
+            <span><b id="statRounds">0</b> rounds</span>
+            <span><b id="statFocus">0</b> min focus</span>
+          </div>
+        </div>
+        <div class="timer-face" id="clock">25:00</div>
+        <div class="cta-row">
+          <button type="button" class="primary" id="startTimer">Start</button>
+          <button type="button" id="pauseTimer">Pause</button>
+          <button type="button" id="resetTimer">Reset</button>
+          <button type="button" id="mode25">25/5</button>
+          <button type="button" id="mode50">50/10</button>
+          <button type="button" id="mode15">15/3</button>
+          <button type="button" id="skipBreak">Skip break</button>
+          <button type="button" id="clearHist">Clear history</button>
+          <button type="button" id="exportHist">Export</button>
+        </div>
+        <ul id="list"></ul>
+        <p class="hint">Completes a round automatically · history saved locally · Export copies JSON</p>
+      </section>
+    </section>
+    <section id="gallery" class="view">
+      <h2 class="section-title">Research gallery</h2>
+      <p class="dim">Images the image agent kept while searching — click to enlarge.</p>
+      <div class="gallery">
+      <figure><img src="https://loremflickr.com/960/540/web%2CGlow%2Ctechnology%2Cneon?lock=3" alt="Glow Stretch mood 0" loading="lazy"/><figcaption>Glow Stretch mood 0</figcaption></figure>
+      <figure><img src="https://picsum.photos/seed/glow-stretch-gallery-1-1/960/540" alt="Glow Stretch gallery-1" loading="lazy"/><figcaption>Glow Stretch gallery-1</figcaption></figure>
+      <figure><img src="https://loremflickr.com/960/540/web%2CGlow%2Ctechnology%2Cneon?lock=4" alt="Glow Stretch mood 1" loading="lazy"/><figcaption>Glow Stretch mood 1</figcaption></figure>
+      <figure><img src="https://picsum.photos/seed/glow-stretch-gallery-2-2/960/540" alt="Glow Stretch gallery-2" loading="lazy"/><figcaption>Glow Stretch gallery-2</figcaption></figure>
+      <figure><img src="https://picsum.photos/seed/glow-stretch-g4/800/500" alt="Glow Stretch mood 2" loading="lazy"/><figcaption>Glow Stretch mood 2</figcaption></figure>
+      <figure><img src="https://picsum.photos/seed/glow-stretch-g5/800/500" alt="Glow Stretch gallery-3" loading="lazy"/><figcaption>Glow Stretch gallery-3</figcaption></figure>
+      </div>
+    </section>
+    <section id="features" class="view">
+      <h2 class="section-title">Features</h2>
+      <p class="dim">Everything this build ships beyond a blank page.</p>
+      <div class="feat-grid">
+        <article class="feat"><h3>Branded product shell for Glow Stretch</h3><p>Branded product shell for Glow Stretch</p></article>
+        <article class="feat"><h3>Persistent settings (localStorage) with export /</h3><p>Persistent settings (localStorage) with export / import / reset</p></article>
+        <article class="feat"><h3>Theme switcher (at least 2 themes) + density / r</h3><p>Theme switcher (at least 2 themes) + density / reduced-motion</p></article>
+        <article class="feat"><h3>Keyboard shortcuts + on-screen hint strip</h3><p>Keyboard shortcuts + on-screen hint strip</p></article>
+        <article class="feat"><h3>Empty states and success feedback (no dead click</h3><p>Empty states and success feedback (no dead clicks)</p></article>
+        <article class="feat"><h3>Research gallery using 10 mood images with capti</h3><p>Research gallery using 10 mood images with captions</p></article>
+        <article class="feat"><h3>features.md documenting every interactive capabi</h3><p>features.md documenting every interactive capability</p></article>
+        <article class="feat"><h3>Core timer board with create / edit / complete /</h3><p>Core timer board with create / edit / complete / delete</p></article>
+      </div>
+    </section>
+    <section id="settings" class="view">
+      <section class="panel">
+        <div class="panel-head"><h2>Settings</h2>
+          <div class="stats"><span>persisted locally</span></div>
+        </div>
+        <div class="settings-grid">
+          <label>Theme
+            <select id="setTheme">
+              <option value="">Void cyan</option>
+              <option value="warm">Warm ember</option>
+              <option value="neon">Neon mint</option>
+            </select>
+          </label>
+          <label>Density
+            <select id="setDensity">
+              <option value="comfy">Comfy</option>
+              <option value="compact">Compact</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="setSound" checked/> Sound feedback</label>
+          <label class="check"><input type="checkbox" id="setMotion"/> Reduce motion</label>
+          <label>Accent
+            <input id="setAccent" type="color" value="#00e8ff"/>
+          </label>
+        </div>
+        <div class="cta-row">
+          <button type="button" class="primary" id="setExport">Export data</button>
+          <button type="button" id="setImport">Import data</button>
+          <button type="button" id="setReset">Reset all</button>
+        </div>
+        <p class="hint">Shortcuts: <kbd>1</kbd>–<kbd>5</kbd> views · <kbd>T</kbd> theme · settings auto-save</p>
+        <input id="setImportFile" type="file" accept="application/json" hidden/>
+      </section>
+    </section>
+  </main>
+  <footer class="key-hint">Jarvis vibe · feature + image + script agents</footer>
+  <script src="storage.js"></script>
+  <script src="settings.js"></script>
+  <script src="ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

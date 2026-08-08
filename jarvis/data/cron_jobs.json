@@ -6,7 +6,7 @@
       "label": "CPU/RAM pulse",
       "kind": "sys_monitor",
       "enabled": true,
-      "last_run": 1785118232.5854607,
+      "last_run": 1786123743.9294345,
       "meta": {}
     },
     {
@@ -15,7 +15,7 @@
       "label": "Tech horizon blip",
       "kind": "horizon",
       "enabled": true,
-      "last_run": 1785116976.6409998,
+      "last_run": 1786121134.6413214,
       "meta": {}
     },
     {
@@ -24,7 +24,7 @@
       "label": "Shipment ledger nudge",
       "kind": "packages",
       "enabled": true,
-      "last_run": 1785117439.5227013,
+      "last_run": 1786122962.7898812,
       "meta": {}
     }
   ]
